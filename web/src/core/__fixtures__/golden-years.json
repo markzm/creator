@@ -1,0 +1,62 @@
+[
+  {
+    "input": "",
+    "expected": null
+  },
+  {
+    "input": "302",
+    "expected": 302
+  },
+  {
+    "input": "第三纪元 302 年",
+    "expected": 302
+  },
+  {
+    "input": "约三百年前",
+    "expected": 300
+  },
+  {
+    "input": "两百年前雾谷之战",
+    "expected": 200
+  },
+  {
+    "input": "百年前",
+    "expected": 100
+  },
+  {
+    "input": "千年前的浩劫",
+    "expected": 1000
+  },
+  {
+    "input": "远古时代",
+    "expected": -1000
+  },
+  {
+    "input": "上古神战",
+    "expected": -1000
+  },
+  {
+    "input": "创世纪元",
+    "expected": -1000
+  },
+  {
+    "input": "混沌纪（1000-2500）",
+    "expected": 1000
+  },
+  {
+    "input": "12岁村庄被焚",
+    "expected": 12
+  },
+  {
+    "input": "未知年份",
+    "expected": null
+  },
+  {
+    "input": "9999年",
+    "expected": 9999
+  },
+  {
+    "input": "第7年",
+    "expected": 7
+  }
+]

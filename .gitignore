@@ -1,0 +1,24 @@
+# Binaries and build artifacts
+bin/
+web/dist/
+web/node_modules/
+web/playwright-report/
+web/test-results/
+server/creator
+server/legacy-export
+server/internal/api/dist/
+
+# Runtime data & SQLite databases
+*.db
+*.db-shm
+*.db-wal
+/var/
+legacy-export-*/
+data/
+
+# Environment & IDE
+.env
+.env.local
+deploy/creator.env
+.DS_Store
+*.log

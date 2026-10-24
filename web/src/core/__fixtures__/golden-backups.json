@@ -1,0 +1,300 @@
+[
+  {
+    "desc": "v5.3 full backup",
+    "input": {
+      "version": 5.3,
+      "worlds": {
+        "w1": {
+          "id": "w1",
+          "name": "艾瑟兰",
+          "data": {
+            "w_name": "艾瑟兰"
+          }
+        }
+      },
+      "orgs": {
+        "o1": {
+          "id": "o1",
+          "name": "暮光议会",
+          "data": {
+            "o_name": "暮光议会"
+          }
+        }
+      },
+      "chars": {
+        "c1": {
+          "id": "c1",
+          "name": "莉莉安",
+          "data": {
+            "name": "莉莉安"
+          }
+        }
+      },
+      "templates": {
+        "t1": {
+          "id": "t1",
+          "name": "速写",
+          "fields": [
+            "姓名"
+          ]
+        }
+      },
+      "timeline": [
+        {
+          "name": "创世",
+          "year": "100"
+        }
+      ],
+      "plots": [
+        {
+          "id": "p1",
+          "title": "第一卷",
+          "acts": []
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "title": "开场戏"
+        }
+      ],
+      "glossary": [
+        {
+          "id": "g1",
+          "term": "源石",
+          "def": "矿物"
+        }
+      ],
+      "stats": [
+        {
+          "d": "2026-10-24",
+          "n": 1200
+        }
+      ]
+    },
+    "expectedNormalized": {
+      "worlds": {
+        "w1": {
+          "id": "w1",
+          "name": "艾瑟兰",
+          "data": {
+            "w_name": "艾瑟兰"
+          }
+        }
+      },
+      "orgs": {
+        "o1": {
+          "id": "o1",
+          "name": "暮光议会",
+          "data": {
+            "o_name": "暮光议会"
+          }
+        }
+      },
+      "chars": {
+        "c1": {
+          "id": "c1",
+          "name": "莉莉安",
+          "data": {
+            "name": "莉莉安"
+          }
+        }
+      },
+      "templates": {
+        "t1": {
+          "id": "t1",
+          "name": "速写",
+          "fields": [
+            "姓名"
+          ]
+        }
+      },
+      "timeline": [
+        {
+          "name": "创世",
+          "year": "100"
+        }
+      ],
+      "plots": [
+        {
+          "id": "p1",
+          "title": "第一卷",
+          "acts": []
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s1",
+          "title": "开场戏"
+        }
+      ],
+      "glossary": [
+        {
+          "id": "g1",
+          "term": "源石",
+          "def": "矿物"
+        }
+      ],
+      "stats": [
+        {
+          "d": "2026-10-24",
+          "n": 1200
+        }
+      ]
+    }
+  },
+  {
+    "desc": "v5.0 backup without plots/scenes",
+    "input": {
+      "version": 5,
+      "worlds": {
+        "w1": {
+          "id": "w1",
+          "name": "旧世界",
+          "data": {}
+        }
+      },
+      "orgs": {},
+      "chars": {
+        "c1": {
+          "id": "c1",
+          "name": "旧角色",
+          "data": {}
+        }
+      }
+    },
+    "expectedNormalized": {
+      "worlds": {
+        "w1": {
+          "id": "w1",
+          "name": "旧世界",
+          "data": {}
+        }
+      },
+      "orgs": {},
+      "chars": {
+        "c1": {
+          "id": "c1",
+          "name": "旧角色",
+          "data": {}
+        }
+      },
+      "templates": {},
+      "timeline": [],
+      "plots": [],
+      "scenes": [],
+      "glossary": [],
+      "stats": []
+    }
+  },
+  {
+    "desc": "v4 legacy characters field",
+    "input": {
+      "characters": {
+        "c_old": {
+          "id": "c_old",
+          "name": "四代角色",
+          "data": {
+            "name": "四代角色"
+          }
+        }
+      }
+    },
+    "expectedNormalized": {
+      "worlds": {},
+      "orgs": {},
+      "chars": {
+        "c_old": {
+          "id": "c_old",
+          "name": "四代角色",
+          "data": {
+            "name": "四代角色"
+          }
+        }
+      },
+      "templates": {},
+      "timeline": [],
+      "plots": [],
+      "scenes": [],
+      "glossary": [],
+      "stats": []
+    }
+  },
+  {
+    "desc": "v4 bare single character object",
+    "input": {
+      "name": "单角色裸对象",
+      "gender": "男",
+      "age": "24"
+    },
+    "expectedNormalized": {
+      "worlds": {},
+      "orgs": {},
+      "chars": {
+        "ch_fixed_uid_123": {
+          "id": "ch_fixed_uid_123",
+          "name": "单角色裸对象",
+          "data": {
+            "name": "单角色裸对象",
+            "gender": "男",
+            "age": "24"
+          },
+          "updatedAt": 1700000000000
+        }
+      },
+      "templates": {},
+      "timeline": [],
+      "plots": [],
+      "scenes": [],
+      "glossary": [],
+      "stats": []
+    }
+  },
+  {
+    "desc": "v4 map of character objects",
+    "input": {
+      "ch_a": {
+        "name": "甲",
+        "data": {
+          "name": "甲"
+        },
+        "updatedAt": 1700000000000
+      },
+      "ch_b": {
+        "name": "乙",
+        "data": {
+          "name": "乙"
+        },
+        "updatedAt": 1700000000000
+      }
+    },
+    "expectedNormalized": {
+      "worlds": {},
+      "orgs": {},
+      "chars": {
+        "ch_a": {
+          "id": "ch_a",
+          "name": "甲",
+          "data": {
+            "name": "甲"
+          },
+          "updatedAt": 1700000000000
+        },
+        "ch_b": {
+          "id": "ch_b",
+          "name": "乙",
+          "data": {
+            "name": "乙"
+          },
+          "updatedAt": 1700000000000
+        }
+      },
+      "templates": {},
+      "timeline": [],
+      "plots": [],
+      "scenes": [],
+      "glossary": [],
+      "stats": []
+    }
+  }
+]
