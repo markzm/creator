@@ -33,6 +33,9 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('org', OG)">
               🧭 {{ t.guide }}
             </button>
+            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+              ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
+            </button>
             <span class="spacer" />
             <button type="button" class="btn sm danger" @click="onClearAll">
               {{ t.clear }}
@@ -83,6 +86,7 @@
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
+            @ai-gen="fillWithAI"
             @field-blur="onFieldBlur"
           />
 
@@ -169,6 +173,14 @@
             @clear-all="onClearAll"
             @open-guide="uiStore.openGuide('org', OG)"
           />
+
+          <!-- AI Generation Modal -->
+          <AIGenerateModal
+            v-model="aiModalOpen"
+            kind="org"
+            :entity-data="org.data"
+            @apply="onApplyAIGen"
+          />
         </div>
       </div>
     </div>
@@ -234,6 +246,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Modal from '../components/base/Modal.vue';
+import AIGenerateModal from '../components/editor/AIGenerateModal.vue';
 import BacklinksPanel from '../components/editor/BacklinksPanel.vue';
 import ConsistencyBox from '../components/editor/ConsistencyBox.vue';
 import DraftCodePanel from '../components/editor/DraftCodePanel.vue';
@@ -265,6 +278,7 @@ const orgName = computed(() => (org.value?.data?.o_name || '').trim());
 const allOpenState = ref(true);
 const memOpen = ref(true);
 const invalidFields = ref<Set<string>>(new Set());
+const aiModalOpen = ref(false);
 
 const committedName = ref('');
 const pendingRename = ref<{ oldName: string; newName: string; refCount: number } | null>(null);
@@ -299,7 +313,8 @@ const {
   requiredProgress,
   consistencyIssues,
   backlinks,
-  fillInspiration
+  fillInspiration,
+  fillWithAI
 } = useEntityEditor(
   'org',
   () => org.value,
@@ -455,6 +470,17 @@ async function removeMember(charId: string) {
   ch.data.orgs = lines.join('\n');
   docStore.touch(true);
   toast(tr('已移除', 'Removed'), 'ok');
+}
+
+function onApplyAIGen(content: string) {
+  if (!org.value) return;
+  if (!org.value.data.o_core) {
+    org.value.data.o_core = content;
+  } else {
+    org.value.data.o_history = (org.value.data.o_history ? org.value.data.o_history + '\n\n' : '') + content;
+  }
+  docStore.syncEntityName('org', org.value);
+  docStore.touch(true);
 }
 
 function onImportDraftData(data: Record<string, string>) {

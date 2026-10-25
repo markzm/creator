@@ -2,6 +2,7 @@ import { del, get, set } from 'idb-keyval';
 import { mergeBackupIntoDoc } from '../core/backup';
 import { createEmptyDocV6, migrateToV6 } from '../core/schema/migrations';
 import type { DocV6 } from '../core/schema/types';
+import { createStarterExampleDoc } from '../core/starterExample';
 import { uid } from '../core/uid';
 
 export const IDB_DOC_KEY = 'creator_doc_v6';
@@ -129,13 +130,17 @@ export async function loadOrMigrateDoc(): Promise<DocV6> {
     }
   }
 
-  const fresh = createEmptyDocV6();
+  // Brand new fresh workspace gets the starter example
+  const starter = createStarterExampleDoc();
   try {
-    await saveDocToIDB(fresh, false);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SEED_FLAG_KEY, '1');
+    }
+    await saveDocToIDB(starter, false);
   } catch {
     // Ignore IDB write error on initial creation
   }
-  return fresh;
+  return starter;
 }
 
 /**

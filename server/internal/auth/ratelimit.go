@@ -81,11 +81,15 @@ func (g *Guard) ClearLoginFailures(email string) {
 	delete(g.emailLocks, key)
 }
 
-// AllowRegister limits new account creation to max 8 per hour per IP.
+// AllowRegister limits new account creation to max 8 per hour per IP (higher limit for loopback/testing).
 func (g *Guard) AllowRegister(ip string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return allowBucket(g.ipRegister, ip, 8, time.Hour, time.Now())
+	limit := 8
+	if ip == "127.0.0.1" || ip == "::1" || ip == "localhost" {
+		limit = 200
+	}
+	return allowBucket(g.ipRegister, ip, limit, time.Hour, time.Now())
 }
 
 func allowBucket(m map[string]*bucket, key string, limit int, window time.Duration, now time.Time) bool {

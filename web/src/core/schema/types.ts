@@ -4,6 +4,8 @@ export interface BaseEntity {
   id: EntityId;
   name: string;
   data: Record<string, string>;
+  visibility?: 'private' | 'public';
+  shareId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -104,11 +106,37 @@ export interface DailyStat {
   done?: number;
 }
 
+export type ArticleCategory = '小说正文' | '设定集专题' | '外传番外' | '世界编年' | '其他';
+
+export interface ArticleItem {
+  id: string;
+  title: string;
+  category: ArticleCategory;
+  summary: string;
+  content: string;
+  worldId?: string;
+  orgIds?: string[];
+  charIds?: string[];
+  visibility: 'private' | 'public';
+  shareId?: string;
+  wordCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StudioPreferences {
+  preferredGenre: string;      // e.g. "奇幻", "科幻", "赛博朋克", "仙侠"
+  writingTone: string;         // e.g. "细腻生动", "冷峻考据", "史诗厚重", "轻快幽默"
+  defaultPerspective: string;  // e.g. "第三人称有限", "第一人称", "全知视角"
+  aiCustomInstruction: string; // e.g. "行文多白描，少用成语"
+}
+
 export interface UIState {
   activeW: EntityId | null;
   activeO: EntityId | null;
   activeC: EntityId | null;
   activeTpl: EntityId;
+  activeArticle?: string | null;
   nowYear: number;
 }
 
@@ -122,7 +150,9 @@ export interface DocV6 {
   plots: PlotVolume[];
   scenes: SceneCard[];
   glossary: GlossaryItem[];
+  articles: ArticleItem[];
   stats: DailyStat[];
+  preferences?: StudioPreferences;
   ui: UIState;
 }
 

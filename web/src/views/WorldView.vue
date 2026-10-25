@@ -33,6 +33,9 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('world', WG)">
               🧭 {{ t.guide }}
             </button>
+            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+              ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
+            </button>
             <span class="spacer" />
             <button type="button" class="btn sm danger" @click="onClearAll">
               {{ t.clear }}
@@ -83,6 +86,7 @@
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
+            @ai-gen="fillWithAI"
             @field-blur="onFieldBlur"
           />
 
@@ -195,6 +199,14 @@
             @clear-all="onClearAll"
             @open-guide="uiStore.openGuide('world', WG)"
           />
+
+          <!-- AI Generation Modal -->
+          <AIGenerateModal
+            v-model="aiModalOpen"
+            kind="world"
+            :entity-data="world.data"
+            @apply="onApplyAIGen"
+          />
         </div>
       </div>
     </div>
@@ -204,6 +216,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import AIGenerateModal from '../components/editor/AIGenerateModal.vue';
 import BacklinksPanel from '../components/editor/BacklinksPanel.vue';
 import ConsistencyBox from '../components/editor/ConsistencyBox.vue';
 import CustomInspPanel from '../components/editor/CustomInspPanel.vue';
@@ -235,6 +248,7 @@ const worldList = computed(() => Object.values(docStore.doc.worlds || {}));
 const allOpenState = ref(true);
 const relOpen = ref(false);
 const invalidFields = ref<Set<string>>(new Set());
+const aiModalOpen = ref(false);
 
 const committedName = ref('');
 const pendingRename = ref<{ oldName: string; newName: string; refCount: number } | null>(null);
@@ -264,7 +278,8 @@ const {
   requiredProgress,
   consistencyIssues,
   backlinks,
-  fillInspiration
+  fillInspiration,
+  fillWithAI
 } = useEntityEditor(
   'world',
   () => world.value,
@@ -365,6 +380,17 @@ function onUpdateCustomInsp(next: string[]) {
   if (!world.value) return;
   world.value.customInsp = next;
   docStore.touch();
+}
+
+function onApplyAIGen(content: string) {
+  if (!world.value) return;
+  if (!world.value.data.w_core) {
+    world.value.data.w_core = content;
+  } else {
+    world.value.data.w_extra = (world.value.data.w_extra ? world.value.data.w_extra + '\n\n' : '') + content;
+  }
+  docStore.syncEntityName('world', world.value);
+  docStore.touch(true);
 }
 
 function onImportDraftData(data: Record<string, string>) {

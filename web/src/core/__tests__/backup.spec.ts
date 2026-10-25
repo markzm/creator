@@ -64,7 +64,7 @@ describe('backup & migrations — Golden Master & DocV6 upgrade', () => {
 
     const doc = migrateToV6(legacyDb);
     expect(doc._version).toBe(6);
-    expect(doc.ui).toEqual({
+    expect(doc.ui).toMatchObject({
       activeW: 'w1',
       activeO: 'o1',
       activeC: 'c1',

@@ -5,6 +5,7 @@ import { INSP } from '../core/legacy/insp';
 import type { LegacyFieldGroup } from '../core/legacy/fields';
 import type { BaseEntity, EntityKind } from '../core/schema/types';
 import { useDocStore } from '../stores/doc';
+import { useAIStore } from '../stores/ai';
 import { useI18n } from './useI18n';
 import { useToast } from './useToast';
 
@@ -14,7 +15,8 @@ export function useEntityEditor(
   getGroups: () => LegacyFieldGroup[]
 ) {
   const docStore = useDocStore();
-  const { t } = useI18n();
+  const aiStore = useAIStore();
+  const { t, tr } = useI18n();
   const { toast } = useToast();
 
   const totalCharCount = computed(() => {
@@ -81,11 +83,47 @@ export function useEntityEditor(
     return true;
   }
 
+  async function fillWithAI(fieldId: string, isTextarea: boolean, append = false): Promise<boolean> {
+    const ent = getEntity();
+    if (!ent) return false;
+    const groups = getGroups();
+    const fieldDef = groups.flatMap((g) => g.f).find((f) => f.id === fieldId);
+    const label = fieldDef?.l || fieldId;
+    const cur = (ent.data[fieldId] || '').trim();
+    toast(tr(`正在请求 AI 生成「${label}」…`, `AI generating ${label}…`), 'ok');
+    try {
+      const res = await aiStore.generate({
+        task: 'field_gen',
+        fieldId,
+        fieldLabel: label,
+        entityKind: kind,
+        entityData: ent.data,
+        currentText: cur
+      });
+      const generated = res.content.trim();
+      if (!generated) return false;
+      if (append && cur) {
+        const sep = isTextarea ? '\n' : '、';
+        ent.data[fieldId] = cur.replace(/([、,，\n\s])+$/, '') + sep + generated;
+      } else {
+        ent.data[fieldId] = generated;
+      }
+      docStore.syncEntityName(kind, ent);
+      docStore.touch();
+      toast(tr(`AI 已生成「${label}」✓`, `Generated ${label} ✓`), 'ok');
+      return true;
+    } catch (err: any) {
+      toast(err?.message || tr('AI 生成失败', 'AI generation failed'), 'err');
+      return false;
+    }
+  }
+
   return {
     totalCharCount,
     requiredProgress,
     consistencyIssues,
     backlinks,
-    fillInspiration
+    fillInspiration,
+    fillWithAI
   };
 }

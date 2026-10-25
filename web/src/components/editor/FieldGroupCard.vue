@@ -18,6 +18,7 @@
           :invalid="invalidFields?.has(f.id)"
           @update:model-value="(val) => onUpdateField(f.id, val)"
           @roll="(fid, isTa, append) => $emit('roll', fid, isTa, append)"
+          @ai-gen="(fid, isTa, append) => $emit('aiGen', fid, isTa, append)"
           @blur="(fid) => $emit('fieldBlur', fid)"
         />
       </div>
@@ -50,6 +51,7 @@ const emit = defineEmits<{
   (e: 'updateField', fieldId: string, val: string): void;
   (e: 'clearGroup', fieldIds: string[]): void;
   (e: 'roll', fieldId: string, isTextarea: boolean, append: boolean): void;
+  (e: 'aiGen', fieldId: string, isTextarea: boolean, append: boolean): void;
   (e: 'fieldBlur', fieldId: string): void;
 }>();
 

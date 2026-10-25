@@ -155,6 +155,12 @@ const navItems = computed(() => [
     badge: (docStore.doc.plots || []).length
   },
   {
+    to: '/articles',
+    icon: '🖋️',
+    label: tr('文章创作', 'Articles'),
+    badge: (docStore.doc.articles || []).length
+  },
+  {
     to: '/scenes',
     icon: '🎬',
     label: tr('场景卡', 'Scenes'),

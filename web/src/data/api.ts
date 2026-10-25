@@ -1,4 +1,4 @@
-import type { DocV6 } from '../core/schema/types';
+import type { DocV6, StudioPreferences } from '../core/schema/types';
 
 export interface AuthUser {
   id: number;
@@ -6,6 +6,7 @@ export interface AuthUser {
   name: string;
   avatar: string;
   bio: string;
+  customPrefs?: StudioPreferences;
   lastSeenAt?: number;
   createdAt?: number;
 }
@@ -84,15 +85,71 @@ export interface LobbyUser {
 }
 
 export interface WorldShareItem {
-  id: number;
+  id: string | number;
   userId: number;
   ownerName: string;
-  kind: string;
+  kind: 'world' | 'org' | 'char' | 'article' | string;
   title: string;
   summary: string;
   content: string;
-  draftCode: string;
+  draftCode?: string;
+  visibility: 'public' | 'private';
+  entityId?: string;
+  tags?: string;
+  wordCount?: number;
   createdAt: number;
+  updatedAt?: number;
+}
+
+export interface GlobalDashboardStats {
+  totalUsers: number;
+  onlineUsers: number;
+  totalPublicShares: number;
+  kindCounts: Record<string, number>;
+  totalPublicWords: number;
+  totalSyncedWords: number;
+  recentCreations: WorldShareItem[];
+  activeCreators: LobbyUser[];
+}
+
+export interface UserAIConfig {
+  provider: 'public' | 'deepseek' | 'siliconflow' | 'openrouter' | 'custom';
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+export interface AIPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model: string;
+  hint: string;
+}
+
+export interface AIStatusResponse {
+  publicReady: boolean;
+  freeModels: string[];
+  presets: AIPreset[];
+}
+
+export interface AIGenerateRequest {
+  task: 'field_gen' | 'entity_gen' | 'article_write' | 'article_continue' | 'article_summary';
+  fieldId?: string;
+  fieldLabel?: string;
+  entityKind?: string;
+  entityData?: Record<string, string>;
+  currentText?: string;
+  prompt?: string;
+  context?: string;
+  customAi?: UserAIConfig;
+  preferences?: StudioPreferences;
+}
+
+export interface AIGenerateResponse {
+  content: string;
+  model: string;
+  usedAi: 'public' | 'custom';
 }
 
 async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -215,7 +272,7 @@ export const api = {
     return requestJson<RevisionDetail>(`/api/sync/revisions/${id}`);
   },
 
-  // Presence & Lobby
+  // Presence, Lobby & World Shares
   postPresence(focus: string): Promise<{ ok: boolean }> {
     return requestJson<{ ok: boolean }>('/api/presence', {
       method: 'POST',
@@ -227,39 +284,102 @@ export const api = {
     return requestJson<{ users: LobbyUser[] }>('/api/lobby/users');
   },
 
-  getShares(params?: { owner?: 'me'; before?: number; limit?: number }): Promise<{
+  getGlobalStats(): Promise<GlobalDashboardStats> {
+    return requestJson<GlobalDashboardStats>('/api/stats/global');
+  },
+
+  getShares(params?: {
+    owner?: 'me';
+    visibility?: 'all' | 'public' | 'private';
+    kind?: string;
+    q?: string;
+    before?: number | string;
+    limit?: number;
+  }): Promise<{
     shares: WorldShareItem[];
   }> {
     const qs = new URLSearchParams();
     if (params?.owner) qs.set('owner', params.owner);
+    if (params?.visibility) qs.set('visibility', params.visibility);
+    if (params?.kind) qs.set('kind', params.kind);
+    if (params?.q) qs.set('q', params.q);
     if (params?.before) qs.set('before', String(params.before));
     if (params?.limit) qs.set('limit', String(params.limit));
     const qStr = qs.toString();
     return requestJson<{ shares: WorldShareItem[] }>(`/api/shares${qStr ? '?' + qStr : ''}`);
   },
 
+  getShareDetail(id: string | number): Promise<{ share: WorldShareItem }> {
+    return requestJson<{ share: WorldShareItem }>(`/api/shares/${id}`);
+  },
+
   createShare(payload: {
+    id?: string;
+    entityId?: string;
     kind?: string;
     title: string;
     summary: string;
     content: string;
     draftCode?: string;
+    visibility?: 'public' | 'private';
+    tags?: string;
   }): Promise<{ share: WorldShareItem }> {
     return requestJson<{ share: WorldShareItem }>('/api/shares', {
       method: 'POST',
       body: JSON.stringify({
+        id: payload.id,
+        entityId: payload.entityId || '',
         kind: payload.kind || 'world',
         title: payload.title,
         summary: payload.summary,
         content: payload.content,
-        draftCode: payload.draftCode || ''
+        draftCode: payload.draftCode || '',
+        visibility: payload.visibility || 'public',
+        tags: payload.tags || ''
       })
     });
   },
 
-  deleteShare(id: number): Promise<{ ok: boolean }> {
+  updateShareVisibility(id: string | number, visibility: 'public' | 'private'): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/shares/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ visibility })
+    });
+  },
+
+  deleteShare(id: string | number): Promise<{ ok: boolean }> {
     return requestJson<{ ok: boolean }>(`/api/shares/${id}`, {
       method: 'DELETE'
+    });
+  },
+
+  // AI Service
+  getAIStatus(): Promise<AIStatusResponse> {
+    return requestJson<AIStatusResponse>('/api/ai/status');
+  },
+
+  generateAI(payload: AIGenerateRequest): Promise<AIGenerateResponse> {
+    return requestJson<AIGenerateResponse>('/api/ai/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  testAIConnection(payload: UserAIConfig): Promise<{ ok: boolean; message: string }> {
+    return requestJson<{ ok: boolean; message: string }>('/api/ai/test', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  getUserAIConfig(): Promise<{ customAi?: UserAIConfig; preferences?: StudioPreferences }> {
+    return requestJson<{ customAi?: UserAIConfig; preferences?: StudioPreferences }>('/api/me/ai-config');
+  },
+
+  updateUserAIConfig(payload: { customAi?: UserAIConfig; preferences?: StudioPreferences }): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>('/api/me/ai-config', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
     });
   }
 };

@@ -1,0 +1,531 @@
+<template>
+  <div class="page-container" style="max-width: 1100px; margin: 0 auto; padding: 20px">
+    <div class="row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px">
+      <div>
+        <h2 style="margin: 0; font-size: 20px">🖋️ {{ tr('文章创作工作台', 'Articles & Writing Studio') }}</h2>
+        <p class="hint" style="margin: 4px 0 0">
+          {{ tr('将世界观、组织与角色设定作为背景知识库注入 AI，支持正文撰写、智能续作、摘要提取与私有/公开共享。', 'Inject worldbuilding entities into AI for article writing, continuations, summaries, and sharing.') }}
+        </p>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <button class="btn sm" @click="uiStore.openModal('aiConfig')">
+          🤖 {{ tr('AI 引擎设置', 'AI Settings') }}
+        </button>
+        <button class="btn sm primary" @click="createNewArticle">
+          ＋ {{ tr('新建文章', 'New Article') }}
+        </button>
+      </div>
+    </div>
+
+    <div class="editor-split">
+      <!-- Left Pane: Articles List -->
+      <div class="card open" style="padding: 14px; min-width: 250px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+          <strong style="font-size: 13.5px">{{ tr('文章列表', 'Articles') }} ({{ articleList.length }})</strong>
+          <select v-model="filterCategory" style="font-size: 11.5px; padding: 2px 6px">
+            <option value="all">{{ tr('全部分类', 'All') }}</option>
+            <option value="小说正文">小说正文</option>
+            <option value="设定集专题">设定集专题</option>
+            <option value="外传番外">外传番外</option>
+            <option value="世界编年">世界编年</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+
+        <input
+          v-model="searchKeyword"
+          type="text"
+          :placeholder="tr('搜索文章标题…', 'Search title…')"
+          style="margin-bottom: 10px; font-size: 12px; padding: 5px 8px"
+        />
+
+        <div v-if="!filteredArticles.length" class="hint" style="font-size: 12.5px; text-align: center; padding: 24px 0">
+          {{ tr('没有匹配的文章', 'No articles found') }}
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow-y: auto">
+          <div
+            v-for="a in filteredArticles"
+            :key="a.id"
+            class="card"
+            style="padding: 10px 12px; cursor: pointer; transition: all 0.15s"
+            :style="{
+              borderColor: activeArt?.id === a.id ? 'var(--ac)' : 'var(--li)',
+              background: activeArt?.id === a.id ? 'var(--acs)' : 'var(--card)'
+            }"
+            @click="docStore.selectArticle(a.id)"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px">
+              <span
+                class="pill"
+                style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--soft)"
+              >
+                {{ a.category }}
+              </span>
+              <span
+                class="pill"
+                :style="{
+                  fontSize: '10px',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  background: a.visibility === 'public' ? 'var(--oks)' : 'var(--soft)',
+                  color: a.visibility === 'public' ? 'var(--ok)' : 'var(--mu)'
+                }"
+              >
+                {{ a.visibility === 'public' ? tr('🌐 公开', 'Public') : tr('🔒 私有', 'Private') }}
+              </span>
+            </div>
+            <div style="font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+              {{ a.title || tr('未命名文章', 'Untitled') }}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--mu); margin-top: 4px">
+              <span>{{ (a.content || '').length }} {{ tr('字', 'words') }}</span>
+              <span>{{ formatDate(a.updatedAt) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Main: Article Editor -->
+      <div v-if="activeArt">
+        <!-- Top Toolbar -->
+        <div class="row" style="margin: 0 0 12px; flex-wrap: wrap; gap: 8px">
+          <button type="button" class="btn sm primary" @click="aiWriteModalOpen = true">
+            ✨ {{ tr('AI 设定成文', 'AI Write') }}
+          </button>
+          <button
+            type="button"
+            class="btn sm"
+            :disabled="aiStore.loading || !(activeArt.content || '').trim()"
+            @click="onAIContinue"
+          >
+            ✒️ {{ aiStore.loading ? tr('续写中…', 'Continuing…') : tr('AI 智能续写', 'AI Continue') }}
+          </button>
+          <button
+            type="button"
+            class="btn sm"
+            :disabled="aiStore.loading || !(activeArt.content || '').trim()"
+            @click="onAISummary"
+          >
+            📝 {{ tr('AI 提取摘要', 'AI Summary') }}
+          </button>
+          <span class="spacer" />
+          <button
+            type="button"
+            class="btn sm"
+            :style="{ color: activeArt.visibility === 'public' ? 'var(--ok)' : 'var(--ink2)' }"
+            @click="toggleVisibility"
+          >
+            {{ activeArt.visibility === 'public' ? '🌐 ' + tr('已公开（点击设为私有）', 'Public (Click for Private)') : '🔒 ' + tr('私有（点击公开共享）', 'Private (Click to Share)') }}
+          </button>
+          <button type="button" class="btn sm" @click="onShareOrSyncToLobby">
+            📤 {{ tr('发布/同步大厅', 'Sync Lobby') }}
+          </button>
+          <button type="button" class="btn sm icon danger" @click="deleteCurrent">
+            ✕
+          </button>
+        </div>
+
+        <!-- Metadata & Context Card -->
+        <div class="card open" style="padding: 16px; margin-bottom: 12px">
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px">
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
+                {{ tr('文章标题', 'Title') }}
+              </label>
+              <input
+                v-model="activeArt.title"
+                type="text"
+                style="font-size: 15px; font-weight: 700"
+                @input="docStore.touch()"
+              />
+            </div>
+            <div>
+              <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
+                {{ tr('分类', 'Category') }}
+              </label>
+              <select v-model="activeArt.category" @change="docStore.touch()">
+                <option value="小说正文">小说正文</option>
+                <option value="设定集专题">设定集专题</option>
+                <option value="外传番外">外传番外</option>
+                <option value="世界编年">世界编年</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Bind Context Entities -->
+          <div style="background: var(--soft); padding: 10px 12px; border-radius: 8px; margin-bottom: 10px">
+            <div style="font-weight: 600; font-size: 12px; color: var(--mu); margin-bottom: 6px">
+              🔗 {{ tr('关联设定背景库（作为 AI 创作知识库）：', 'Linked Context Entities for AI:') }}
+            </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px">
+              <!-- World Select -->
+              <div style="display: flex; align-items: center; gap: 6px">
+                <span>🌍</span>
+                <select v-model="activeArt.worldId" style="font-size: 12px; padding: 2px 6px" @change="docStore.touch()">
+                  <option :value="undefined">{{ tr('不绑定世界观', 'No World') }}</option>
+                  <option v-for="w in Object.values(docStore.doc.worlds)" :key="w.id" :value="w.id">
+                    {{ w.data.w_name || w.name }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Char Select -->
+              <div style="display: flex; align-items: center; gap: 6px">
+                <span>👤</span>
+                <span style="color: var(--mu)">{{ tr('出场角色:', 'Chars:') }}</span>
+                <span
+                  v-for="c in Object.values(docStore.doc.chars)"
+                  :key="c.id"
+                  class="pill"
+                  style="cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 99px"
+                  :style="{
+                    background: isCharSelected(c.id) ? 'var(--ac)' : 'var(--card)',
+                    color: isCharSelected(c.id) ? '#fff' : 'var(--ink2)'
+                  }"
+                  @click="toggleCharSelect(c.id)"
+                >
+                  {{ c.data.name || c.name }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary / Synopsis -->
+          <div>
+            <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
+              {{ tr('一句话梗概 / 章节摘要（支持在创作大厅作为简介展示）', 'Summary / Synopsis') }}
+            </label>
+            <textarea
+              v-model="activeArt.summary"
+              rows="2"
+              :placeholder="tr('概括本章核心矛盾与看点…', 'Brief synopsis…')"
+              @input="docStore.touch()"
+            />
+          </div>
+        </div>
+
+        <!-- Article Content Editor -->
+        <div class="card open" style="padding: 16px">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+            <strong style="font-size: 13.5px">📝 {{ tr('正文内容', 'Story Content') }}</strong>
+            <span style="font-size: 12px; color: var(--mu)">
+              {{ (activeArt.content || '').length }} {{ tr('字', 'chars') }} · {{ calcReadingTime(activeArt.content) }}
+            </span>
+          </div>
+
+          <textarea
+            v-model="activeArt.content"
+            rows="18"
+            style="font: 14.5px/1.85 'Noto Serif SC', 'Songti SC', serif; padding: 14px 16px; border-radius: 8px"
+            :placeholder="tr('从这里开始撰写你的故事，或者点上方「✨ AI 设定成文」根据设定自动撰写…', 'Start writing your story here…')"
+            @input="onContentInput"
+          />
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px">
+            <button type="button" class="btn sm" @click="copyContent">
+              📋 {{ tr('复制全文', 'Copy All') }}
+            </button>
+            <button type="button" class="btn sm" @click="downloadMarkdown">
+              📄 {{ tr('导出 Markdown', 'Export .md') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else class="card" style="padding: 48px 20px; text-align: center">
+        <p style="font-size: 40px; margin: 0 0 8px">🖋️</p>
+        <p class="hint">{{ tr('还没有选择文章。点左上角「＋ 新建文章」开始创作。', 'No article selected.') }}</p>
+      </div>
+    </div>
+
+    <!-- AI Write Modal -->
+    <Modal
+      v-model="aiWriteModalOpen"
+      :title="'✨ ' + tr('AI 设定成文向导', 'AI Story Writing')"
+      max-width="560px"
+    >
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <p class="hint" style="margin: 0; font-size: 12.5px">
+          {{ tr('AI 将结合当前关联的世界观与角色设定作为知识库，为您撰写小说正文。', 'AI writes story content using bound entities as context.') }}
+        </p>
+
+        <div>
+          <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
+            {{ tr('写作意图 / 本节情节需求', 'Story Prompt / Plot Requirements') }}
+          </label>
+          <textarea
+            v-model="aiWritePrompt"
+            rows="4"
+            :placeholder="tr('例：林汐与怀特船长在浮空灯塔遭遇以太风暴，两人合力抢修升力气囊并揭开遗迹石碑…', 'e.g. Action scene at the sky lighthouse…')"
+          />
+        </div>
+      </div>
+
+      <template #footer>
+        <button type="button" class="btn sm" @click="aiWriteModalOpen = false">
+          {{ tr('取消', 'Cancel') }}
+        </button>
+        <button
+          type="button"
+          class="btn primary sm"
+          :disabled="aiStore.loading"
+          @click="executeAIWrite"
+        >
+          {{ aiStore.loading ? tr('创作中…', 'Writing…') : '✨ ' + tr('开始成文', 'Start Writing') }}
+        </button>
+      </template>
+    </Modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { useConfirm } from '../composables/useConfirm';
+import { useI18n } from '../composables/useI18n';
+import { useToast } from '../composables/useToast';
+import { api } from '../data/api';
+import { useAIStore } from '../stores/ai';
+import { useAuthStore } from '../stores/auth';
+import { useDocStore } from '../stores/doc';
+import { useUIStore } from '../stores/ui';
+import Modal from '../components/base/Modal.vue';
+
+const docStore = useDocStore();
+const aiStore = useAIStore();
+const authStore = useAuthStore();
+const uiStore = useUIStore();
+const { t, tr } = useI18n();
+const { toast } = useToast();
+const { confirm } = useConfirm();
+
+const filterCategory = ref('all');
+const searchKeyword = ref('');
+const aiWriteModalOpen = ref(false);
+const aiWritePrompt = ref('');
+
+const activeArt = computed(() => docStore.activeArticle);
+const articleList = computed(() => docStore.doc.articles || []);
+
+const filteredArticles = computed(() => {
+  return articleList.value.filter((a) => {
+    if (filterCategory.value !== 'all' && a.category !== filterCategory.value) {
+      return false;
+    }
+    if (searchKeyword.value.trim()) {
+      const q = searchKeyword.value.trim().toLowerCase();
+      return (
+        (a.title || '').toLowerCase().includes(q) ||
+        (a.summary || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+});
+
+function isCharSelected(charId: string): boolean {
+  return Boolean(activeArt.value?.charIds?.includes(charId));
+}
+
+function toggleCharSelect(charId: string) {
+  if (!activeArt.value) return;
+  if (!activeArt.value.charIds) activeArt.value.charIds = [];
+  const idx = activeArt.value.charIds.indexOf(charId);
+  if (idx >= 0) {
+    activeArt.value.charIds.splice(idx, 1);
+  } else {
+    activeArt.value.charIds.push(charId);
+  }
+  docStore.touch();
+}
+
+function createNewArticle() {
+  docStore.createArticle(tr('新建文章', 'New Article'));
+  toast(tr('已创建新文章', 'Article created'), 'ok');
+}
+
+function onContentInput() {
+  if (activeArt.value) {
+    activeArt.value.wordCount = (activeArt.value.content || '').length;
+    docStore.touch();
+  }
+}
+
+function calcReadingTime(text?: string): string {
+  const len = (text || '').length;
+  if (!len) return '0 min';
+  const mins = Math.max(1, Math.round(len / 400));
+  return `~${mins} min`;
+}
+
+function formatDate(ts?: number): string {
+  if (!ts) return '';
+  const d = new Date(ts > 1e11 ? ts : ts * 1000);
+  return d.toLocaleDateString();
+}
+
+function buildBoundContext(): string {
+  if (!activeArt.value) return '';
+  const lines: string[] = [];
+
+  // World context
+  if (activeArt.value.worldId && docStore.doc.worlds[activeArt.value.worldId]) {
+    const w = docStore.doc.worlds[activeArt.value.worldId];
+    lines.push(`【世界观】: ${w.data.w_name || w.name}`);
+    if (w.data.w_core) lines.push(`核心法则: ${w.data.w_core}`);
+    if (w.data.w_power_system) lines.push(`力量体系: ${w.data.w_power_system}`);
+    if (w.data.w_era) lines.push(`纪元历史: ${w.data.w_era}`);
+  }
+
+  // Character contexts
+  if (activeArt.value.charIds && activeArt.value.charIds.length) {
+    lines.push('【出场角色】:');
+    activeArt.value.charIds.forEach((cid) => {
+      const c = docStore.doc.chars[cid];
+      if (c) {
+        lines.push(`- 姓名: ${c.data.name || c.name}, 种族/职业: ${c.data.race || ''} ${c.data.job || ''}, 性格: ${c.data.personality || ''}, 特殊能力: ${c.data.power || ''}`);
+      }
+    });
+  }
+
+  return lines.join('\n');
+}
+
+async function executeAIWrite() {
+  if (!activeArt.value || !aiWritePrompt.value.trim()) {
+    toast(tr('请填写写作意图', 'Prompt required'), 'warn');
+    return;
+  }
+  const context = buildBoundContext();
+  try {
+    const res = await aiStore.generate({
+      task: 'article_write',
+      prompt: aiWritePrompt.value.trim(),
+      context
+    });
+    activeArt.value.content = res.content;
+    activeArt.value.wordCount = res.content.length;
+    docStore.touch(true);
+    aiWriteModalOpen.value = false;
+    toast(tr('AI 正文创作完成 ✓', 'AI Story Generated ✓'), 'ok');
+  } catch (err: any) {
+    toast(err?.message || tr('生成失败', 'Failed'), 'err');
+  }
+}
+
+async function onAIContinue() {
+  if (!activeArt.value || !(activeArt.value.content || '').trim()) return;
+  const context = buildBoundContext();
+  toast(tr('AI 正在续写剧情…', 'AI Continuing story…'), 'ok');
+  try {
+    const res = await aiStore.generate({
+      task: 'article_continue',
+      currentText: activeArt.value.content.slice(-2000), // pass recent 2000 chars
+      prompt: '顺畅接续前文剧情，生动展现冲突，推进情节发展。',
+      context
+    });
+    activeArt.value.content = activeArt.value.content + '\n\n' + res.content;
+    activeArt.value.wordCount = activeArt.value.content.length;
+    docStore.touch(true);
+    toast(tr('续写完成 ✓', 'Continued ✓'), 'ok');
+  } catch (err: any) {
+    toast(err?.message || tr('续写失败', 'Failed'), 'err');
+  }
+}
+
+async function onAISummary() {
+  if (!activeArt.value || !(activeArt.value.content || '').trim()) return;
+  toast(tr('正在提取文章摘要…', 'Generating summary…'), 'ok');
+  try {
+    const res = await aiStore.generate({
+      task: 'article_summary',
+      currentText: activeArt.value.content.slice(0, 4000)
+    });
+    activeArt.value.summary = res.content;
+    docStore.touch(true);
+    toast(tr('摘要已生成 ✓', 'Summary ready ✓'), 'ok');
+  } catch (err: any) {
+    toast(err?.message || tr('提取失败', 'Failed'), 'err');
+  }
+}
+
+async function toggleVisibility() {
+  if (!activeArt.value) return;
+  const next = docStore.toggleArticleVisibility(activeArt.value.id);
+  toast(
+    next === 'public'
+      ? tr('已设为公开共享（可在创作大厅展示）', 'Set to Public')
+      : tr('已设为私有（仅自己可见）', 'Set to Private'),
+    'ok'
+  );
+  if (activeArt.value.shareId) {
+    try {
+      await api.updateShareVisibility(activeArt.value.shareId, next || 'private');
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+async function onShareOrSyncToLobby() {
+  if (!authStore.isLoggedIn) {
+    uiStore.openModal('auth');
+    return;
+  }
+  if (!activeArt.value || !(activeArt.value.content || '').trim()) {
+    toast(tr('文章内容为空', 'Content is empty'), 'warn');
+    return;
+  }
+  try {
+    const res = await api.createShare({
+      id: activeArt.value.shareId,
+      entityId: activeArt.value.id,
+      kind: 'article',
+      title: activeArt.value.title || tr('未命名文章', 'Untitled'),
+      summary: activeArt.value.summary || activeArt.value.content.slice(0, 80),
+      content: activeArt.value.content,
+      visibility: activeArt.value.visibility,
+      tags: activeArt.value.category
+    });
+    activeArt.value.shareId = String(res.share.id);
+    docStore.touch(true);
+    toast(tr('已成功同步至创作大厅 ✓', 'Synced to Lobby ✓'), 'ok');
+  } catch (err: any) {
+    toast((tr('同步失败：', 'Sync failed: ')) + (err?.message || ''), 'err');
+  }
+}
+
+async function copyContent() {
+  if (!activeArt.value?.content) return;
+  try {
+    await navigator.clipboard.writeText(activeArt.value.content);
+    toast(tr('正文已复制 ✓', 'Copied ✓'), 'ok');
+  } catch {
+    toast(tr('复制失败', 'Copy failed'), 'err');
+  }
+}
+
+function downloadMarkdown() {
+  if (!activeArt.value) return;
+  const md = `# ${activeArt.value.title}\n\n> 分类：${activeArt.value.category} | 字数：${activeArt.value.wordCount}\n\n${activeArt.value.content}\n`;
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${activeArt.value.title || 'article'}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(tr('已下载 Markdown 文件 ✓', 'Downloaded .md ✓'), 'ok');
+}
+
+async function deleteCurrent() {
+  if (!activeArt.value) return;
+  const title = activeArt.value.title || tr('未命名文章', 'Untitled');
+  if (!(await confirm(t.value.delConfirm, tr(`确定删除文章「${title}」？`, `Delete "${title}"?`)))) {
+    return;
+  }
+  docStore.deleteArticle(activeArt.value.id);
+  toast(tr('已删除', 'Deleted'), 'ok');
+}
+</script>

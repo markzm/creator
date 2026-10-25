@@ -68,6 +68,11 @@ export const routes: RouteRecordRaw[] = [
     component: lazyView('PlotsView'),
   },
   {
+    path: '/articles',
+    name: 'articles',
+    component: lazyView('ArticlesView'),
+  },
+  {
     path: '/scenes',
     name: 'scenes',
     component: lazyView('ScenesView'),

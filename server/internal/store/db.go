@@ -97,6 +97,13 @@ func initPragmas(db *sql.DB) error {
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
+	if _, err := s.WriteDB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		name TEXT PRIMARY KEY,
+		applied_at INTEGER NOT NULL
+	);`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
@@ -110,12 +117,34 @@ func (s *Store) Migrate(ctx context.Context) error {
 	sort.Strings(names)
 
 	for _, name := range names {
+		var count int
+		if err := s.WriteDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE name = ?", name).Scan(&count); err == nil && count > 0 {
+			continue
+		}
+
 		sqlBytes, err := migrationsFS.ReadFile("migrations/" + name)
 		if err != nil {
 			return err
 		}
-		if _, err := s.WriteDB.ExecContext(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("apply migration %s: %w", name, err)
+
+		// Split migration into individual statements to handle ALTER TABLE safely
+		statements := strings.Split(string(sqlBytes), ";")
+		for _, stmt := range statements {
+			trimmed := strings.TrimSpace(stmt)
+			if trimmed == "" {
+				continue
+			}
+			if _, err := s.WriteDB.ExecContext(ctx, trimmed); err != nil {
+				// If adding an existing column in SQLite, treat as benign
+				if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+					continue
+				}
+				return fmt.Errorf("apply migration %s stmt: %w", name, err)
+			}
+		}
+
+		if _, err := s.WriteDB.ExecContext(ctx, "INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)", name, time.Now().Unix()); err != nil {
+			return fmt.Errorf("record migration %s: %w", name, err)
 		}
 	}
 	return nil

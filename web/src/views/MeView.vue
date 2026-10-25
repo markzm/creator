@@ -1,11 +1,11 @@
 <template>
-  <div class="wrap" style="max-width: 780px">
+  <div class="wrap" style="max-width: 880px">
     <!-- Locked State -->
     <div v-if="!authStore.isLoggedIn" class="card open" style="padding: 40px 24px; text-align: center">
       <p style="font-size: 42px; margin: 0 0 10px">🪪</p>
-      <h3 style="margin: 0 0 8px">{{ tr('登录开启个人主页与云同步', 'Sign in to access your profile & cloud sync') }}</h3>
+      <h3 style="margin: 0 0 8px">{{ tr('登录开启个人主页、创作大厅与云同步', 'Sign in to access your profile & personal studio') }}</h3>
       <p class="hint" style="display: block; margin-bottom: 18px">
-        {{ tr('登录后自动跨设备同步全部设定数据，并可在创作大厅展示你的状态与分享。', 'Sync across devices and share your worlds in the creator lobby.') }}
+        {{ tr('登录后自动跨设备同步设定与文章，支持私有/共享切换、云端版本回滚、自定义 DeepSeek 等外部 AI 引擎。', 'Sync across devices, manage private/public creations, rollback revisions, and bring your own AI.') }}
       </p>
       <button type="button" class="btn primary lg" @click="uiStore.openModal('auth')">
         ☁️ {{ tr('立即登录 / 注册', 'Sign In / Register') }}
@@ -14,6 +14,7 @@
 
     <!-- Logged-In Main -->
     <template v-else>
+      <!-- Profile Header Card -->
       <div class="card open" style="padding: 22px">
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap">
           <div style="cursor: pointer" @click="openEditProfile">
@@ -24,17 +25,22 @@
             />
           </div>
           <div style="flex: 1; min-width: 180px">
-            <h2 style="margin: 0 0 4px; font-size: 20px">{{ authStore.displayName }}</h2>
-            <p style="margin: 0; font-size: 12.5px; color: var(--mu)">
-              {{ joinedText }}
+            <div style="display: flex; align-items: center; gap: 8px">
+              <h2 style="margin: 0; font-size: 20px">{{ authStore.displayName }}</h2>
+              <span class="pill" style="font-size: 11px; padding: 2px 7px; background: var(--acs); color: var(--ac); font-weight: 700">
+                {{ tr('创作者', 'Creator') }}
+              </span>
+            </div>
+            <p style="margin: 4px 0 0; font-size: 12.5px; color: var(--mu)">
+              {{ joinedText }} · {{ authStore.user?.email }}
             </p>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap">
             <button type="button" class="btn sm" @click="openEditProfile">
               ✏️ {{ tr('编辑资料 / 头像', 'Edit Profile') }}
             </button>
-            <button type="button" class="btn sm" @click="loadMyShares">
-              🔄 {{ tr('刷新', 'Refresh') }}
+            <button type="button" class="btn sm" @click="uiStore.openModal('aiConfig')">
+              🤖 {{ tr('定制设定器 & AI', 'Studio & AI') }}
             </button>
             <button type="button" class="btn sm danger" @click="onLogout">
               {{ tr('退出登录', 'Sign Out') }}
@@ -44,14 +50,14 @@
 
         <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--li2)">
           <label style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px">
-            {{ tr('个人简介（大厅可见，最多 80 字）', 'Bio (visible in lobby, max 80 chars)') }}
+            {{ tr('创作者名片简介（大厅与公共大盘可见，最多 80 字）', 'Bio (visible in lobby and public leaderboard, max 80 chars)') }}
           </label>
           <div style="display: flex; gap: 8px">
             <input
               v-model="bioInput"
               type="text"
               maxlength="80"
-              :placeholder="tr('写一句介绍自己的创作方向…', 'Describe what you are building…')"
+              :placeholder="tr('写一句介绍自己的创作方向或代表作…', 'Describe what you are building…')"
               style="flex: 1"
             />
             <button type="button" class="btn sm primary" @click="onSaveBio">
@@ -61,11 +67,53 @@
         </div>
       </div>
 
-      <!-- Cloud Sync Control Card -->
+      <!-- Studio Customization & AI Engine Card -->
+      <div class="card open" style="padding: 20px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px">
+          <div>
+            <h3 style="margin: 0 0 4px; font-size: 16px">🎨 {{ tr('专属设定器与 AI 引擎定制', 'Studio Customization & AI') }}</h3>
+            <p style="margin: 0; font-size: 12.5px; color: var(--mu)">
+              {{ tr('为你的创作风格量身定制：智能补全字段、故事扩写、续写及摘要', 'Tailor generation tone, genre, perspective, and external DeepSeek / OpenRouter API') }}
+            </p>
+          </div>
+          <button type="button" class="btn sm primary" @click="uiStore.openModal('aiConfig')">
+            ⚙️ {{ tr('配置 AI 引擎与偏好', 'Configure AI & Prefs') }}
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; background: var(--soft); padding: 12px; border-radius: 8px">
+          <div>
+            <div class="hint" style="font-size: 11px">{{ tr('偏好创作题材', 'Preferred Genre') }}</div>
+            <div style="font-weight: 700; font-size: 13.5px; margin-top: 2px">
+              {{ aiStore.preferences.preferredGenre || tr('奇幻架空', 'Fantasy') }}
+            </div>
+          </div>
+          <div>
+            <div class="hint" style="font-size: 11px">{{ tr('写作语调风格', 'Writing Tone') }}</div>
+            <div style="font-weight: 700; font-size: 13.5px; margin-top: 2px">
+              {{ aiStore.preferences.writingTone || tr('细腻生动', 'Vivid') }}
+            </div>
+          </div>
+          <div>
+            <div class="hint" style="font-size: 11px">{{ tr('默认叙事视角', 'Perspective') }}</div>
+            <div style="font-weight: 700; font-size: 13.5px; margin-top: 2px">
+              {{ aiStore.preferences.defaultPerspective || tr('第三人称', '3rd Person') }}
+            </div>
+          </div>
+          <div>
+            <div class="hint" style="font-size: 11px">{{ tr('当前 AI 引擎', 'AI Engine') }}</div>
+            <div style="font-weight: 700; font-size: 13.5px; margin-top: 2px; color: var(--ac)">
+              {{ aiStore.activeProvider === 'custom' ? tr('个人外部 AI (DeepSeek)', 'Custom API') : tr('公共免费大模型 (OpenRouter)', 'Free OpenRouter') }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cloud Sync & Revision History Card -->
       <div class="card open" style="padding: 20px">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
           <div>
-            <h3 style="margin: 0 0 4px; font-size: 16px">☁️ {{ tr('云端同步与版本历史', 'Cloud Sync & Revision History') }}</h3>
+            <h3 style="margin: 0 0 4px; font-size: 16px">☁️ {{ tr('云端同步与版本快照', 'Cloud Sync & History') }}</h3>
             <p style="margin: 0; font-size: 12.5px; color: var(--mu)">
               {{ syncStateDesc }} · Rev #{{ syncStore.baseRev }}
             </p>
@@ -77,7 +125,7 @@
               :disabled="syncStore.status === 'syncing'"
               @click="syncStore.push(true)"
             >
-              ⬆️ {{ tr('立即上传到云端', 'Push to Cloud') }}
+              ⬆️ {{ tr('上传同步', 'Push') }}
             </button>
             <button
               type="button"
@@ -85,43 +133,119 @@
               :disabled="syncStore.status === 'syncing'"
               @click="syncStore.pull(true)"
             >
-              ⬇️ {{ tr('从云端拉取合并', 'Pull from Cloud') }}
+              ⬇️ {{ tr('拉取合并', 'Pull') }}
             </button>
             <button
               type="button"
               class="btn sm"
               @click="uiStore.openModal('revisions')"
             >
-              🕒 {{ tr('历史版本快照', 'Revision History') }}
+              🕒 {{ tr('历史版本快照', 'Revisions') }}
             </button>
           </div>
         </div>
       </div>
 
-      <!-- My Shares Card -->
+      <!-- Personal Studio & Creations Library (个人创作大厅) -->
       <div class="card open" style="padding: 20px">
-        <h3 style="margin: 0 0 12px; font-size: 16px">
-          📤 {{ tr('我分享的设定', 'My Shared Creations') }} ({{ myShares.length }})
-        </h3>
-        <p v-if="loadingShares" class="hint" style="display: block">
-          {{ tr('加载中…', 'Loading…') }}
-        </p>
-        <p v-else-if="!myShares.length" class="hint" style="display: block">
-          {{ tr('还没有分享。到「世界观 / 组织 / 角色」页点「📤 分享到大厅」发布你的第一个设定吧。', 'Nothing shared yet.') }}
-        </p>
-        <div v-else>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px">
+          <div>
+            <h3 style="margin: 0 0 4px; font-size: 16px">
+              🏛️ {{ tr('个人创作大厅与作品库', 'Personal Studio & Works') }} ({{ filteredWorks.length }})
+            </h3>
+            <p class="hint" style="margin: 0; font-size: 12px">
+              {{ tr('管理个人私有设定与公开发布到大厅的作品，支持一键切换私有/共享。', 'Control private vs public visibility for settings and articles.') }}
+            </p>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <!-- Kind Filter -->
+            <select v-model="filterKind" style="padding: 4px 8px; font-size: 12px">
+              <option value="all">{{ tr('全部作品类型', 'All Kinds') }}</option>
+              <option value="world">🌍 {{ tr('世界观', 'Worlds') }}</option>
+              <option value="org">🏛️ {{ tr('组织', 'Organizations') }}</option>
+              <option value="char">👤 {{ tr('角色', 'Characters') }}</option>
+              <option value="article">🖋️ {{ tr('文章作品', 'Articles') }}</option>
+            </select>
+            <!-- Visibility Filter -->
+            <select v-model="filterVisibility" style="padding: 4px 8px; font-size: 12px">
+              <option value="all">{{ tr('全部可见度', 'All Visibility') }}</option>
+              <option value="private">🔒 {{ tr('仅私有', 'Private Only') }}</option>
+              <option value="public">🌐 {{ tr('已公开共享', 'Public Shared') }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="!filteredWorks.length" class="hint" style="text-align: center; padding: 24px 0">
+          {{ tr('暂无符合筛选条件的作品。', 'No creations match current filter.') }}
+        </div>
+        <div v-else style="display: flex; flex-direction: column; gap: 8px">
           <div
-            v-for="s in myShares"
-            :key="s.id"
+            v-for="item in filteredWorks"
+            :key="item.kind + '_' + item.id"
             class="gl-row"
+            style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--card); border-radius: 8px; border: 1px solid var(--li2)"
           >
-            <strong>{{ s.title }}</strong>
-            <span class="gl-note">{{ s.summary || '' }}</span>
-            <button type="button" class="btn sm" @click="viewingShare = s">
-              {{ tr('查看', 'View') }}
+            <span style="font-size: 20px; flex-shrink: 0">{{ item.icon }}</span>
+            <div style="min-width: 0; flex: 1">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <strong style="font-size: 14px">{{ item.title }}</strong>
+                <!-- Visibility Tag -->
+                <span
+                  class="pill"
+                  :style="{
+                    fontSize: '11px',
+                    padding: '2px 7px',
+                    borderRadius: '99px',
+                    background: item.visibility === 'public' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(100, 116, 139, 0.12)',
+                    color: item.visibility === 'public' ? 'var(--ok)' : 'var(--mu)',
+                    fontWeight: 600
+                  }"
+                >
+                  {{ item.visibility === 'public' ? '🌐 ' + tr('公开共享', 'Public') : '🔒 ' + tr('个人私有', 'Private') }}
+                </span>
+                <span class="hint" style="font-size: 11px">
+                  {{ item.kindLabel }} · {{ item.extraInfo }}
+                </span>
+              </div>
+              <div v-if="item.summary" class="hint" style="font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                {{ item.summary }}
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
+              <button
+                type="button"
+                class="btn sm"
+                :class="{ primary: item.visibility !== 'public' }"
+                :title="item.visibility === 'public' ? tr('取消公开，改为仅自己可见', 'Make Private') : tr('公开共享到全站创作大厅', 'Publish to Lobby')"
+                @click="toggleWorkVisibility(item)"
+              >
+                {{ item.visibility === 'public' ? '🔒 ' + tr('设为私有', 'To Private') : '🌐 ' + tr('公开共享', 'Share Public') }}
+              </button>
+              <button type="button" class="btn sm" @click="goToEdit(item)">
+                ✏️ {{ tr('编辑', 'Edit') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset & Data Management Card -->
+      <div class="card open" style="padding: 16px 20px; background: rgba(239, 68, 68, 0.04); border: 1px solid rgba(239, 68, 68, 0.2)">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px">
+          <div>
+            <h4 style="margin: 0 0 2px; font-size: 14.5px; color: var(--er)">⚠️ {{ tr('基础范例重置与数据清空', 'Reset & Data Utilities') }}</h4>
+            <p class="hint" style="margin: 0; font-size: 12px">
+              {{ tr('可随时重新加载「星渊群岛」官方示例设定，或清空本地创作数据。', 'Reload starter example dataset or clear local data.') }}
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <button type="button" class="btn sm" @click="onResetStarter">
+              🔄 {{ tr('重置为星渊群岛范例', 'Load Starter Example') }}
             </button>
-            <button type="button" class="btn sm icon danger" @click="onDeleteShare(s.id)">
-              ✕
+            <button type="button" class="btn sm danger" @click="onClearData">
+              🗑️ {{ tr('清空本地数据', 'Clear Local Data') }}
             </button>
           </div>
         </div>
@@ -186,65 +310,38 @@
         </button>
       </template>
     </Modal>
-
-    <!-- View Share Modal -->
-    <Modal
-      :model-value="Boolean(viewingShare)"
-      :title="viewingShare?.title || ''"
-      max-width="640px"
-      @update:model-value="(v) => !v && (viewingShare = null)"
-    >
-      <div
-        v-if="viewingShare"
-        style="
-          max-height: 55vh;
-          overflow: auto;
-          padding: 14px 16px;
-          background: var(--soft);
-          border-radius: 10px;
-          font: 13.5px/1.75 inherit;
-          white-space: pre-wrap;
-          color: var(--ink2);
-        "
-      >
-        {{ viewingShare.content }}
-      </div>
-      <template #footer>
-        <button type="button" class="btn primary sm" @click="copyShareContent">
-          📋 {{ tr('复制正文', 'Copy') }}
-        </button>
-        <button type="button" class="btn sm" @click="viewingShare = null">
-          {{ tr('关闭', 'Close') }}
-        </button>
-      </template>
-    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';
 import Modal from '../components/base/Modal.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
 import { AVATARS } from '../core/legacy/insp';
-import { api, type WorldShareItem } from '../data/api';
+import { api } from '../data/api';
+import { useAIStore } from '../stores/ai';
 import { useAuthStore } from '../stores/auth';
+import { useDocStore } from '../stores/doc';
 import { useSyncStore } from '../stores/sync';
 import { useUIStore } from '../stores/ui';
 
 const authStore = useAuthStore();
 const syncStore = useSyncStore();
+const docStore = useDocStore();
 const uiStore = useUIStore();
-const { t, tr } = useI18n();
+const aiStore = useAIStore();
+const router = useRouter();
+const { tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
 
 const bioInput = ref('');
-const myShares = ref<WorldShareItem[]>([]);
-const loadingShares = ref(false);
-const viewingShare = ref<WorldShareItem | null>(null);
+const filterKind = ref<'all' | 'world' | 'org' | 'char' | 'article'>('all');
+const filterVisibility = ref<'all' | 'private' | 'public'>('all');
 
 const profileModalOpen = ref(false);
 const editName = ref('');
@@ -272,17 +369,202 @@ const syncStateDesc = computed(() => {
   return tr('已连接云端', 'Cloud connected');
 });
 
-async function loadMyShares() {
-  if (!authStore.isLoggedIn) return;
-  loadingShares.value = true;
-  try {
-    const res = await api.getShares({ owner: 'me', limit: 30 });
-    myShares.value = res.shares || [];
-  } catch (err: any) {
-    toast((tr('加载分享失败：', 'Failed: ')) + (err?.message || ''), 'err');
-  } finally {
-    loadingShares.value = false;
+interface WorkItem {
+  kind: 'world' | 'org' | 'char' | 'article';
+  kindLabel: string;
+  icon: string;
+  id: string;
+  title: string;
+  summary: string;
+  visibility: 'public' | 'private';
+  extraInfo: string;
+  updatedAt: number;
+}
+
+const allWorks = computed<WorkItem[]>(() => {
+  const list: WorkItem[] = [];
+
+  // Worlds
+  Object.values(docStore.doc.worlds || {}).forEach((w) => {
+    list.push({
+      kind: 'world',
+      kindLabel: tr('世界观', 'World'),
+      icon: '🌍',
+      id: w.id,
+      title: (w.data && w.data.w_name) || w.name || tr('未命名世界', 'Untitled World'),
+      summary: (w.data && w.data.w_summary) || '',
+      visibility: (w as any).visibility || 'private',
+      extraInfo: `${Object.keys(w.data || {}).length} ${tr('项设定', 'fields')}`,
+      updatedAt: w.updatedAt || 0
+    });
+  });
+
+  // Orgs
+  Object.values(docStore.doc.orgs || {}).forEach((o) => {
+    list.push({
+      kind: 'org',
+      kindLabel: tr('组织', 'Organization'),
+      icon: '🏛️',
+      id: o.id,
+      title: (o.data && o.data.o_name) || o.name || tr('未命名组织', 'Untitled Org'),
+      summary: (o.data && o.data.o_motto) || '',
+      visibility: (o as any).visibility || 'private',
+      extraInfo: `${Object.keys(o.data || {}).length} ${tr('项设定', 'fields')}`,
+      updatedAt: o.updatedAt || 0
+    });
+  });
+
+  // Chars
+  Object.values(docStore.doc.chars || {}).forEach((c) => {
+    list.push({
+      kind: 'char',
+      kindLabel: tr('角色', 'Character'),
+      icon: '👤',
+      id: c.id,
+      title: (c.data && c.data.name) || c.name || tr('未命名角色', 'Untitled Character'),
+      summary: (c.data && c.data.personality) || '',
+      visibility: (c as any).visibility || 'private',
+      extraInfo: `${c.data?.role || tr('角色档案', 'Profile')}`,
+      updatedAt: c.updatedAt || 0
+    });
+  });
+
+  // Articles
+  (docStore.doc.articles || []).forEach((a) => {
+    list.push({
+      kind: 'article',
+      kindLabel: tr('文章作品', 'Article'),
+      icon: '🖋️',
+      id: a.id,
+      title: a.title || tr('未命名文章', 'Untitled Article'),
+      summary: a.summary || '',
+      visibility: a.visibility || 'private',
+      extraInfo: `${a.wordCount || (a.content || '').length} ${tr('字', 'words')}`,
+      updatedAt: a.updatedAt || 0
+    });
+  });
+
+  return list.sort((a, b) => b.updatedAt - a.updatedAt);
+});
+
+const filteredWorks = computed(() => {
+  return allWorks.value.filter((w) => {
+    if (filterKind.value !== 'all' && w.kind !== filterKind.value) return false;
+    if (filterVisibility.value !== 'all' && w.visibility !== filterVisibility.value) return false;
+    return true;
+  });
+});
+
+async function toggleWorkVisibility(item: WorkItem) {
+  const nextVis = item.visibility === 'public' ? 'private' : 'public';
+  if (item.kind === 'article') {
+    docStore.toggleArticleVisibility(item.id);
+    const art = (docStore.doc.articles || []).find((a) => a.id === item.id);
+    if (art) {
+      if (nextVis === 'public') {
+        try {
+          const res = await api.createShare({
+            id: art.shareId,
+            entityId: art.id,
+            kind: 'article',
+            title: art.title,
+            summary: art.summary || '',
+            content: art.content || '',
+            visibility: 'public',
+            tags: art.category || ''
+          });
+          art.shareId = String(res.share.id);
+          toast(tr('文章已成功公开共享到创作大厅 ✓', 'Published to lobby ✓'), 'ok');
+        } catch (err: any) {
+          toast(tr('同步到大厅失败：', 'Share sync failed: ') + (err?.message || ''), 'err');
+        }
+      } else if (art.shareId) {
+        try {
+          await api.updateShareVisibility(art.shareId, 'private');
+          toast(tr('文章已恢复为仅自己可见 🔒', 'Article set to private 🔒'), 'ok');
+        } catch (err: any) {
+          toast(tr('更新状态失败：', 'Update failed: ') + (err?.message || ''), 'err');
+        }
+      }
+    }
+  } else {
+    // Entities (world, org, char)
+    let entity: any = null;
+    if (item.kind === 'world') entity = docStore.doc.worlds?.[item.id];
+    else if (item.kind === 'org') entity = docStore.doc.orgs?.[item.id];
+    else if (item.kind === 'char') entity = docStore.doc.chars?.[item.id];
+
+    if (entity) {
+      entity.visibility = nextVis;
+      docStore.touch(true);
+      if (nextVis === 'public') {
+        try {
+          const res = await api.createShare({
+            id: entity.shareId,
+            entityId: entity.id,
+            kind: item.kind,
+            title: item.title,
+            summary: item.summary || '',
+            content: JSON.stringify(entity.data, null, 2),
+            visibility: 'public'
+          });
+          entity.shareId = String(res.share.id);
+          toast(tr('设定已成功公开共享到创作大厅 ✓', 'Published to lobby ✓'), 'ok');
+        } catch (err: any) {
+          toast(tr('共享失败：', 'Share failed: ') + (err?.message || ''), 'err');
+        }
+      } else if (entity.shareId) {
+        try {
+          await api.updateShareVisibility(entity.shareId, 'private');
+          toast(tr('设定已设为私有 🔒', 'Entity set to private 🔒'), 'ok');
+        } catch (err: any) {
+          toast(tr('更新状态失败：', 'Update failed: ') + (err?.message || ''), 'err');
+        }
+      }
+    }
   }
+}
+
+function goToEdit(item: WorkItem) {
+  if (item.kind === 'world') {
+    docStore.selectWorld(item.id);
+    router.push('/world');
+  } else if (item.kind === 'org') {
+    docStore.selectOrg(item.id);
+    router.push('/org');
+  } else if (item.kind === 'char') {
+    docStore.selectChar(item.id);
+    router.push('/char');
+  } else if (item.kind === 'article') {
+    docStore.selectArticle(item.id);
+    router.push('/articles');
+  }
+}
+
+async function onResetStarter() {
+  if (
+    !(await confirm(
+      tr('确认重置为官方示例？', 'Reset to Starter Example?'),
+      tr('当前全部未保存或未备份的数据将被「星渊群岛」示例库覆盖！', 'This will replace your current studio content with the Starfall Archipelago example.')
+    ))
+  ) {
+    return;
+  }
+  docStore.resetToStarterExample();
+  toast(tr('已加载星渊群岛基础范例 ✨', 'Loaded starter example ✨'), 'ok');
+}
+
+async function onClearData() {
+  if (
+    !(await confirm(
+      tr('确定清空本地全部设定数据？', 'Clear all local data?'),
+      tr('此操作将删除当前库的所有世界观、组织、角色、时间线及文章！建议先做备份。', 'This will wipe out all entities and stories!')
+    ))
+  ) {
+    return;
+  }
+  docStore.clearAllData();
+  toast(tr('已清空本地数据', 'Local data cleared'), 'ok');
 }
 
 watch(
@@ -290,19 +572,10 @@ watch(
   (u) => {
     if (u) {
       bioInput.value = u.bio || '';
-      void loadMyShares();
-    } else {
-      myShares.value = [];
     }
   },
   { immediate: true }
 );
-
-onMounted(() => {
-  if (authStore.isLoggedIn) {
-    void loadMyShares();
-  }
-});
 
 function openEditProfile() {
   editName.value = authStore.user?.name || '';
@@ -332,7 +605,7 @@ async function onAvatarFileChange(e: Event) {
     editAvatar.value = updatedUser.avatar;
     uploadStatus.value = tr('已上传 ✓', 'Uploaded ✓');
   } catch (err: any) {
-    uploadStatus.value = (tr('上传失败：', 'Failed: ')) + (err?.message || '');
+    uploadStatus.value = tr('上传失败：', 'Failed: ') + (err?.message || '');
   }
 }
 
@@ -345,7 +618,7 @@ async function onSaveProfile() {
     profileModalOpen.value = false;
     toast(tr('资料已更新 ✓', 'Profile updated ✓'), 'ok');
   } catch (err: any) {
-    toast((tr('保存失败：', 'Failed: ')) + (err?.message || ''), 'err');
+    toast(tr('保存失败：', 'Failed: ') + (err?.message || ''), 'err');
   }
 }
 
@@ -356,35 +629,7 @@ async function onSaveBio() {
     });
     toast(tr('已保存 ✓', 'Saved ✓'), 'ok');
   } catch (err: any) {
-    toast((tr('保存失败：', 'Failed: ')) + (err?.message || ''), 'err');
-  }
-}
-
-async function onDeleteShare(id: number) {
-  if (
-    !(await confirm(
-      t.value.delConfirm,
-      tr('确定删除这条分享？', 'Delete this share?')
-    ))
-  ) {
-    return;
-  }
-  try {
-    await api.deleteShare(id);
-    myShares.value = myShares.value.filter((s) => s.id !== id);
-    toast(tr('已删除', 'Deleted'), 'ok');
-  } catch (err: any) {
-    toast((tr('删除失败：', 'Delete failed: ')) + (err?.message || ''), 'err');
-  }
-}
-
-async function copyShareContent() {
-  if (!viewingShare.value) return;
-  try {
-    await navigator.clipboard.writeText(viewingShare.value.content);
-    toast(t.value.codeCopied, 'ok');
-  } catch {
-    toast(tr('复制失败', 'Copy failed'), 'err');
+    toast(tr('保存失败：', 'Failed: ') + (err?.message || ''), 'err');
   }
 }
 

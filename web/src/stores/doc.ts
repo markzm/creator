@@ -4,13 +4,17 @@ import { buildEntityIndex, renameEntityEverywhere } from '../core/backlinks';
 import { T } from '../core/legacy/i18n';
 import { createEmptyDocV6, migrateToV6 } from '../core/schema/migrations';
 import type {
+  ArticleCategory,
+  ArticleItem,
   BaseEntity,
   CharEntity,
   DocV6,
   EntityKind,
   OrgEntity,
+  StudioPreferences,
   WorldEntity
 } from '../core/schema/types';
+import { createStarterExampleDoc } from '../core/starterExample';
 import { recordDailyStats } from '../core/stats';
 import { uid } from '../core/uid';
 import {
@@ -67,6 +71,15 @@ export const useDocStore = defineStore('doc', () => {
     if (id && doc.value.chars[id]) return doc.value.chars[id];
     const first = Object.values(doc.value.chars)[0];
     return first || null;
+  });
+
+  const activeArticle = computed<ArticleItem | null>(() => {
+    const id = doc.value.ui.activeArticle;
+    if (id) {
+      const found = (doc.value.articles || []).find((a) => a.id === id);
+      if (found) return found;
+    }
+    return (doc.value.articles || [])[0] || null;
   });
 
   async function init() {
@@ -371,6 +384,121 @@ export const useDocStore = defineStore('doc', () => {
     return count;
   }
 
+  // Articles CRUD
+  function createArticle(title?: string, category: ArticleCategory = '小说正文'): ArticleItem {
+    const id = uid('art_');
+    const now = Date.now();
+    const art: ArticleItem = {
+      id,
+      title: (title || '').trim() || T.zh.unnamed,
+      category,
+      summary: '',
+      content: '',
+      worldId: doc.value.ui.activeW || undefined,
+      orgIds: doc.value.ui.activeO ? [doc.value.ui.activeO] : [],
+      charIds: doc.value.ui.activeC ? [doc.value.ui.activeC] : [],
+      visibility: 'private',
+      wordCount: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!doc.value.articles) doc.value.articles = [];
+    doc.value.articles.unshift(art);
+    doc.value.ui.activeArticle = id;
+    touch(true);
+    return art;
+  }
+
+  function duplicateArticle(sourceId?: string): ArticleItem | null {
+    const src = (doc.value.articles || []).find((a) => a.id === (sourceId || doc.value.ui.activeArticle));
+    if (!src) return null;
+    const id = uid('art_');
+    const now = Date.now();
+    const art: ArticleItem = {
+      ...JSON.parse(JSON.stringify(src)),
+      id,
+      title: src.title + ' (副本)',
+      visibility: 'private',
+      shareId: undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+    doc.value.articles.unshift(art);
+    doc.value.ui.activeArticle = id;
+    touch(true);
+    return art;
+  }
+
+  function deleteArticle(id: string): boolean {
+    if (!doc.value.articles) return false;
+    const prevLen = doc.value.articles.length;
+    doc.value.articles = doc.value.articles.filter((a) => a.id !== id);
+    if (doc.value.articles.length !== prevLen) {
+      if (doc.value.ui.activeArticle === id) {
+        doc.value.ui.activeArticle = doc.value.articles[0]?.id || null;
+      }
+      touch(true);
+      return true;
+    }
+    return false;
+  }
+
+  function selectArticle(id: string) {
+    const exists = (doc.value.articles || []).some((a) => a.id === id);
+    if (exists) {
+      doc.value.ui.activeArticle = id;
+      touch(false, false);
+    }
+  }
+
+  function updateArticle(id: string, patch: Partial<ArticleItem>) {
+    const art = (doc.value.articles || []).find((a) => a.id === id);
+    if (art) {
+      Object.assign(art, patch);
+      if (patch.content !== undefined) {
+        art.wordCount = patch.content.length;
+      }
+      art.updatedAt = Date.now();
+      touch();
+    }
+  }
+
+  function toggleArticleVisibility(id: string): 'public' | 'private' | null {
+    const art = (doc.value.articles || []).find((a) => a.id === id);
+    if (!art) return null;
+    art.visibility = art.visibility === 'public' ? 'private' : 'public';
+    art.updatedAt = Date.now();
+    touch(true);
+    return art.visibility;
+  }
+
+  function updatePreferences(patch: Partial<StudioPreferences>) {
+    if (!doc.value.preferences) {
+      doc.value.preferences = {
+        preferredGenre: '奇幻架空',
+        writingTone: '细腻生动',
+        defaultPerspective: '第三人称',
+        aiCustomInstruction: ''
+      };
+    }
+    Object.assign(doc.value.preferences, patch);
+    touch(true);
+  }
+
+  function resetToStarterExample() {
+    saveUndoSnapshot();
+    const starter = createStarterExampleDoc();
+    doc.value = starter;
+    touch(true);
+  }
+
+  function clearAllData() {
+    saveUndoSnapshot();
+    const empty = createEmptyDocV6();
+    doc.value = empty;
+    touch(true);
+  }
+
   return {
     doc,
     ready,
@@ -381,6 +509,7 @@ export const useDocStore = defineStore('doc', () => {
     activeWorld,
     activeOrg,
     activeChar,
+    activeArticle,
     init,
     ensureActiveIds,
     flushSave,
@@ -402,6 +531,15 @@ export const useDocStore = defineStore('doc', () => {
     duplicateChar,
     deleteChar,
     selectChar,
-    renameEntity
+    renameEntity,
+    createArticle,
+    duplicateArticle,
+    deleteArticle,
+    selectArticle,
+    updateArticle,
+    toggleArticleVisibility,
+    updatePreferences,
+    resetToStarterExample,
+    clearAllData
   };
 });

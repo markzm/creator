@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"creator/server/internal/ai"
 	"creator/server/internal/auth"
 	"creator/server/internal/config"
 	"creator/server/internal/mail"
@@ -18,6 +19,7 @@ type Server struct {
 	guard     *auth.Guard
 	challenge *auth.ChallengeManager
 	mailer    *mail.Sender
+	aiService *ai.AIService
 }
 
 func NewServer(cfg *config.Config, st *store.Store) http.Handler {
@@ -27,6 +29,7 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 		guard:     auth.NewGuard(),
 		challenge: auth.NewChallengeManager(cfg.SecretKey),
 		mailer:    mail.NewSender(cfg),
+		aiService: ai.NewService(cfg),
 	}
 
 	mux := http.NewServeMux()
@@ -79,6 +82,13 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 	mux.HandleFunc("/api/lobby/users", srv.handleLobbyUsers)
 	mux.HandleFunc("/api/shares", srv.handleShares)
 	mux.HandleFunc("/api/shares/", srv.handleShares)
+	mux.HandleFunc("/api/stats/global", srv.handleGlobalStats)
+
+	// AI generation & config
+	mux.HandleFunc("/api/ai/status", srv.handleAIStatus)
+	mux.HandleFunc("/api/ai/generate", srv.handleAIGenerate)
+	mux.HandleFunc("/api/ai/test", srv.handleAITest)
+	mux.HandleFunc("/api/me/ai-config", srv.handleUserAIConfig)
 
 	// Serve avatars directly when accessed via Go server
 	mux.HandleFunc("/avatars/", func(w http.ResponseWriter, r *http.Request) {

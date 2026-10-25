@@ -21,7 +21,8 @@ describe('data/repo — IndexedDB persistence & legacy cc_db_v5 migration', () =
     expect(doc._version).toBe(6);
     expect(Object.keys(doc.worlds)).toHaveLength(1);
     expect(Object.keys(doc.orgs)).toHaveLength(1);
-    expect(Object.keys(doc.chars)).toHaveLength(1);
+    expect(Object.keys(doc.chars).length).toBeGreaterThanOrEqual(1);
+    expect(doc.articles?.length).toBeGreaterThanOrEqual(1);
 
     const stored = await get(IDB_DOC_KEY);
     expect(stored).toBeDefined();

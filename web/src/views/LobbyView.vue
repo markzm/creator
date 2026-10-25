@@ -1,141 +1,320 @@
 <template>
-  <div class="wrap" style="max-width: 820px">
-    <!-- Locked State -->
-    <div v-if="!authStore.isLoggedIn" class="card open" style="padding: 40px 24px; text-align: center">
-      <p style="font-size: 42px; margin: 0 0 10px">🌐</p>
-      <h3 style="margin: 0 0 8px">{{ tr('登录后进入创作大厅', 'Sign in to enter the Creator Lobby') }}</h3>
-      <p class="hint" style="display: block; margin-bottom: 18px">
-        {{ tr('看看谁在线、正在创作什么世界，浏览或导入其他创作者分享的设定。', 'See who is online, what they are building, and explore shared worlds.') }}
-      </p>
-      <button type="button" class="btn primary lg" @click="uiStore.openModal('auth')">
+  <div class="wrap" style="max-width: 860px">
+    <!-- Anonymous Guest Welcome Banner -->
+    <div
+      v-if="!authStore.isLoggedIn"
+      class="card"
+      style="
+        padding: 14px 18px;
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+        border-left: 4px solid var(--ac);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      "
+    >
+      <div style="font-size: 13.5px">
+        <strong>👋 {{ tr('公共创作大厅 · 游客自由浏览中', 'Public Creator Lobby · Guest Browsing') }}</strong>
+        <p class="hint" style="margin: 3px 0 0; font-size: 12px">
+          {{ tr('可自由查阅全网公开共享的世界观、组织、角色与小说文章。登录后可发布你的作品并跨端同步。', 'Browse all public creations freely. Sign in to share your worlds, stories, and sync.') }}
+        </p>
+      </div>
+      <button type="button" class="btn primary sm" @click="uiStore.openModal('auth')">
         ☁️ {{ tr('立即登录 / 注册', 'Sign In / Register') }}
       </button>
     </div>
 
-    <!-- Main Lobby -->
-    <template v-else>
-      <div class="row" style="margin: 0 0 14px">
-        <h2 style="margin: 0; font-size: 20px">🌐 {{ tr('创作大厅', 'Creator Lobby') }}</h2>
-        <span class="spacer" />
-        <button type="button" class="btn sm" @click="refreshLobby">
+    <!-- Header & Controls -->
+    <div class="row" style="margin: 0 0 14px; align-items: center; gap: 10px; flex-wrap: wrap">
+      <div>
+        <h2 style="margin: 0; font-size: 20px">🌐 {{ tr('公共创作大厅', 'Community Creator Lobby') }}</h2>
+        <p class="hint" style="margin: 3px 0 0; font-size: 12px">
+          {{ tr('探索创作者们公开的世界构筑与小说篇章，支持一键导入灵感', 'Explore worlds and stories shared by creators, with one-click import') }}
+        </p>
+      </div>
+      <span class="spacer" />
+      <div style="display: flex; gap: 8px">
+        <button type="button" class="btn sm" :disabled="loadingShares || loadingUsers" @click="refreshLobby">
           🔄 {{ tr('刷新大厅', 'Refresh') }}
         </button>
+        <button
+          v-if="authStore.isLoggedIn"
+          type="button"
+          class="btn sm primary"
+          @click="router.push('/me')"
+        >
+          📤 {{ tr('管理我的分享', 'My Studio') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Creators Row -->
+    <div class="card open" style="padding: 16px; margin-bottom: 16px">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px">
+        <h3 style="margin: 0; font-size: 14.5px">
+          ✨ {{ tr('活跃创作者', 'Active Creators') }} ({{ users.length }})
+        </h3>
+        <span class="hint" style="font-size: 11.5px">
+          {{ onlineCount }} {{ tr('位创作者正在构筑中', 'online') }}
+        </span>
       </div>
 
-      <!-- Online Creators -->
-      <div class="card open" style="padding: 18px">
-        <h3 style="margin: 0 0 12px; font-size: 15px">
-          ✨ {{ tr('在线与活跃创作者', 'Active Creators') }} ({{ users.length }})
-        </h3>
-        <p v-if="loadingUsers" class="hint" style="display: block">
-          {{ tr('加载中…', 'Loading…') }}
-        </p>
-        <p v-else-if="!users.length" class="hint" style="display: block">
-          {{ tr('还没有创作者入驻，成为第一个！', 'No creators yet — be the first!') }}
-        </p>
-        <div v-else>
-          <div v-for="u in users" :key="u.id" class="gl-row">
-            <Avatar :avatar="u.avatar" :name="u.name" :size="24" />
+      <p v-if="loadingUsers && !users.length" class="hint" style="display: block">
+        {{ tr('正在探测在线创作者…', 'Loading creators…') }}
+      </p>
+      <p v-else-if="!users.length" class="hint" style="display: block">
+        {{ tr('还没有创作者留下足迹，成为第一个吧！', 'No creators yet — be the first!') }}
+      </p>
+      <div
+        v-else
+        style="
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        "
+      >
+        <div
+          v-for="u in users"
+          :key="u.id"
+          class="card"
+          style="
+            flex-shrink: 0;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 140px;
+            background: var(--soft);
+            border-radius: 8px;
+          "
+        >
+          <div style="position: relative">
+            <Avatar :avatar="u.avatar" :name="u.name" :size="32" />
             <span
               :style="{
-                width: '9px',
-                height: '9px',
+                position: 'absolute',
+                right: '-1px',
+                bottom: '-1px',
+                width: '8px',
+                height: '8px',
                 borderRadius: '50%',
                 background: u.isOnline ? 'var(--ok)' : 'var(--li)',
-                flexShrink: 0
+                border: '1.5px solid var(--card)'
               }"
               :title="u.isOnline ? tr('在线', 'online') : tr('离线', 'offline')"
             />
-            <strong>{{ u.name || '创作者' }}</strong>
-            <span class="gl-note">{{ u.focus || u.bio || '' }}</span>
-            <span style="font-size: 11px; color: var(--mu); white-space: nowrap">
-              {{ u.isOnline ? tr('在线', 'online') : relTime(u.lastSeen) }}
-            </span>
+          </div>
+          <div style="min-width: 0; flex: 1">
+            <div style="font-weight: 700; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+              {{ u.name || tr('创作者', 'Creator') }}
+            </div>
+            <div class="hint" style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+              {{ u.focus || u.bio || (u.isOnline ? tr('构想世界中', 'worldbuilding') : relTime(u.lastSeen)) }}
+            </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Shared Worlds Feed -->
-      <div class="card open" style="padding: 18px">
-        <h3 style="margin: 0 0 12px; font-size: 15px">
-          🌍 {{ tr('全站设定分享流', 'Shared Creations') }} ({{ shares.length }})
+    <!-- Category Filters & Search -->
+    <div class="card open" style="padding: 16px; margin-bottom: 16px">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px">
+        <!-- Kind Filter Tabs -->
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
+          <button
+            v-for="cat in categories"
+            :key="cat.kind"
+            type="button"
+            class="filter-pill"
+            :class="{ active: selectedKind === cat.kind }"
+            @click="setCategory(cat.kind)"
+          >
+            {{ cat.icon }} {{ cat.label }}
+          </button>
+        </div>
+
+        <!-- Search Input -->
+        <div style="display: flex; gap: 6px">
+          <input
+            v-model="searchQuery"
+            type="text"
+            :placeholder="tr('搜索标题、作者或摘要…', 'Search shares…')"
+            style="padding: 5px 10px; font-size: 12.5px; width: 180px"
+            @keyup.enter="refreshLobby"
+          />
+          <button type="button" class="btn sm" @click="refreshLobby">
+            🔍
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shared Creations Feed -->
+    <div class="card open" style="padding: 18px">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+        <h3 style="margin: 0; font-size: 15px">
+          📚 {{ tr('作品展示列表', 'Public Creations') }} ({{ filteredShares.length }})
         </h3>
-        <p v-if="loadingShares && !shares.length" class="hint" style="display: block">
-          {{ tr('加载中…', 'Loading…') }}
-        </p>
-        <p v-else-if="!shares.length" class="hint" style="display: block">
-          {{ tr('还没有分享。去「世界观」页点「📤 分享到大厅」吧。', 'Nothing shared yet.') }}
-        </p>
-        <div v-else>
-          <div v-for="s in shares" :key="s.id" class="gl-row">
-            <span class="k" style="font-size: 10px; padding: 2px 7px; border-radius: 99px; background: var(--card); color: var(--ac)">
+        <span class="hint" style="font-size: 11.5px">
+          {{ tr('点击「查看」可在线阅读正文并一键导入', 'Click View to read and import') }}
+        </span>
+      </div>
+
+      <p v-if="loadingShares && !shares.length" class="hint" style="display: block; padding: 20px 0; text-align: center">
+        {{ tr('正在载入全站公开创作…', 'Loading creations…') }}
+      </p>
+      <p v-else-if="!filteredShares.length" class="hint" style="display: block; padding: 20px 0; text-align: center">
+        {{ tr('该分类下暂无公开作品，快来发布第一篇吧！', 'No creations in this category yet.') }}
+      </p>
+      <div v-else style="display: flex; flex-direction: column; gap: 10px">
+        <div
+          v-for="s in filteredShares"
+          :key="s.id"
+          class="card"
+          style="
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--card);
+            border: 1px solid var(--li2);
+            border-radius: 8px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+          "
+        >
+          <!-- Kind Icon / Badge -->
+          <div style="display: flex; flex-direction: column; align-items: center; min-width: 44px; text-align: center">
+            <span style="font-size: 22px">{{ getKindIcon(s.kind) }}</span>
+            <span class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700; margin-top: 2px">
               {{ kindBadge(s.kind) }}
             </span>
-            <strong>{{ s.title }}</strong>
-            <span style="font-size: 11px; color: var(--ac); white-space: nowrap">
-              @{{ s.ownerName || '创作者' }}
-            </span>
-            <span class="gl-note">{{ s.summary || '' }}</span>
-            <button type="button" class="btn sm" @click="viewingShare = s">
-              {{ tr('查看', 'View') }}
+          </div>
+
+          <!-- Main Info -->
+          <div style="min-width: 0; flex: 1">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+              <strong style="font-size: 15px; cursor: pointer" @click="viewingShare = s">
+                {{ s.title }}
+              </strong>
+              <span style="font-size: 12px; color: var(--ac); font-weight: 600">
+                @{{ s.ownerName || tr('创作者', 'Creator') }}
+              </span>
+              <span v-if="s.wordCount" class="pill" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--soft)">
+                {{ s.wordCount }} {{ tr('字', 'w') }}
+              </span>
+              <span class="hint" style="font-size: 11px">
+                {{ relTime(s.createdAt) }}
+              </span>
+            </div>
+            <div
+              v-if="s.summary"
+              class="hint"
+              style="margin-top: 4px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2)"
+            >
+              {{ s.summary }}
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
+            <button type="button" class="btn sm primary" @click="viewingShare = s">
+              📖 {{ s.kind === 'article' ? tr('阅读全文', 'Read') : tr('查阅设定', 'View') }}
             </button>
             <button
               v-if="authStore.user && s.userId === authStore.user.id"
               type="button"
               class="btn sm icon danger"
+              :title="tr('删除我的这条分享', 'Delete')"
               @click="onDeleteShare(s.id)"
             >
               ✕
             </button>
           </div>
+        </div>
 
-          <div v-if="hasMoreShares" style="text-align: center; margin-top: 12px">
-            <button
-              type="button"
-              class="btn sm"
-              :disabled="loadingShares"
-              @click="loadMoreShares"
-            >
-              {{ loadingShares ? tr('加载中…', 'Loading…') : tr('加载更多', 'Load More') }}
-            </button>
-          </div>
+        <div v-if="hasMoreShares" style="text-align: center; margin-top: 14px">
+          <button
+            type="button"
+            class="btn sm"
+            :disabled="loadingShares"
+            @click="loadMoreShares"
+          >
+            {{ loadingShares ? tr('加载中…', 'Loading…') : tr('加载更多作品', 'Load More') }}
+          </button>
         </div>
       </div>
-    </template>
+    </div>
 
-    <!-- View Share Modal -->
+    <!-- View & Read Share Modal -->
     <Modal
       :model-value="Boolean(viewingShare)"
-      :title="viewingShare ? `${viewingShare.title} — @${viewingShare.ownerName || '创作者'}` : ''"
-      max-width="640px"
+      :title="viewingShare ? `${viewingShare.title} — @${viewingShare.ownerName || tr('创作者', 'Creator')}` : ''"
+      max-width="740px"
       @update:model-value="(v) => !v && (viewingShare = null)"
     >
-      <div
-        v-if="viewingShare"
-        style="
-          max-height: 55vh;
-          overflow: auto;
-          padding: 14px 16px;
-          background: var(--soft);
-          border-radius: 10px;
-          font: 13.5px/1.75 inherit;
-          white-space: pre-wrap;
-          color: var(--ink2);
-        "
-      >
-        {{ viewingShare.content }}
+      <div v-if="viewingShare" style="display: flex; flex-direction: column; gap: 12px">
+        <!-- Header Info in Modal -->
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--li2)">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span class="pill" style="font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700">
+              {{ kindBadge(viewingShare.kind) }}
+            </span>
+            <span v-if="viewingShare.wordCount" style="font-size: 12px; color: var(--mu)">
+              {{ viewingShare.wordCount }} {{ tr('字', 'words') }}
+            </span>
+          </div>
+          <span class="hint" style="font-size: 11.5px">
+            {{ tr('发布于 ', 'Published: ') + new Date(viewingShare.createdAt > 1e11 ? viewingShare.createdAt : viewingShare.createdAt * 1000).toLocaleString() }}
+          </span>
+        </div>
+
+        <div
+          v-if="viewingShare.summary"
+          style="padding: 10px 14px; background: rgba(var(--ac-rgb, 100, 110, 240), 0.08); border-radius: 6px; font-size: 13px; color: var(--ink2)"
+        >
+          <strong>{{ tr('作品提要 / 设定纲要：', 'Synopsis / Summary:') }}</strong> {{ viewingShare.summary }}
+        </div>
+
+        <!-- Content Area -->
+        <div
+          style="
+            max-height: 55vh;
+            overflow: auto;
+            padding: 16px 18px;
+            background: var(--soft);
+            border-radius: 10px;
+            font: 14px/1.85 inherit;
+            white-space: pre-wrap;
+            color: var(--ink);
+          "
+        >
+          {{ viewingShare.content }}
+        </div>
       </div>
+
       <template #footer>
         <button
-          v-if="viewingShare?.draftCode"
+          v-if="viewingShare?.kind === 'article'"
+          type="button"
+          class="btn sm"
+          @click="importAsMyArticle"
+        >
+          📥 {{ tr('导入为我的文章', 'Import as My Article') }}
+        </button>
+        <button
+          v-else-if="viewingShare?.draftCode"
           type="button"
           class="btn sm"
           @click="importShareDraftCode"
         >
-          📥 {{ tr('一键导入为新条目', 'Import Draft Code') }}
+          📥 {{ tr('导入为新设定', 'Import Draft Code') }}
         </button>
         <button type="button" class="btn primary sm" @click="copyShareContent">
-          📋 {{ tr('复制正文', 'Copy') }}
+          📋 {{ tr('复制正文', 'Copy Content') }}
         </button>
         <button type="button" class="btn sm" @click="viewingShare = null">
           {{ tr('关闭', 'Close') }}
@@ -146,7 +325,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';
 import Modal from '../components/base/Modal.vue';
@@ -174,7 +353,42 @@ const loadingShares = ref(false);
 const hasMoreShares = ref(false);
 const viewingShare = ref<WorldShareItem | null>(null);
 
+const selectedKind = ref<'all' | 'world' | 'org' | 'char' | 'article'>('all');
+const searchQuery = ref('');
+
+const categories = computed(() => [
+  { kind: 'all', label: tr('全部作品', 'All Works'), icon: '✨' },
+  { kind: 'world', label: tr('世界观', 'Worlds'), icon: '🌍' },
+  { kind: 'org', label: tr('组织势力', 'Orgs'), icon: '🏛️' },
+  { kind: 'char', label: tr('角色档案', 'Chars'), icon: '👤' },
+  { kind: 'article', label: tr('文章作品', 'Articles'), icon: '🖋️' }
+]);
+
+const onlineCount = computed(() => users.value.filter((u) => u.isOnline).length);
+
+const filteredShares = computed(() => {
+  return shares.value.filter((s) => {
+    if (selectedKind.value !== 'all' && s.kind !== selectedKind.value) return false;
+    if (searchQuery.value.trim()) {
+      const q = searchQuery.value.toLowerCase().trim();
+      const matchTitle = (s.title || '').toLowerCase().includes(q);
+      const matchAuthor = (s.ownerName || '').toLowerCase().includes(q);
+      const matchSum = (s.summary || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchAuthor && !matchSum) return false;
+    }
+    return true;
+  });
+});
+
+function getKindIcon(kind: string): string {
+  if (kind === 'article') return '🖋️';
+  if (kind === 'org') return '🏛️';
+  if (kind === 'char') return '👤';
+  return '🌍';
+}
+
 function kindBadge(kind: string): string {
+  if (kind === 'article') return tr('文章', 'Article');
   if (kind === 'org') return tr('组织', 'Org');
   if (kind === 'char') return tr('角色', 'Char');
   return tr('世界观', 'World');
@@ -190,18 +404,21 @@ function relTime(ts: number): string {
   return Math.floor(s / 86400) + tr(' 天前', 'd ago');
 }
 
+function setCategory(kind: string) {
+  selectedKind.value = kind as any;
+}
+
 async function refreshLobby() {
-  if (!authStore.isLoggedIn) return;
   loadingUsers.value = true;
   loadingShares.value = true;
   try {
     const [uRes, sRes] = await Promise.all([
       api.getLobbyUsers(),
-      api.getShares({ limit: 20 })
+      api.getShares({ limit: 40 })
     ]);
     users.value = uRes.users || [];
     shares.value = sRes.shares || [];
-    hasMoreShares.value = (sRes.shares || []).length >= 20;
+    hasMoreShares.value = (sRes.shares || []).length >= 40;
   } catch (err: any) {
     toast((tr('加载大厅失败：', 'Lobby load failed: ')) + (err?.message || ''), 'err');
   } finally {
@@ -215,10 +432,10 @@ async function loadMoreShares() {
   const lastId = shares.value[shares.value.length - 1].id;
   loadingShares.value = true;
   try {
-    const res = await api.getShares({ before: lastId, limit: 20 });
+    const res = await api.getShares({ before: lastId, limit: 30 });
     const more = res.shares || [];
     shares.value.push(...more);
-    hasMoreShares.value = more.length >= 20;
+    hasMoreShares.value = more.length >= 30;
   } catch (err: any) {
     toast((tr('加载更多失败：', 'Failed: ')) + (err?.message || ''), 'err');
   } finally {
@@ -226,11 +443,11 @@ async function loadMoreShares() {
   }
 }
 
-async function onDeleteShare(id: number) {
+async function onDeleteShare(id: string | number) {
   if (
     !(await confirm(
       t.value.delConfirm,
-      tr('确定删除这条分享？', 'Delete this share?')
+      tr('确定从创作大厅删除这条公开分享？', 'Delete this public share?')
     ))
   ) {
     return;
@@ -238,7 +455,7 @@ async function onDeleteShare(id: number) {
   try {
     await api.deleteShare(id);
     shares.value = shares.value.filter((s) => s.id !== id);
-    toast(tr('已删除', 'Deleted'), 'ok');
+    toast(tr('已从大厅移除', 'Deleted'), 'ok');
   } catch (err: any) {
     toast((tr('删除失败：', 'Delete failed: ')) + (err?.message || ''), 'err');
   }
@@ -248,10 +465,25 @@ async function copyShareContent() {
   if (!viewingShare.value) return;
   try {
     await navigator.clipboard.writeText(viewingShare.value.content);
-    toast(t.value.codeCopied, 'ok');
+    toast(tr('正文已复制到剪贴板 ✓', 'Content copied ✓'), 'ok');
   } catch {
     toast(tr('复制失败', 'Copy failed'), 'err');
   }
+}
+
+function importAsMyArticle() {
+  if (!viewingShare.value || viewingShare.value.kind !== 'article') return;
+  const art = docStore.createArticle(
+    `${viewingShare.value.title} (${tr('来自大厅', 'Imported')})`
+  );
+  art.content = viewingShare.value.content || '';
+  art.summary = viewingShare.value.summary || '';
+  art.wordCount = art.content.length;
+  art.visibility = 'private'; // imported articles default to personal private
+  docStore.touch(true);
+  viewingShare.value = null;
+  toast(tr('已成功导入到你的文章创作工作室 ✨', 'Imported to articles studio ✨'), 'ok');
+  router.push('/articles');
 }
 
 function importShareDraftCode() {
@@ -288,16 +520,31 @@ function importShareDraftCode() {
   }
 }
 
-watch(
-  () => authStore.isLoggedIn,
-  (logged) => {
-    if (logged) void refreshLobby();
-  }
-);
-
 onMounted(() => {
-  if (authStore.isLoggedIn) {
-    void refreshLobby();
-  }
+  // Always load lobby for both anonymous guests and logged in users
+  void refreshLobby();
 });
 </script>
+
+<style scoped>
+.filter-pill {
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 99px;
+  border: 1px solid var(--li2);
+  background: var(--card);
+  color: var(--ink2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.filter-pill:hover {
+  background: var(--soft);
+  color: var(--ink);
+}
+.filter-pill.active {
+  background: var(--acs);
+  color: var(--ac);
+  border-color: var(--ac);
+}
+</style>

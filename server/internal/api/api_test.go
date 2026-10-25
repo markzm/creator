@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"creator/server/internal/config"
 	"creator/server/internal/legacy"
@@ -338,5 +339,128 @@ func TestAvatarUploadSharesAndBackup(t *testing.T) {
 	_, wCnt, oCnt, cCnt, err := legacy.UpgradeRawJSONToV6([]byte(`{"version":5.3,"worlds":{"w1":{"name":"W"}},"orgs":{},"chars":{"c1":{"name":"C"}}}`))
 	if err != nil || wCnt != 1 || oCnt != 0 || cCnt != 1 {
 		t.Fatalf("UpgradeRawJSONToV6 failed: err=%v w=%d o=%d c=%d", err, wCnt, oCnt, cCnt)
+	}
+}
+
+func TestAIStatusAndAnonymousLobbyAndVisibility(t *testing.T) {
+	srv, _, cfg := setupTestServer(t, config.RegisterModeOpen)
+	cfg.OpenRouterAPIKey = "sk-test-fake-key"
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// 1. Check AI status
+	respStatus, stBody := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/ai/status", nil, nil, "")
+	if respStatus.StatusCode != http.StatusOK {
+		t.Fatalf("ai status failed: %d", respStatus.StatusCode)
+	}
+	if stBody["publicReady"] != true {
+		t.Fatalf("expected publicReady to be true")
+	}
+
+	// 2. Check anonymous access to global stats and lobby users
+	respGlob, globBody := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/stats/global", nil, nil, "")
+	if respGlob.StatusCode != http.StatusOK {
+		t.Fatalf("global stats failed: %d", respGlob.StatusCode)
+	}
+	if _, ok := globBody["kindCounts"]; !ok {
+		t.Fatalf("missing kindCounts in global stats")
+	}
+
+	respLobby, _ := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/lobby/users", nil, nil, "")
+	if respLobby.StatusCode != http.StatusOK {
+		t.Fatalf("anonymous lobby users failed: %d", respLobby.StatusCode)
+	}
+
+	// 3. Register a user and publish a private article and a public world share
+	respReg, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
+		"email":    "author_ai@example.com",
+		"password": "Password123",
+	}, nil, "")
+	if respReg.StatusCode != http.StatusCreated {
+		t.Fatalf("register failed: %d", respReg.StatusCode)
+	}
+	cookieA := findSessionCookie(respReg)
+	if cookieA == nil {
+		t.Fatalf("missing session cookie")
+	}
+
+	// 3a. Save encrypted AI config
+	respCfgPut, _ := doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/me/ai-config", map[string]interface{}{
+		"customAi": map[string]string{
+			"provider": "deepseek",
+			"baseUrl":  "https://api.deepseek.com/v1",
+			"apiKey":   "sk-deepseek-secret-123",
+			"model":    "deepseek-chat",
+		},
+		"preferences": map[string]string{
+			"preferredGenre": "科幻赛博",
+			"writingTone":    "细腻冷峻",
+		},
+	}, cookieA, "")
+	if respCfgPut.StatusCode != http.StatusOK {
+		t.Fatalf("save ai config failed: %d", respCfgPut.StatusCode)
+	}
+
+	respCfgGet, getCfgBody := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/me/ai-config", nil, cookieA, "")
+	if respCfgGet.StatusCode != http.StatusOK {
+		t.Fatalf("get ai config failed: %d", respCfgGet.StatusCode)
+	}
+	customAI := getCfgBody["customAi"].(map[string]interface{})
+	if customAI["apiKey"] != "sk-deepseek-secret-123" {
+		t.Fatalf("unexpected decrypted apiKey: %v", customAI["apiKey"])
+	}
+
+	// 3b. Publish a private article
+	_, artBody := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind":       "article",
+		"title":      "私有小说第一章",
+		"summary":    "不公开测试",
+		"content":    "小说正文内容...",
+		"visibility": "private",
+	}, cookieA, "")
+	artID := artBody["share"].(map[string]interface{})["id"].(string)
+
+	// 3c. Publish a public world
+	_, worldBody := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind":       "world",
+		"title":      "公开星渊世界",
+		"summary":    "全站可见",
+		"content":    "公开世界观正文...",
+		"visibility": "public",
+	}, cookieA, "")
+	worldID := worldBody["share"].(map[string]interface{})["id"].(string)
+
+	// 4. Anonymous GET /api/shares should return public world but NOT private article
+	_, anonShares := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares", nil, nil, "")
+	items := anonShares["shares"].([]interface{})
+	var foundPrivate, foundPublic bool
+	for _, it := range items {
+		m := it.(map[string]interface{})
+		if m["id"] == artID {
+			foundPrivate = true
+		}
+		if m["id"] == worldID {
+			foundPublic = true
+		}
+	}
+	if foundPrivate {
+		t.Fatalf("anonymous user should NOT see private article")
+	}
+	if !foundPublic {
+		t.Fatalf("anonymous user should see public world")
+	}
+
+	// 5. Author updates article visibility from 'private' to 'public'
+	respPatch, _ := doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/shares/"+artID, map[string]interface{}{
+		"visibility": "public",
+	}, cookieA, "")
+	if respPatch.StatusCode != http.StatusOK {
+		t.Fatalf("patch share visibility failed: %d", respPatch.StatusCode)
+	}
+
+	// Now anonymous user can see the article
+	_, anonShares2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares?kind=article", nil, nil, "")
+	items2 := anonShares2["shares"].([]interface{})
+	if len(items2) != 1 {
+		t.Fatalf("expected 1 public article, got %d", len(items2))
 	}
 }

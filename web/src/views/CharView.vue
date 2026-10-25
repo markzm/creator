@@ -42,6 +42,9 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('char', charGroups)">
               🧭 {{ t.guide }}
             </button>
+            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+              ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
+            </button>
             <span class="spacer" />
             <button type="button" class="btn sm danger" @click="onClearAll">
               {{ t.clear }}
@@ -92,6 +95,7 @@
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
+            @ai-gen="fillWithAI"
             @field-blur="onFieldBlur"
           />
 
@@ -125,6 +129,14 @@
             @open-guide="uiStore.openGuide('char', charGroups)"
             @auto-persona="onAutoPersona"
           />
+
+          <!-- AI Generation Modal -->
+          <AIGenerateModal
+            v-model="aiModalOpen"
+            kind="char"
+            :entity-data="char.data"
+            @apply="onApplyAIGen"
+          />
         </div>
       </div>
     </div>
@@ -134,6 +146,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import AIGenerateModal from '../components/editor/AIGenerateModal.vue';
 import BacklinksPanel from '../components/editor/BacklinksPanel.vue';
 import ConsistencyBox from '../components/editor/ConsistencyBox.vue';
 import DraftCodePanel from '../components/editor/DraftCodePanel.vue';
@@ -180,6 +193,7 @@ const charDraftOrder = computed<string[]>(
 
 const allOpenState = ref(true);
 const invalidFields = ref<Set<string>>(new Set());
+const aiModalOpen = ref(false);
 
 const committedName = ref('');
 const pendingRename = ref<{ oldName: string; newName: string; refCount: number } | null>(null);
@@ -209,7 +223,8 @@ const {
   requiredProgress,
   consistencyIssues,
   backlinks,
-  fillInspiration
+  fillInspiration,
+  fillWithAI
 } = useEntityEditor(
   'char',
   () => char.value,
@@ -298,6 +313,17 @@ async function onDeleteChar() {
   }
   docStore.deleteChar(char.value.id);
   toast(tr('已删除', 'Deleted'), 'ok');
+}
+
+function onApplyAIGen(content: string) {
+  if (!char.value) return;
+  if (!char.value.data.personality) {
+    char.value.data.personality = content;
+  } else {
+    char.value.data.extra = (char.value.data.extra ? char.value.data.extra + '\n\n' : '') + content;
+  }
+  docStore.syncEntityName('char', char.value);
+  docStore.touch(true);
 }
 
 function onImportDraftData(data: Record<string, string>) {

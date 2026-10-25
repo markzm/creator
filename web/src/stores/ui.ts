@@ -10,7 +10,9 @@ export type ModalName =
   | 'backup'
   | 'commandPalette'
   | 'tutorial'
-  | 'guide';
+  | 'guide'
+  | 'aiConfig'
+  | 'aiGenerate';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -44,7 +46,9 @@ export const useUIStore = defineStore('ui', () => {
     backup: false,
     commandPalette: false,
     tutorial: false,
-    guide: false
+    guide: false,
+    aiConfig: false,
+    aiGenerate: false
   });
 
   const guideContext = ref<{

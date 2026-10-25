@@ -4,6 +4,7 @@ import { parseYear } from '../timeline';
 import { uid as defaultUid } from '../uid';
 import { normalizeBackup } from '../backup';
 import type {
+  ArticleItem,
   CharEntity,
   DailyStat,
   DocV6,
@@ -13,6 +14,7 @@ import type {
   PlotChapter,
   PlotVolume,
   SceneCard,
+  StudioPreferences,
   TemplateDef,
   TimelineEvent,
   WorldEntity
@@ -83,12 +85,20 @@ export function createEmptyDocV6(
     plots: [],
     scenes: [],
     glossary: [],
+    articles: [],
     stats: [],
+    preferences: {
+      preferredGenre: '奇幻架空',
+      writingTone: '细腻生动',
+      defaultPerspective: '第三人称',
+      aiCustomInstruction: ''
+    },
     ui: {
       activeW: wId,
       activeO: oId,
       activeC: cId,
       activeTpl: '',
+      activeArticle: null,
       nowYear: 0
     }
   };
@@ -343,11 +353,47 @@ export function migrateToV6(
     }
   }
 
+  const articles: ArticleItem[] = [];
+  if (Array.isArray(baseSource.articles)) {
+    for (const a of baseSource.articles) {
+      if (!a || typeof a !== 'object') continue;
+      const content = String(a.content || '');
+      articles.push({
+        id: String(a.id || uidFn('art_')),
+        title: String(a.title || T.zh.unnamed),
+        category: a.category || '小说正文',
+        summary: String(a.summary || ''),
+        content,
+        worldId: a.worldId ? String(a.worldId) : undefined,
+        orgIds: Array.isArray(a.orgIds) ? a.orgIds.map(String) : [],
+        charIds: Array.isArray(a.charIds) ? a.charIds.map(String) : [],
+        visibility: a.visibility === 'public' ? 'public' : 'private',
+        shareId: a.shareId ? String(a.shareId) : undefined,
+        wordCount: typeof a.wordCount === 'number' ? a.wordCount : content.length,
+        createdAt: typeof a.createdAt === 'number' ? a.createdAt : now,
+        updatedAt: typeof a.updatedAt === 'number' ? a.updatedAt : now
+      });
+    }
+  }
+
+  const rawPrefs = (r.preferences && typeof r.preferences === 'object'
+    ? r.preferences
+    : (baseSource.preferences && typeof baseSource.preferences === 'object'
+        ? baseSource.preferences
+        : {})) as Record<string, any>;
+  const preferences: StudioPreferences = {
+    preferredGenre: String(rawPrefs.preferredGenre || '奇幻架空'),
+    writingTone: String(rawPrefs.writingTone || '细腻生动'),
+    defaultPerspective: String(rawPrefs.defaultPerspective || '第三人称'),
+    aiCustomInstruction: String(rawPrefs.aiCustomInstruction || '')
+  };
+
   const rawUi = (r.ui && typeof r.ui === 'object' ? r.ui : {}) as Record<string, any>;
   const candW = rawUi.activeW ?? r.activeW ?? null;
   const candO = rawUi.activeO ?? r.activeO ?? null;
   const candC = rawUi.activeC ?? r.activeC ?? null;
   const candTpl = rawUi.activeTpl ?? r.activeTpl ?? '';
+  const candArt = rawUi.activeArticle ?? r.activeArticle ?? null;
   const candNowYear = rawUi.nowYear ?? r.nowYear ?? 0;
 
   const worldIds = Object.keys(worlds);
@@ -364,12 +410,15 @@ export function migrateToV6(
     plots,
     scenes,
     glossary,
+    articles,
     stats,
+    preferences,
     ui: {
       activeW: candW && worlds[candW] ? String(candW) : worldIds[0] || null,
       activeO: candO && orgs[candO] ? String(candO) : orgIds[0] || null,
       activeC: candC && chars[candC] ? String(candC) : charIds[0] || null,
       activeTpl: String(candTpl || ''),
+      activeArticle: candArt ? String(candArt) : null,
       nowYear: Number(candNowYear) || 0
     }
   };

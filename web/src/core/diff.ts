@@ -44,7 +44,9 @@ export function stripUIForSync(doc: DocV6): Omit<DocV6, 'ui'> {
     plots: doc.plots || [],
     scenes: doc.scenes || [],
     glossary: doc.glossary || [],
-    stats: doc.stats || []
+    stats: doc.stats || [],
+    articles: doc.articles || [],
+    preferences: doc.preferences
   };
 }
 
@@ -439,6 +441,8 @@ export function threeWayMerge(
   const scenes = mergeByIdArray(base?.scenes, local.scenes || [], remote.scenes || []);
   const glossary = mergeByIdArray(base?.glossary, local.glossary || [], remote.glossary || []);
   const stats = mergeStats(local.stats || [], remote.stats || []);
+  const articles = mergeByIdArray(base?.articles, local.articles || [], remote.articles || []);
+  const preferences = local.preferences || remote.preferences || base?.preferences;
 
   const lUi = local.ui || { activeW: null, activeO: null, activeC: null, activeTpl: '', nowYear: 0 };
   const mergedDoc: DocV6 = {
@@ -452,6 +456,8 @@ export function threeWayMerge(
     scenes,
     glossary,
     stats,
+    articles,
+    preferences,
     ui: {
       activeW: lUi.activeW && worlds[lUi.activeW] ? lUi.activeW : Object.keys(worlds)[0] || null,
       activeO: lUi.activeO && orgs[lUi.activeO] ? lUi.activeO : Object.keys(orgs)[0] || null,

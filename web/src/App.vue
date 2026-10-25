@@ -5,6 +5,7 @@ import { useDocStore } from './stores/doc'
 import { useUIStore } from './stores/ui'
 import { useAuthStore } from './stores/auth'
 import { useSyncStore } from './stores/sync'
+import { useAIStore } from './stores/ai'
 import { useHotkeys } from './composables/useHotkeys'
 import AppSidebar from './components/app/AppSidebar.vue'
 import AppTopbar from './components/app/AppTopbar.vue'
@@ -14,6 +15,7 @@ import RevisionHistoryModal from './components/app/RevisionHistoryModal.vue'
 import CommandPalette from './components/app/CommandPalette.vue'
 import BackupModal from './components/app/BackupModal.vue'
 import TutorialModal from './components/app/TutorialModal.vue'
+import AIConfigModal from './components/app/AIConfigModal.vue'
 import FieldGuideModal from './components/editor/FieldGuideModal.vue'
 import ToastHost from './components/base/ToastHost.vue'
 import ConfirmHost from './components/base/ConfirmHost.vue'
@@ -22,6 +24,7 @@ const doc = useDocStore()
 const ui = useUIStore()
 const auth = useAuthStore()
 const sync = useSyncStore()
+const ai = useAIStore()
 const route = useRoute()
 
 useHotkeys()
@@ -41,6 +44,7 @@ function handleBeforeUnload() {
 onMounted(async () => {
   await doc.init()
   await sync.init()
+  await ai.init()
   ui.checkFirstRunTutorial()
   const user = await auth.initSession()
   if (user) {
@@ -71,6 +75,7 @@ onUnmounted(() => {
     <RevisionHistoryModal />
     <CommandPalette />
     <BackupModal />
+    <AIConfigModal />
     <TutorialModal />
     <FieldGuideModal />
     <ToastHost />

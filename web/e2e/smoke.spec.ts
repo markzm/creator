@@ -218,15 +218,36 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
     await expect(page.locator('.topbar').getByText('Worldbuilding Studio')).toBeVisible();
   });
 
-  test('6. Server seed (/api/seed) automatically populates imported user data on first visit', async ({
+  test('6. Starter Example or seed initializes characters on first visit', async ({
     page
   }) => {
     await page.addInitScript(() => {
       localStorage.removeItem('cc_seeded_v6');
     });
     await page.goto('/char');
-    await expect(page.getByText('洛徽霜').first()).toBeVisible();
-    await expect(page.getByText('伊露米娅·米拉克尔').first()).toBeVisible();
-    await expect(page.getByText('青栗薄月').first()).toBeVisible();
+    await expect(page.locator('.sres').first()).toBeVisible();
+  });
+
+  test('7. Anonymous guest can browse Lobby & switch category filters', async ({ page }) => {
+    await page.goto('/lobby');
+    await expect(page.getByText('公共创作大厅 · 游客自由浏览中')).toBeVisible();
+    await expect(page.getByRole('button', { name: /全部作品/ })).toBeVisible();
+    await page.getByRole('button', { name: /文章作品/ }).click();
+    await expect(page.getByText('作品展示列表')).toBeVisible();
+  });
+
+  test('8. Dashboard switches between Personal Studio & Global Community Overview', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /个人创作大盘/ })).toBeVisible();
+    await page.getByRole('button', { name: /全站整体大盘/ }).click();
+    await expect(page.getByText('全站创作生态整体大盘')).toBeVisible();
+  });
+
+  test('9. Articles Studio loads and AI Configuration modal opens cleanly', async ({ page }) => {
+    await page.goto('/articles');
+    await expect(page.getByText('文章创作工作台')).toBeVisible();
+    await page.getByRole('button', { name: /AI 引擎设置/ }).click();
+    await expect(page.getByText('AI 引擎与量身定制设定器偏好')).toBeVisible();
+    await page.getByRole('button', { name: '取消' }).click();
   });
 });

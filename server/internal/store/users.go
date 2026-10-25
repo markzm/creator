@@ -21,18 +21,20 @@ var (
 )
 
 type User struct {
-	ID            int64  `json:"id"`
-	Email         string `json:"email,omitempty"`
-	PasswordHash  string `json:"-"`
-	Nickname      string `json:"name"`
-	AvatarURL     string `json:"avatar"`
-	Bio           string `json:"bio"`
-	PresenceFocus string `json:"focus"`
-	LastSeenAt    int64  `json:"lastSeenAt"`
-	IsAdmin       bool   `json:"isAdmin,omitempty"`
-	IsDisabled    bool   `json:"-"`
-	CreatedAt     int64  `json:"createdAt"`
-	UpdatedAt     int64  `json:"updatedAt"`
+	ID              int64  `json:"id"`
+	Email           string `json:"email,omitempty"`
+	PasswordHash    string `json:"-"`
+	Nickname        string `json:"name"`
+	AvatarURL       string `json:"avatar"`
+	Bio             string `json:"bio"`
+	PresenceFocus   string `json:"focus"`
+	LastSeenAt      int64  `json:"lastSeenAt"`
+	IsAdmin         bool   `json:"isAdmin,omitempty"`
+	IsDisabled      bool   `json:"-"`
+	AIConfigEnc     string `json:"-"`
+	CustomPrefsJSON string `json:"customPrefs,omitempty"`
+	CreatedAt       int64  `json:"createdAt"`
+	UpdatedAt       int64  `json:"updatedAt"`
 }
 
 type Invite struct {
@@ -125,7 +127,7 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, inviteCode 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	row := s.ReadDB.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, created_at, updated_at
+		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'), created_at, updated_at
 		FROM users WHERE email = ?
 	`, email)
 	return scanUser(row)
@@ -133,7 +135,7 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 
 func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	row := s.ReadDB.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, created_at, updated_at
+		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'), created_at, updated_at
 		FROM users WHERE id = ?
 	`, id)
 	return scanUser(row)
@@ -144,7 +146,7 @@ func scanUser(row *sql.Row) (*User, error) {
 	var isAdmin, isDisabled int
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Nickname, &u.AvatarURL, &u.Bio,
-		&u.PresenceFocus, &u.LastSeenAt, &isAdmin, &isDisabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.PresenceFocus, &u.LastSeenAt, &isAdmin, &isDisabled, &u.AIConfigEnc, &u.CustomPrefsJSON, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
@@ -155,6 +157,14 @@ func scanUser(row *sql.Row) (*User, error) {
 	u.IsAdmin = isAdmin != 0
 	u.IsDisabled = isDisabled != 0
 	return &u, nil
+}
+
+func (s *Store) UpdateUserAIConfigAndPrefs(ctx context.Context, userID int64, aiConfigEnc, customPrefsJSON string) error {
+	now := time.Now().Unix()
+	_, err := s.WriteDB.ExecContext(ctx, `
+		UPDATE users SET ai_config_enc = ?, custom_prefs_json = ?, updated_at = ? WHERE id = ?
+	`, aiConfigEnc, customPrefsJSON, now, userID)
+	return err
 }
 
 func (s *Store) UpdateProfile(ctx context.Context, userID int64, name, avatar, bio *string) (*User, error) {

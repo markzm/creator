@@ -32,6 +32,13 @@
         </button>
         <button
           type="button"
+          :title="tr('AI 智能生成 / 扩写该字段', 'AI Generate / Expand')"
+          @click="onAIGen($event)"
+        >
+          ✨
+        </button>
+        <button
+          type="button"
           class="danger-btn"
           :title="t.clear"
           @click="updateVal('')"
@@ -98,6 +105,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', val: string): void;
   (e: 'roll', fieldId: string, isTextarea: boolean, append: boolean): void;
+  (e: 'aiGen', fieldId: string, isTextarea: boolean, append: boolean): void;
   (e: 'blur', fieldId: string): void;
 }>();
 
@@ -130,5 +138,9 @@ function onRoll(e: MouseEvent) {
   setTimeout(() => {
     justFilled.value = true;
   }, 10);
+}
+
+function onAIGen(e: MouseEvent) {
+  emit('aiGen', props.field.id, Boolean(props.field.w), e.shiftKey);
 }
 </script>
