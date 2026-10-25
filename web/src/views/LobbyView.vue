@@ -138,12 +138,12 @@
         </div>
 
         <!-- Search Input -->
-        <div style="display: flex; gap: 6px">
+        <div style="display: flex; gap: 6px; flex: 1; max-width: 320px; min-width: 160px">
           <input
             v-model="searchQuery"
             type="text"
             :placeholder="tr('搜索标题、作者或摘要…', 'Search shares…')"
-            style="padding: 5px 10px; font-size: 12.5px; width: 180px"
+            style="padding: 5px 10px; font-size: 12.5px; flex: 1"
             @keyup.enter="refreshLobby"
           />
           <button type="button" class="btn sm" @click="refreshLobby">
@@ -174,7 +174,7 @@
         <div
           v-for="s in filteredShares"
           :key="s.id"
-          class="card"
+          class="card lobby-card"
           style="
             padding: 14px 16px;
             display: flex;
@@ -220,7 +220,7 @@
           </div>
 
           <!-- Action Buttons -->
-          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
+          <div class="lobby-card-actions" style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
             <button type="button" class="btn sm primary" @click="viewingShare = s">
               📖 {{ s.kind === 'article' ? tr('阅读全文', 'Read') : tr('查阅设定', 'View') }}
             </button>
@@ -546,5 +546,17 @@ onMounted(() => {
   background: var(--acs);
   color: var(--ac);
   border-color: var(--ac);
+}
+
+@media (max-width: 600px) {
+  .lobby-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .lobby-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
 }
 </style>

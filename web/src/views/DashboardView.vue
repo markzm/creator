@@ -194,7 +194,7 @@
         </div>
 
         <!-- Detailed Breakdown -->
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 12px">
           <div class="card" style="padding: 10px 12px; text-align: center; background: var(--soft)">
             <span style="font-size: 16px">🌍</span>
             <div style="font-size: 16px; font-weight: 700; margin-top: 2px">
@@ -227,7 +227,7 @@
       </div>
 
       <!-- Leaderboard & Recent Creations Grid -->
-      <div style="display: grid; grid-template-columns: 280px 1fr; gap: 18px; align-items: start">
+      <div class="dashboard-community-grid">
         <!-- Active Creators Column -->
         <div class="card" style="padding: 18px">
           <h3 style="margin: 0 0 12px; font-size: 15px">🌟 {{ tr('活跃创作者榜', 'Top Creators') }}</h3>
@@ -621,5 +621,17 @@ const modules = computed(() => [
   color: var(--ac);
   border-color: var(--li2);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.dashboard-community-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .dashboard-community-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
 }
 </style>

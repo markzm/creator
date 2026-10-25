@@ -9,6 +9,7 @@ import { useAIStore } from './stores/ai'
 import { useHotkeys } from './composables/useHotkeys'
 import AppSidebar from './components/app/AppSidebar.vue'
 import AppTopbar from './components/app/AppTopbar.vue'
+import AppMobileNav from './components/app/AppMobileNav.vue'
 import AuthModal from './components/app/AuthModal.vue'
 import ConflictDialog from './components/app/ConflictDialog.vue'
 import RevisionHistoryModal from './components/app/RevisionHistoryModal.vue'
@@ -67,6 +68,7 @@ onUnmounted(() => {
       <main class="app-viewport">
         <RouterView />
       </main>
+      <AppMobileNav />
     </div>
 
     <!-- Global Modals & Overlays -->
@@ -105,5 +107,10 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+}
+@media (max-width: 768px) {
+  .app-viewport {
+    padding-bottom: 58px;
+  }
 }
 </style>

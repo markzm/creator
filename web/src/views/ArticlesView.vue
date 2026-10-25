@@ -19,68 +19,81 @@
 
     <div class="editor-split">
       <!-- Left Pane: Articles List -->
-      <div class="card open" style="padding: 14px; min-width: 250px">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
-          <strong style="font-size: 13.5px">{{ tr('文章列表', 'Articles') }} ({{ articleList.length }})</strong>
-          <select v-model="filterCategory" style="font-size: 11.5px; padding: 2px 6px">
-            <option value="all">{{ tr('全部分类', 'All') }}</option>
-            <option value="小说正文">小说正文</option>
-            <option value="设定集专题">设定集专题</option>
-            <option value="外传番外">外传番外</option>
-            <option value="世界编年">世界编年</option>
-            <option value="其他">其他</option>
-          </select>
+      <div class="card open articles-list-card" style="padding: 14px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap">
+          <div style="display: flex; align-items: center; gap: 6px">
+            <strong style="font-size: 13.5px">{{ tr('文章列表', 'Articles') }} ({{ articleList.length }})</strong>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center">
+            <button
+              type="button"
+              class="btn sm mobile-toggle-btn"
+              @click="mobileListCollapsed = !mobileListCollapsed"
+            >
+              {{ mobileListCollapsed ? tr('展开列表 ▼', 'List ▼') : tr('收起 ▲', 'Collapse ▲') }}
+            </button>
+            <select v-model="filterCategory" style="font-size: 11.5px; padding: 2px 6px">
+              <option value="all">{{ tr('全部分类', 'All') }}</option>
+              <option value="小说正文">小说正文</option>
+              <option value="设定集专题">设定集专题</option>
+              <option value="外传番外">外传番外</option>
+              <option value="世界编年">世界编年</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
         </div>
 
-        <input
-          v-model="searchKeyword"
-          type="text"
-          :placeholder="tr('搜索文章标题…', 'Search title…')"
-          style="margin-bottom: 10px; font-size: 12px; padding: 5px 8px"
-        />
+        <div :class="{ 'mobile-hidden': mobileListCollapsed }">
+          <input
+            v-model="searchKeyword"
+            type="text"
+            :placeholder="tr('搜索文章标题…', 'Search title…')"
+            style="margin-bottom: 10px; font-size: 12px; padding: 5px 8px; width: 100%"
+          />
 
-        <div v-if="!filteredArticles.length" class="hint" style="font-size: 12.5px; text-align: center; padding: 24px 0">
-          {{ tr('没有匹配的文章', 'No articles found') }}
-        </div>
+          <div v-if="!filteredArticles.length" class="hint" style="font-size: 12.5px; text-align: center; padding: 24px 0">
+            {{ tr('没有匹配的文章', 'No articles found') }}
+          </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow-y: auto">
-          <div
-            v-for="a in filteredArticles"
-            :key="a.id"
-            class="card"
-            style="padding: 10px 12px; cursor: pointer; transition: all 0.15s"
-            :style="{
-              borderColor: activeArt?.id === a.id ? 'var(--ac)' : 'var(--li)',
-              background: activeArt?.id === a.id ? 'var(--acs)' : 'var(--card)'
-            }"
-            @click="docStore.selectArticle(a.id)"
-          >
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px">
-              <span
-                class="pill"
-                style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--soft)"
-              >
-                {{ a.category }}
-              </span>
-              <span
-                class="pill"
-                :style="{
-                  fontSize: '10px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  background: a.visibility === 'public' ? 'var(--oks)' : 'var(--soft)',
-                  color: a.visibility === 'public' ? 'var(--ok)' : 'var(--mu)'
-                }"
-              >
-                {{ a.visibility === 'public' ? tr('🌐 公开', 'Public') : tr('🔒 私有', 'Private') }}
-              </span>
-            </div>
-            <div style="font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
-              {{ a.title || tr('未命名文章', 'Untitled') }}
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--mu); margin-top: 4px">
-              <span>{{ (a.content || '').length }} {{ tr('字', 'words') }}</span>
-              <span>{{ formatDate(a.updatedAt) }}</span>
+          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto">
+            <div
+              v-for="a in filteredArticles"
+              :key="a.id"
+              class="card"
+              style="padding: 10px 12px; cursor: pointer; transition: all 0.15s"
+              :style="{
+                borderColor: activeArt?.id === a.id ? 'var(--ac)' : 'var(--li)',
+                background: activeArt?.id === a.id ? 'var(--acs)' : 'var(--card)'
+              }"
+              @click="onSelectArticleItem(a.id)"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px">
+                <span
+                  class="pill"
+                  style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--soft)"
+                >
+                  {{ a.category }}
+                </span>
+                <span
+                  class="pill"
+                  :style="{
+                    fontSize: '10px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: a.visibility === 'public' ? 'var(--oks)' : 'var(--soft)',
+                    color: a.visibility === 'public' ? 'var(--ok)' : 'var(--mu)'
+                  }"
+                >
+                  {{ a.visibility === 'public' ? tr('🌐 公开', 'Public') : tr('🔒 私有', 'Private') }}
+                </span>
+              </div>
+              <div style="font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+                {{ a.title || tr('未命名文章', 'Untitled') }}
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--mu); margin-top: 4px">
+                <span>{{ (a.content || '').length }} {{ tr('字', 'words') }}</span>
+                <span>{{ formatDate(a.updatedAt) }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -305,6 +318,14 @@ const filterCategory = ref('all');
 const searchKeyword = ref('');
 const aiWriteModalOpen = ref(false);
 const aiWritePrompt = ref('');
+const mobileListCollapsed = ref(false);
+
+function onSelectArticleItem(id: string) {
+  docStore.selectArticle(id);
+  if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+    mobileListCollapsed.value = true;
+  }
+}
 
 const activeArt = computed(() => docStore.activeArticle);
 const articleList = computed(() => docStore.doc.articles || []);
@@ -529,3 +550,17 @@ async function deleteCurrent() {
   toast(tr('已删除', 'Deleted'), 'ok');
 }
 </script>
+
+<style scoped>
+.mobile-toggle-btn {
+  display: none;
+}
+@media (max-width: 900px) {
+  .mobile-toggle-btn {
+    display: inline-flex;
+  }
+  .mobile-hidden {
+    display: none;
+  }
+}
+</style>

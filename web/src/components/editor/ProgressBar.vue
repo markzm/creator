@@ -1,12 +1,12 @@
 <template>
   <div class="progress">
-    <span class="stat">{{ t.pText(done, total) }}</span>
+    <span class="stat" style="white-space: nowrap">{{ t.pText(done, total) }}</span>
     <div class="pbar">
       <div :style="{ width: pct + '%' }" />
     </div>
-    <span class="stat">{{ t.wText(charCount) }}</span>
-    <span v-if="savedTimeStr" style="color: var(--ok); font-weight: 600">
-      {{ tr('已保存 ', 'Saved ') + savedTimeStr }}
+    <span class="stat" style="white-space: nowrap">{{ t.wText(charCount) }}</span>
+    <span v-if="savedTimeStr" class="saved-badge" style="color: var(--ok); font-weight: 600; white-space: nowrap">
+      <span class="hide-micro">{{ tr('已保存 ', 'Saved ') }}</span>✓ {{ savedTimeStr }}
     </span>
   </div>
 </template>
@@ -33,3 +33,11 @@ const savedTimeStr = computed(() => {
   );
 });
 </script>
+
+<style scoped>
+@media (max-width: 480px) {
+  .hide-micro {
+    display: none;
+  }
+}
+</style>

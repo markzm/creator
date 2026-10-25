@@ -120,17 +120,25 @@
 
 .progress {
   position: sticky;
-  top: 53px;
-  z-index: 48;
-  background: color-mix(in srgb, var(--card) 88%, transparent);
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--card) 95%, transparent);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--li);
-  padding: 9px 18px;
+  border-bottom: 1px solid var(--li2);
+  padding: 8px 18px;
   font-size: 12px;
   color: var(--mu);
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  .progress {
+    padding: 6px 12px;
+    font-size: 11px;
+    gap: 6px;
+  }
 }
 
 .progress .stat {
@@ -774,5 +782,29 @@
   }
   .app-sidebar {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .wrap {
+    padding: 12px 12px 80px;
+  }
+  .topbar {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  /* Prevent iOS Safari from auto-zooming inputs under 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  .card {
+    padding: 14px 12px;
+  }
+  .tut-box {
+    width: 92vw !important;
+    max-width: 92vw !important;
+    padding: 16px 14px !important;
   }
 }

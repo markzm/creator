@@ -6,7 +6,7 @@
       class="btn sm"
       @click="router.push('/')"
     >
-      ← {{ tr('主页', 'Home') }}
+      ← <span class="hide-mobile">{{ tr('主页', 'Home') }}</span>
     </button>
     <span class="brand" @click="router.push('/')">
       {{ tr('设定创作器', 'Worldbuilding Studio') }}
@@ -20,7 +20,7 @@
       class="btn sm"
       @click="onUndo"
     >
-      ↩ {{ tr('撤销上次批量替换', 'Undo Last Replace') }}
+      ↩ <span class="hide-mobile">{{ tr('撤销', 'Undo') }}</span>
     </button>
 
     <button
@@ -29,13 +29,13 @@
       title="⌘K / Ctrl+K"
       @click="uiStore.openModal('commandPalette')"
     >
-      🔍 {{ tr('搜索', 'Search') }}
-      <span style="font-size: 10px; color: var(--mu)">⌘K</span>
+      🔍 <span class="hide-mobile">{{ tr('搜索', 'Search') }}</span>
+      <span class="hide-mobile" style="font-size: 10px; color: var(--mu)">⌘K</span>
     </button>
 
     <button
       type="button"
-      class="btn sm"
+      class="btn sm hide-mobile"
       @click="uiStore.openModal('backup')"
     >
       💾 {{ tr('备份 / 导出', 'Backup / Export') }}
@@ -43,7 +43,7 @@
 
     <button
       type="button"
-      class="btn sm"
+      class="btn sm hide-mobile"
       @click="uiStore.openModal('tutorial')"
     >
       📖 {{ tr('教程', 'Tutorial') }}
@@ -59,7 +59,7 @@
 
     <button
       type="button"
-      class="btn sm"
+      class="btn sm hide-mobile"
       @click="onToggleLang"
     >
       🌐 {{ uiStore.lang === 'zh' ? 'EN' : '中' }}
@@ -95,3 +95,11 @@ function onUndo() {
   }
 }
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+</style>

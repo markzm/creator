@@ -25,7 +25,7 @@
         v-else
         ref="svgRef"
         viewBox="0 0 900 650"
-        style="width: 100%; height: 600px; background: var(--soft); border-radius: 10px; user-select: none; touch-action: none"
+        class="graph-svg"
         @mousemove="onMouseMove"
         @mouseup="onMouseUp"
         @mouseleave="onMouseUp"
@@ -250,3 +250,19 @@ watch(
   }
 );
 </script>
+
+<style scoped>
+.graph-svg {
+  width: 100%;
+  height: 600px;
+  background: var(--soft);
+  border-radius: 10px;
+  user-select: none;
+  touch-action: none;
+}
+@media (max-width: 768px) {
+  .graph-svg {
+    height: 380px;
+  }
+}
+</style>
