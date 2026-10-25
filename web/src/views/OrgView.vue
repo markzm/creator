@@ -16,9 +16,9 @@
           :items="orgList"
           :active-id="org.id"
           @select="docStore.selectOrg"
-          @create="docStore.createOrg()"
-          @duplicate="docStore.duplicateOrg()"
-          @fork="(id) => docStore.forkReferenceEntity('org', id)"
+          @create="handleCreate"
+          @duplicate="handleDuplicate"
+          @fork="(id) => handleFork('org', id)"
           @delete="onDeleteOrg"
         />
 
@@ -46,7 +46,7 @@
                   {{
                     authStore.isAdmin
                       ? tr('官方管理员编辑模式（已解锁）', 'Admin Mode (Editing Reference Material)')
-                      : tr('官方公共参考素材（查阅与引用模式）', 'Official Reference Material (Read-only)')
+                      : tr('官方公共参考素材（只读查阅与引用模式）', 'Official Reference Material (Read-only)')
                   }}
                 </strong>
                 <div style="font-size: 12px; color: var(--mu)">
@@ -71,7 +71,7 @@
                 v-else
                 type="button"
                 class="btn sm primary"
-                @click="docStore.forkReferenceEntity('org', org.id)"
+                @click="handleFork('org', org.id)"
               >
                 📑 {{ tr('复制为衍生副本 (二次创作)', 'Fork Personal Copy') }}
               </button>
@@ -89,12 +89,17 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('org', OG)">
               🧭 {{ t.guide }}
             </button>
-            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+            <button
+              v-if="!isReadOnlyReference"
+              type="button"
+              class="btn sm primary"
+              @click="aiModalOpen = true"
+            >
               ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
             </button>
             <span class="spacer" />
             <button
-              v-if="!org.isReference || authStore.isAdmin"
+              v-if="!isReadOnlyReference"
               type="button"
               class="btn sm danger"
               @click="onClearAll"
@@ -144,6 +149,7 @@
             :data="org.data"
             :open="allOpenState"
             :invalid-fields="invalidFields"
+            :readonly="isReadOnlyReference"
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
@@ -157,6 +163,7 @@
               <span class="idx">MEM</span>
               <h3>👥 {{ tr('组织成员', 'Organization Members') }} ({{ members.length }})</h3>
               <button
+                v-if="!isReadOnlyReference"
                 type="button"
                 class="btn sm primary"
                 @click.stop="openAddMemberModal"
@@ -196,6 +203,7 @@
                   <span style="color: var(--mu); font-size: 12px">{{ m.term || '' }}</span>
                   <span style="color: var(--mu); font-size: 12px">{{ m.status || '' }}</span>
                   <button
+                    v-if="!isReadOnlyReference"
                     type="button"
                     class="btn sm danger"
                     @click="removeMember(m.charId)"
@@ -216,6 +224,7 @@
             :order="ORG_ORDER"
             prefix="CC2O"
             expected-kind="org"
+            :readonly="isReadOnlyReference"
             @import-data="onImportDraftData"
           />
 
@@ -230,6 +239,7 @@
             :entity-name="org.data.o_name || org.name"
             :draft-order="ORG_ORDER"
             draft-prefix="CC2O"
+            :readonly="isReadOnlyReference"
             @validate-required="validateRequiredFields"
             @clear-all="onClearAll"
             @open-guide="uiStore.openGuide('org', OG)"
@@ -337,6 +347,30 @@ const { toast } = useToast();
 const org = computed(() => docStore.activeOrg);
 const orgList = computed(() => Object.values(docStore.doc.orgs || {}));
 const orgName = computed(() => (org.value?.data?.o_name || '').trim());
+const isReadOnlyReference = computed(() => Boolean(org.value?.isReference && !authStore.isAdmin));
+
+function handleCreate() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定素材~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.createOrg();
+}
+
+function handleFork(kind: any, id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方素材至您的专属库进行二次创作~', 'Please sign in to fork official materials into your personal studio.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferenceEntity(kind, id);
+}
+
+function handleDuplicate() {
+  if (isReadOnlyReference.value) return;
+  docStore.duplicateOrg();
+}
 
 const allOpenState = ref(true);
 const memOpen = ref(true);
@@ -419,7 +453,7 @@ const members = computed(() => {
 const alreadyMemberIds = computed(() => new Set(members.value.map((m) => m.charId)));
 
 function onUpdateField(fieldId: string, val: string) {
-  if (!org.value) return;
+  if (!org.value || isReadOnlyReference.value) return;
   org.value.data[fieldId] = val;
   invalidFields.value.delete(fieldId);
   docStore.syncEntityName('org', org.value);
@@ -448,7 +482,7 @@ function applyPendingRename() {
 }
 
 function onClearGroup(fieldIds: string[]) {
-  if (!org.value) return;
+  if (!org.value || isReadOnlyReference.value) return;
   fieldIds.forEach((fid) => {
     org.value!.data[fid] = '';
   });
@@ -457,11 +491,7 @@ function onClearGroup(fieldIds: string[]) {
 }
 
 async function onClearAll() {
-  if (!org.value) return;
-  if (org.value.isReference && !authStore.isAdmin) {
-    toast('官方公共参考素材不可直接清空。如需调整，请点击「📑 复制为衍生副本」在个人库中修改~', 'warn');
-    return;
-  }
+  if (!org.value || isReadOnlyReference.value) return;
   if (!(await confirm(t.value.clearConfirm, t.value.clearAllConfirm))) return;
   org.value.data = {};
   docStore.syncEntityName('org', org.value);
@@ -493,6 +523,7 @@ async function onDeleteOrg() {
 }
 
 function openAddMemberModal() {
+  if (isReadOnlyReference.value) return;
   if (!orgName.value) {
     toast(tr('先给组织起名', 'Name the organization first'), 'warn');
     return;
@@ -502,6 +533,7 @@ function openAddMemberModal() {
 }
 
 function confirmAddMembers() {
+  if (isReadOnlyReference.value) return;
   if (!selectedMemberIds.value.length) {
     toast(tr('没有选择角色', 'No characters selected'), 'warn');
     return;
@@ -523,7 +555,7 @@ function confirmAddMembers() {
 }
 
 async function removeMember(charId: string) {
-  if (!orgName.value) return;
+  if (!orgName.value || isReadOnlyReference.value) return;
   if (
     !(await confirm(
       tr('移除成员', 'Remove Member'),
@@ -544,7 +576,7 @@ async function removeMember(charId: string) {
 }
 
 function onApplyAIGen(content: string) {
-  if (!org.value) return;
+  if (!org.value || isReadOnlyReference.value) return;
   if (!org.value.data.o_core) {
     org.value.data.o_core = content;
   } else {
@@ -555,7 +587,7 @@ function onApplyAIGen(content: string) {
 }
 
 function onImportDraftData(data: Record<string, string>) {
-  if (!org.value) return;
+  if (!org.value || isReadOnlyReference.value) return;
   org.value.data = { ...data };
   docStore.syncEntityName('org', org.value);
   committedName.value = (org.value.data.o_name || '').trim();

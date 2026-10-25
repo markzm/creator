@@ -7,13 +7,13 @@
       <button type="button" class="btn lg" @click="$emit('openGuide')">
         🧭 {{ t.guide }}
       </button>
-      <button v-if="showAutoPersona" type="button" class="btn lg" @click="$emit('autoPersona')">
+      <button v-if="showAutoPersona && !readonly" type="button" class="btn lg" @click="$emit('autoPersona')">
         ✨ {{ tr('一键人设', 'Auto Persona') }}
       </button>
       <button type="button" class="btn lg" @click="onShareToLobby">
         📤 {{ tr('分享到大厅', 'Share to Lobby') }}
       </button>
-      <button type="button" class="btn danger lg" @click="$emit('clearAll')">
+      <button v-if="!readonly" type="button" class="btn danger lg" @click="$emit('clearAll')">
         {{ t.clear }}
       </button>
     </div>
@@ -96,6 +96,7 @@ const props = defineProps<{
   draftOrder: string[];
   draftPrefix: string;
   showAutoPersona?: boolean;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{

@@ -5,7 +5,8 @@
       wide: Boolean(field.w),
       'hint-open': showHint,
       invalid: invalid,
-      'just-filled': justFilled
+      'just-filled': justFilled,
+      readonly: readonly
     }"
     :data-fid="field.id"
   >
@@ -24,6 +25,7 @@
           ?
         </button>
         <button
+          v-if="!readonly"
           type="button"
           :title="tr('随机灵感（Shift+点击追加）', 'Random (Shift = append)')"
           @click="onRoll($event)"
@@ -31,6 +33,7 @@
           🎲
         </button>
         <button
+          v-if="!readonly"
           type="button"
           :title="tr('AI 智能生成 / 扩写该字段', 'AI Generate / Expand')"
           @click="onAIGen($event)"
@@ -38,6 +41,7 @@
           ✨
         </button>
         <button
+          v-if="!readonly"
           type="button"
           class="danger-btn"
           :title="t.clear"
@@ -61,6 +65,7 @@
       :class="{ expanded: isExpanded }"
       :placeholder="field.ph || ''"
       :value="modelValue"
+      :readonly="readonly"
       @input="onInput"
       @blur="$emit('blur', field.id)"
     />
@@ -71,6 +76,7 @@
       type="text"
       :placeholder="field.ph || ''"
       :value="modelValue"
+      :readonly="readonly"
       @input="onInput"
       @blur="$emit('blur', field.id)"
     />
@@ -100,6 +106,7 @@ const props = defineProps<{
   field: LegacyFieldDef;
   modelValue: string;
   invalid?: boolean;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -124,15 +131,18 @@ const hintText = computed(() => props.field.h || '');
 const charCount = computed(() => (props.modelValue || '').length);
 
 function updateVal(val: string) {
+  if (props.readonly) return;
   emit('update:modelValue', val);
 }
 
 function onInput(e: Event) {
+  if (props.readonly) return;
   const target = e.target as HTMLInputElement | HTMLTextAreaElement;
   updateVal(target.value);
 }
 
 function onRoll(e: MouseEvent) {
+  if (props.readonly) return;
   emit('roll', props.field.id, Boolean(props.field.w), e.shiftKey);
   justFilled.value = false;
   setTimeout(() => {
@@ -141,6 +151,7 @@ function onRoll(e: MouseEvent) {
 }
 
 function onAIGen(e: MouseEvent) {
+  if (props.readonly) return;
   emit('aiGen', props.field.id, Boolean(props.field.w), e.shiftKey);
 }
 </script>

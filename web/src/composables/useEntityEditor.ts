@@ -5,6 +5,7 @@ import { INSP } from '../core/legacy/insp';
 import type { LegacyFieldGroup } from '../core/legacy/fields';
 import type { BaseEntity, EntityKind } from '../core/schema/types';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
 import { useAIStore } from '../stores/ai';
 import { useI18n } from './useI18n';
 import { useToast } from './useToast';
@@ -15,6 +16,7 @@ export function useEntityEditor(
   getGroups: () => LegacyFieldGroup[]
 ) {
   const docStore = useDocStore();
+  const authStore = useAuthStore();
   const aiStore = useAIStore();
   const { t, tr } = useI18n();
   const { toast } = useToast();
@@ -57,7 +59,7 @@ export function useEntityEditor(
 
   function fillInspiration(fieldId: string, isTextarea: boolean, append = false): boolean {
     const ent = getEntity();
-    if (!ent) return false;
+    if (!ent || (ent.isReference && !authStore.isAdmin)) return false;
     let pool = INSP[fieldId] ? [...INSP[fieldId]] : [];
     if (kind === 'world') {
       const w = docStore.activeWorld;
@@ -85,7 +87,7 @@ export function useEntityEditor(
 
   async function fillWithAI(fieldId: string, isTextarea: boolean, append = false): Promise<boolean> {
     const ent = getEntity();
-    if (!ent) return false;
+    if (!ent || (ent.isReference && !authStore.isAdmin)) return false;
     const groups = getGroups();
     const fieldDef = groups.flatMap((g) => g.f).find((f) => f.id === fieldId);
     const label = fieldDef?.l || fieldId;

@@ -13,8 +13,28 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
   test('1. Offline entity creation, editing, IndexedDB persistence & Draft Code roundtrip', async ({
     page
   }) => {
+    await page.route('**/api/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user: {
+            id: 'u_smoke',
+            email: 'smoke@example.com',
+            name: 'Smoke Tester',
+            isAdmin: false,
+            createdAt: Date.now()
+          }
+        })
+      });
+    });
+
     await page.goto('/world');
     await expect(page.locator('#f-w_name')).toBeVisible();
+
+    // Fork official reference item into personal editable copy
+    await page.locator('button:has-text("复制为衍生副本")').first().click();
+    await expect(page.locator('#f-w_name')).toHaveValue(/衍生副本/);
 
     await page.locator('#f-w_name').fill('艾泽拉世界');
     await page.locator('#f-w_core').fill('蒸汽与星界魔法交织的群岛纪元');

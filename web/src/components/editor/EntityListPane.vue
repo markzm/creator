@@ -15,7 +15,7 @@
         >
           {{ mobileCollapsed ? tr('展开列表 ▼', 'List ▼') : tr('收起 ▲', 'Collapse ▲') }}
         </button>
-        <button type="button" class="btn sm primary" @click="$emit('create')">
+        <button type="button" class="btn sm primary" @click="handleCreate">
           ＋ {{ tr('新建', 'New') }}
         </button>
       </div>
@@ -174,7 +174,7 @@
             class="btn sm primary"
             style="flex: 1"
             :title="tr('复制为您的衍生副本，自由修改', 'Fork as personal copy')"
-            @click="$emit('fork', activeId || '')"
+            @click="handleFork(activeId || '')"
           >
             📑 {{ tr('复制衍生副本', 'Fork Copy') }}
           </button>
@@ -201,7 +201,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useAuthStore } from '../../stores/auth';
+import { useUIStore } from '../../stores/ui';
 import { useI18n } from '../../composables/useI18n';
+import { useToast } from '../../composables/useToast';
 import type { BaseEntity, EntityKind, TemplateDef } from '../../core/schema/types';
 
 const props = defineProps<{
@@ -221,7 +223,9 @@ const emit = defineEmits<{
 }>();
 
 const authStore = useAuthStore();
+const uiStore = useUIStore();
 const { t, tr } = useI18n();
+const { toast } = useToast();
 const searchQuery = ref('');
 const sortBy = ref<'updated' | 'name'>('updated');
 const selectedTplId = ref('');
@@ -233,6 +237,34 @@ const isActiveReference = computed(() => Boolean(activeItem.value?.isReference))
 const activeEntityName = computed(() => {
   return activeItem.value ? displayName(activeItem.value) : '';
 });
+
+function handleCreate() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定素材~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  emit('create');
+}
+
+function onCreateWithTemplate() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定素材~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  emit('create', selectedTplId.value);
+  selectedTplId.value = '';
+}
+
+function handleFork(id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方素材至您的专属库进行二次创作~', 'Please sign in to fork official materials into your personal studio.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  emit('fork', id);
+}
 
 function onSelectItem(id: string) {
   emit('select', id);
@@ -275,11 +307,6 @@ const filteredList = computed(() => {
 
 const referenceItems = computed(() => filteredList.value.filter((i) => i.isReference));
 const personalItems = computed(() => filteredList.value.filter((i) => !i.isReference));
-
-function onCreateWithTemplate() {
-  emit('create', selectedTplId.value || undefined);
-  selectedTplId.value = '';
-}
 </script>
 
 <style scoped>

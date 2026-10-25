@@ -99,7 +99,8 @@ export function scanAllOccurrences(doc: DocV6, query: string): OccurrenceHit[] {
 export function replaceAllOccurrences(
   doc: DocV6,
   from: string,
-  to: string
+  to: string,
+  skipReference = false
 ): { doc: DocV6; count: number; hits: OccurrenceHit[] } {
   if (!from || from === to) {
     return { doc, count: 0, hits: [] };
@@ -126,22 +127,26 @@ export function replaceAllOccurrences(
   };
 
   Object.values(next.worlds || {}).forEach((w) => {
+    if (skipReference && w.isReference) return;
     walkRecord(w.data);
     if (w.data.w_name) w.name = w.data.w_name;
     else w.name = rep(w.name) || w.name;
   });
   Object.values(next.orgs || {}).forEach((o) => {
+    if (skipReference && o.isReference) return;
     walkRecord(o.data);
     if (o.data.o_name) o.name = o.data.o_name;
     else o.name = rep(o.name) || o.name;
   });
   Object.values(next.chars || {}).forEach((c) => {
+    if (skipReference && c.isReference) return;
     walkRecord(c.data);
     if (c.data.name) c.name = c.data.name;
     else c.name = rep(c.name) || c.name;
   });
 
   (next.plots || []).forEach((p) => {
+    if (skipReference && p.isReference) return;
     p.title = rep(p.title) ?? p.title;
     if (p.note !== undefined) p.note = rep(p.note);
     (p.acts || []).forEach((a) => {
@@ -159,6 +164,7 @@ export function replaceAllOccurrences(
   });
 
   (next.scenes || []).forEach((s) => {
+    if (skipReference && s.isReference) return;
     s.title = rep(s.title) ?? s.title;
     if (s.location !== undefined) s.location = rep(s.location);
     if (s.place !== undefined) s.place = rep(s.place);
@@ -172,6 +178,7 @@ export function replaceAllOccurrences(
   });
 
   (next.timeline || []).forEach((ev) => {
+    if (skipReference && ev.isReference) return;
     ev.name = rep(ev.name) ?? ev.name;
     if (ev.desc !== undefined) ev.desc = rep(ev.desc);
     if (ev.link !== undefined) ev.link = rep(ev.link);
@@ -181,6 +188,7 @@ export function replaceAllOccurrences(
   });
 
   (next.glossary || []).forEach((g) => {
+    if (skipReference && g.isReference) return;
     g.term = rep(g.term) ?? g.term;
     if (g.std !== undefined) g.std = rep(g.std);
     if (g.cat !== undefined) g.cat = rep(g.cat);

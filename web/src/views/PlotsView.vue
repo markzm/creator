@@ -7,7 +7,7 @@
           {{ tr('管理卷、幕、章三级结构；章节填写年份后会自动汇入时间线，概要中提及的角色/组织名支持点击跳转。', 'Manage Volumes, Acts, and Chapters. Chapter years sync automatically with the Timeline.') }}
         </p>
       </div>
-      <button class="btn sm primary" @click="openVolModal()">＋ {{ tr('新建卷', 'New Volume') }}</button>
+      <button class="btn sm primary" @click="handleNewVol">＋ {{ tr('新建卷', 'New Volume') }}</button>
     </div>
 
     <div v-if="!docStore.doc.plots.length" class="card" style="padding: 48px 20px; text-align: center">
@@ -28,6 +28,13 @@
             📚 {{ tr('官方', 'Official') }}
           </span>
         </h3>
+        <button
+          v-if="vol.isReference && !authStore.isAdmin"
+          class="btn sm primary"
+          @click="handleForkPlot(vol.id)"
+        >
+          📑 {{ tr('复制衍生卷', 'Fork Volume') }}
+        </button>
         <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openVolModal(vol)">{{ tr('重命名', 'Rename') }}</button>
         <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openActModal(vol)">＋ {{ tr('添加幕', 'Add Act') }}</button>
         <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteVol(vol.id, vol.title)">✕</button>
@@ -47,9 +54,9 @@
               {{ tr(`幕 ${vi + 1}-${ai + 1}`, `Act ${vi + 1}-${ai + 1}`) }}
             </span>
             <strong style="flex: 1">{{ act.title || tr('未命名', 'Untitled') }}</strong>
-            <button class="btn sm" @click="openActModal(vol, act)">{{ tr('重命名', 'Rename') }}</button>
-            <button class="btn sm primary" @click="openChapterModal(act)">＋ {{ tr('章', 'Chapter') }}</button>
-            <button class="btn sm icon danger" @click="deleteAct(vol, act.id, act.title)">✕</button>
+            <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openActModal(vol, act)">{{ tr('重命名', 'Rename') }}</button>
+            <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm primary" @click="openChapterModal(act)">＋ {{ tr('章', 'Chapter') }}</button>
+            <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteAct(vol, act.id, act.title)">✕</button>
           </div>
 
           <div v-if="!(act.chapters && act.chapters.length)" class="hint" style="font-size: 12.5px">
@@ -64,10 +71,10 @@
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
               <span
                 class="pill"
-                style="cursor: pointer; font-size: 11.5px; padding: 2px 8px; border-radius: 6px; font-weight: 600"
+                style="font-size: 11.5px; padding: 2px 8px; border-radius: 6px; font-weight: 600"
                 :style="statusStyle(ch.status)"
-                :title="tr('点击切换状态', 'Click to cycle status')"
-                @click="cycleStatus(ch)"
+                :title="!vol.isReference || authStore.isAdmin ? tr('点击切换状态', 'Click to cycle status') : ''"
+                @click="(!vol.isReference || authStore.isAdmin) && cycleStatus(ch)"
               >
                 {{ ch.status || '未写' }}
               </span>
@@ -77,8 +84,8 @@
               <span v-if="ch.year" class="pill" style="font-size: 11.5px; color: var(--ac); background: var(--acs); padding: 2px 8px; border-radius: 6px">
                 🕒 {{ ch.year }}
               </span>
-              <button class="btn sm" @click="openChapterModal(act, ch)">{{ tr('编辑', 'Edit') }}</button>
-              <button class="btn sm icon danger" @click="deleteChapter(act, ch.id, ch.title)">✕</button>
+              <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openChapterModal(act, ch)">{{ tr('编辑', 'Edit') }}</button>
+              <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteChapter(act, ch.id, ch.title)">✕</button>
             </div>
             <div v-if="ch.summary" style="margin-top: 4px; font-size: 13px; color: var(--ink2); padding-left: 8px">
               <WikiText :text="ch.summary" />
@@ -151,12 +158,32 @@ import type { ChapterStatus, PlotAct, PlotChapter, PlotVolume } from '../core/sc
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
 import { useAuthStore } from '../stores/auth';
+import { useUIStore } from '../stores/ui';
 
 const docStore = useDocStore();
 const authStore = useAuthStore();
+const uiStore = useUIStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
+
+function handleNewVol() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属剧情卷轴~', 'Please sign in to create personal plots.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  openVolModal();
+}
+
+function handleForkPlot(id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方剧情卷至您的专属库进行二次创作~', 'Please sign in to fork official plots.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferencePlot(id);
+}
 
 const ST_ORDER: ChapterStatus[] = ['未写', '写作中', '已完成'];
 
@@ -255,6 +282,10 @@ function saveAct() {
 }
 
 async function deleteAct(vol: PlotVolume, actId: string, title: string) {
+  if (vol.isReference && !authStore.isAdmin) {
+    toast('此条目为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, tr(`确定删除幕「${title}」？`, `Delete act "${title}"?`)))) return;
   vol.acts = (vol.acts || []).filter((a) => a.id !== actId);
   docStore.touch(true);
@@ -316,6 +347,11 @@ function saveChapter() {
 }
 
 async function deleteChapter(act: PlotAct, chId: string, title: string) {
+  const vol = (docStore.doc.plots || []).find((v) => (v.acts || []).some((a) => a.id === act.id));
+  if (vol?.isReference && !authStore.isAdmin) {
+    toast('此条目为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, tr(`确定删除章节「${title}」？`, `Delete chapter "${title}"?`)))) return;
   act.chapters = (act.chapters || []).filter((c) => c.id !== chId);
   docStore.touch(true);

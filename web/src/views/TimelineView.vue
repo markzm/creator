@@ -18,7 +18,7 @@
         </select>
         <button class="btn sm" @click="exportTimelineCode">⌘ {{ tr('导出时间线码', 'Export CC3T') }}</button>
         <button class="btn sm" @click="showImportModal = true">📥 {{ tr('导入时间线码', 'Import CC3T') }}</button>
-        <button class="btn sm primary" @click="openEventModal()">＋ {{ tr('添加事件', 'Add Event') }}</button>
+        <button class="btn sm primary" @click="handleNewEvent">＋ {{ tr('添加事件', 'Add Event') }}</button>
       </div>
     </div>
 
@@ -65,6 +65,13 @@
           </p>
         </div>
         <div v-if="ev.source === '独立' && ev.id" style="display: flex; gap: 6px">
+          <button
+            v-if="ev.isReference && !authStore.isAdmin"
+            class="btn sm primary"
+            @click="handleForkTimeline(ev.id)"
+          >
+            📑 {{ tr('复制衍生事件', 'Fork Event') }}
+          </button>
           <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm" @click="openEventModal(ev.id)">{{ tr('编辑', 'Edit') }}</button>
           <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteManualEvent(ev.id)">✕</button>
         </div>
@@ -128,12 +135,32 @@ import { collectAllEvents, parseYear } from '../core/timeline';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
 import { useAuthStore } from '../stores/auth';
+import { useUIStore } from '../stores/ui';
 
 const docStore = useDocStore();
 const authStore = useAuthStore();
+const uiStore = useUIStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
+
+function handleNewEvent() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属时间线事件~', 'Please sign in to create personal events.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  openEventModal();
+}
+
+function handleForkTimeline(id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方事件至您的专属库自由调整~', 'Please sign in to fork official events.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferenceTimeline(id);
+}
 
 const sourceFilter = ref<string>('all');
 const editingModal = ref(false);
@@ -184,6 +211,13 @@ function openEventModal(id?: string) {
 }
 
 function saveManualEvent() {
+  if (editingId.value) {
+    const ev = docStore.doc.timeline.find((x) => x.id === editingId.value);
+    if (ev?.isReference && !authStore.isAdmin) {
+      toast('官方公共参考素材不可直接修改。请点击「📑 复制衍生事件」在个人库中修改~', 'warn');
+      return;
+    }
+  }
   if (!form.name.trim()) {
     toast(tr('事件名称不能为空', 'Event name is required'), 'warn');
     return;

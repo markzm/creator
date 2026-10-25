@@ -13,7 +13,7 @@
         <button v-if="generatedCode" type="button" class="btn sm" @click="onCopy">
           📋 {{ tr('复制', 'Copy') }}
         </button>
-        <button type="button" class="btn sm" @click="mode = mode === 'in' ? 'out' : 'in'">
+        <button v-if="!readonly" type="button" class="btn sm" @click="mode = mode === 'in' ? 'out' : 'in'">
           📥 {{ tr('导入草稿码', 'Import Code') }}
         </button>
         <span v-if="generatedCode && mode === 'out'" class="row-help">
@@ -54,6 +54,7 @@ const props = defineProps<{
   prefix: string;
   expectedKind: DraftCodeKind;
   customOrder?: string[] | null;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -94,6 +95,7 @@ async function onCopy() {
 }
 
 async function onApplyImport() {
+  if (props.readonly) return;
   const code = inputCode.value.trim();
   if (!code) {
     toast(t.value.notCode, 'warn');

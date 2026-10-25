@@ -11,7 +11,10 @@ import type {
   DocV6,
   EntityKind,
   OrgEntity,
+  PlotVolume,
+  SceneCard,
   StudioPreferences,
+  TimelineEvent,
   WorldEntity
 } from '../core/schema/types';
 import { createStarterExampleDoc } from '../core/starterExample';
@@ -24,6 +27,7 @@ import {
   subscribeMultiTabSync
 } from '../data/repo';
 import { useAuthStore } from './auth';
+import { useUIStore } from './ui';
 import { useToast } from '../composables/useToast';
 import { api } from '../data/api';
 
@@ -472,6 +476,16 @@ export const useDocStore = defineStore('doc', () => {
   }
 
   function renameEntity(oldName: string, newName: string): number {
+    if (!authStore.isAdmin) {
+      const isRef =
+        Object.values(doc.value.worlds).some((w) => w.name === oldName && w.isReference) ||
+        Object.values(doc.value.orgs).some((o) => o.name === oldName && o.isReference) ||
+        Object.values(doc.value.chars).some((c) => c.name === oldName && c.isReference);
+      if (isRef) {
+        toast(GENTLE_REF_MSG, 'warn');
+        return 0;
+      }
+    }
     saveUndoSnapshot();
     const { doc: updated, count } = renameEntityEverywhere(doc.value, oldName, newName);
     doc.value = updated;
@@ -689,6 +703,72 @@ export const useDocStore = defineStore('doc', () => {
     return art;
   }
 
+  function forkReferencePlot(sourceId: string): PlotVolume | null {
+    const src = (doc.value.plots || []).find((p) => p.id === sourceId);
+    if (!src) return null;
+    const id = uid('plot_');
+    const now = Date.now();
+    const copy: PlotVolume = {
+      ...JSON.parse(JSON.stringify(src)),
+      id,
+      title: src.title + ' (衍生副本)',
+      isReference: false,
+      updatedAt: now,
+      acts: (src.acts || []).map((act) => ({
+        ...act,
+        id: uid('act_'),
+        chapters: (act.chapters || []).map((ch) => ({
+          ...ch,
+          id: uid('chp_')
+        }))
+      }))
+    };
+    if (!doc.value.plots) doc.value.plots = [];
+    doc.value.plots.unshift(copy);
+    touch(true);
+    toast('已复制为您的专属剧情大纲卷，可自由规划章节与情节~', 'ok');
+    return copy;
+  }
+
+  function forkReferenceScene(sourceId: string): SceneCard | null {
+    const src = (doc.value.scenes || []).find((s) => s.id === sourceId);
+    if (!src) return null;
+    const id = uid('scn_');
+    const now = Date.now();
+    const copy: SceneCard = {
+      ...JSON.parse(JSON.stringify(src)),
+      id,
+      title: src.title + ' (衍生副本)',
+      isReference: false,
+      updatedAt: now
+    };
+    if (!doc.value.scenes) doc.value.scenes = [];
+    doc.value.scenes.unshift(copy);
+    touch(true);
+    toast('已复制为您的专属场景卡，可自由调整细节~', 'ok');
+    return copy;
+  }
+
+  function forkReferenceTimeline(sourceId: string): TimelineEvent | null {
+    const src = (doc.value.timeline || []).find((e) => e.id === sourceId);
+    if (!src) return null;
+    const id = uid('ev_');
+    const now = Date.now();
+    const copy: TimelineEvent = {
+      ...JSON.parse(JSON.stringify(src)),
+      id,
+      name: src.name + ' (衍生副本)',
+      src: 'manual',
+      isReference: false,
+      updatedAt: now
+    };
+    if (!doc.value.timeline) doc.value.timeline = [];
+    doc.value.timeline.push(copy);
+    touch(true);
+    toast('已复制为您的专属纪年事件，可自由编排~', 'ok');
+    return copy;
+  }
+
   async function saveOfficialReferenceMaterials(): Promise<boolean> {
     if (!authStore.isAdmin) {
       toast('只有网站管理员才有权限保存官方公共素材', 'err');
@@ -755,6 +835,9 @@ export const useDocStore = defineStore('doc', () => {
     updatePreferences,
     forkReferenceEntity,
     forkReferenceArticle,
+    forkReferencePlot,
+    forkReferenceScene,
+    forkReferenceTimeline,
     saveOfficialReferenceMaterials,
     resetToStarterExample,
     clearAllData

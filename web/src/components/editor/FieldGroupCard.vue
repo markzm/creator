@@ -3,7 +3,7 @@
     <div class="card-h" @click="toggle">
       <span class="idx">{{ String(index + 1).padStart(2, '0') }}</span>
       <h3>{{ groupTitle }}</h3>
-      <button type="button" class="clr-group" @click.stop="onClearGroup">
+      <button v-if="!readonly" type="button" class="clr-group" @click.stop="onClearGroup">
         {{ t.clearGroup }}
       </button>
       <span class="arrow">▶</span>
@@ -16,6 +16,7 @@
           :field="f"
           :model-value="data[f.id] || ''"
           :invalid="invalidFields?.has(f.id)"
+          :readonly="readonly"
           @update:model-value="(val) => onUpdateField(f.id, val)"
           @roll="(fid, isTa, append) => $emit('roll', fid, isTa, append)"
           @ai-gen="(fid, isTa, append) => $emit('aiGen', fid, isTa, append)"
@@ -41,9 +42,11 @@ const props = withDefaults(
     data: Record<string, string>;
     open?: boolean;
     invalidFields?: Set<string>;
+    readonly?: boolean;
   }>(),
   {
-    open: true
+    open: true,
+    readonly: false
   }
 );
 
@@ -77,10 +80,12 @@ function toggle() {
 }
 
 function onUpdateField(fieldId: string, val: string) {
+  if (props.readonly) return;
   emit('updateField', fieldId, val);
 }
 
 async function onClearGroup() {
+  if (props.readonly) return;
   const gname = groupTitle.value;
   if (!(await confirm(t.value.clearConfirm, t.value.clearGroupConfirm(gname)))) return;
   emit(

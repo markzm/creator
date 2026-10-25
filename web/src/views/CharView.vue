@@ -17,9 +17,9 @@
           :active-id="char.id"
           :templates="docStore.doc.templates"
           @select="docStore.selectChar"
-          @create="(tplId) => docStore.createChar(tplId)"
-          @duplicate="docStore.duplicateChar()"
-          @fork="(id) => docStore.forkReferenceEntity('char', id)"
+          @create="handleCreate"
+          @duplicate="handleDuplicate"
+          @fork="(id) => handleFork('char', id)"
           @delete="onDeleteChar"
         />
 
@@ -47,7 +47,7 @@
                   {{
                     authStore.isAdmin
                       ? tr('官方管理员编辑模式（已解锁）', 'Admin Mode (Editing Reference Material)')
-                      : tr('官方公共参考素材（查阅与引用模式）', 'Official Reference Material (Read-only)')
+                      : tr('官方公共参考素材（只读查阅与引用模式）', 'Official Reference Material (Read-only)')
                   }}
                 </strong>
                 <div style="font-size: 12px; color: var(--mu)">
@@ -72,7 +72,7 @@
                 v-else
                 type="button"
                 class="btn sm primary"
-                @click="docStore.forkReferenceEntity('char', char.id)"
+                @click="handleFork('char', char.id)"
               >
                 📑 {{ tr('复制为衍生副本 (二次创作)', 'Fork Personal Copy') }}
               </button>
@@ -82,7 +82,7 @@
           <!-- Toolbar -->
           <div class="row" style="margin: 0 0 12px">
             <button
-              v-if="!char.templateId"
+              v-if="!char.templateId && !isReadOnlyReference"
               type="button"
               class="btn sm primary"
               @click="onAutoPersona"
@@ -98,12 +98,17 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('char', charGroups)">
               🧭 {{ t.guide }}
             </button>
-            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+            <button
+              v-if="!isReadOnlyReference"
+              type="button"
+              class="btn sm primary"
+              @click="aiModalOpen = true"
+            >
               ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
             </button>
             <span class="spacer" />
             <button
-              v-if="!char.isReference || authStore.isAdmin"
+              v-if="!isReadOnlyReference"
               type="button"
               class="btn sm danger"
               @click="onClearAll"
@@ -153,6 +158,7 @@
             :data="char.data"
             :open="allOpenState"
             :invalid-fields="invalidFields"
+            :readonly="isReadOnlyReference"
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
@@ -170,6 +176,7 @@
             :custom-order="customTemplateOrder"
             prefix="CC2"
             expected-kind="char"
+            :readonly="isReadOnlyReference"
             @import-data="onImportDraftData"
           />
 
@@ -185,6 +192,7 @@
             :draft-order="charDraftOrder"
             draft-prefix="CC2"
             :show-auto-persona="!char.templateId"
+            :readonly="isReadOnlyReference"
             @validate-required="validateRequiredFields"
             @clear-all="onClearAll"
             @open-guide="uiStore.openGuide('char', charGroups)"
@@ -237,6 +245,30 @@ const { toast } = useToast();
 
 const char = computed(() => docStore.activeChar);
 const charList = computed(() => Object.values(docStore.doc.chars || {}));
+const isReadOnlyReference = computed(() => Boolean(char.value?.isReference && !authStore.isAdmin));
+
+function handleCreate(templateId?: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定素材~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.createChar(templateId);
+}
+
+function handleFork(kind: any, id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方素材至您的专属库进行二次创作~', 'Please sign in to fork official materials into your personal studio.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferenceEntity(kind, id);
+}
+
+function handleDuplicate() {
+  if (isReadOnlyReference.value) return;
+  docStore.duplicateChar();
+}
 
 const charGroups = computed(() => getCharGroups(char.value, docStore.doc.templates));
 
@@ -295,7 +327,7 @@ const {
 );
 
 function onUpdateField(fieldId: string, val: string) {
-  if (!char.value) return;
+  if (!char.value || isReadOnlyReference.value) return;
   char.value.data[fieldId] = val;
   invalidFields.value.delete(fieldId);
   docStore.syncEntityName('char', char.value);
@@ -324,7 +356,7 @@ function applyPendingRename() {
 }
 
 function onAutoPersona() {
-  if (!char.value) return;
+  if (!char.value || isReadOnlyReference.value) return;
   if (char.value.templateId) {
     toast(tr('模板角色请用模板字段自行发挥', 'Template chars not supported'), 'warn');
     return;
@@ -342,7 +374,7 @@ function onAutoPersona() {
 }
 
 function onClearGroup(fieldIds: string[]) {
-  if (!char.value) return;
+  if (!char.value || isReadOnlyReference.value) return;
   fieldIds.forEach((fid) => {
     char.value!.data[fid] = '';
   });
@@ -351,11 +383,7 @@ function onClearGroup(fieldIds: string[]) {
 }
 
 async function onClearAll() {
-  if (!char.value) return;
-  if (char.value.isReference && !authStore.isAdmin) {
-    toast('官方公共参考素材不可直接清空。如需调整，请点击「📑 复制为衍生副本」在个人库中修改~', 'warn');
-    return;
-  }
+  if (!char.value || isReadOnlyReference.value) return;
   if (!(await confirm(t.value.clearConfirm, t.value.clearAllConfirm))) return;
   char.value.data = {};
   docStore.syncEntityName('char', char.value);
@@ -387,7 +415,7 @@ async function onDeleteChar() {
 }
 
 function onApplyAIGen(content: string) {
-  if (!char.value) return;
+  if (!char.value || isReadOnlyReference.value) return;
   if (!char.value.data.personality) {
     char.value.data.personality = content;
   } else {
@@ -398,7 +426,7 @@ function onApplyAIGen(content: string) {
 }
 
 function onImportDraftData(data: Record<string, string>) {
-  if (!char.value) return;
+  if (!char.value || isReadOnlyReference.value) return;
   char.value.data = { ...data };
   docStore.syncEntityName('char', char.value);
   committedName.value = (char.value.data.name || '').trim();

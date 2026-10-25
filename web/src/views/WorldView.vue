@@ -16,9 +16,9 @@
           :items="worldList"
           :active-id="world.id"
           @select="onSelectWorld"
-          @create="docStore.createWorld()"
-          @duplicate="docStore.duplicateWorld()"
-          @fork="(id) => docStore.forkReferenceEntity('world', id)"
+          @create="handleCreate"
+          @duplicate="handleDuplicate"
+          @fork="(id) => handleFork('world', id)"
           @delete="onDeleteWorld"
         />
 
@@ -46,7 +46,7 @@
                   {{
                     authStore.isAdmin
                       ? tr('官方管理员编辑模式（已解锁）', 'Admin Mode (Editing Reference Material)')
-                      : tr('官方公共参考素材（查阅与引用模式）', 'Official Reference Material (Read-only)')
+                      : tr('官方公共参考素材（只读查阅与引用模式）', 'Official Reference Material (Read-only)')
                   }}
                 </strong>
                 <div style="font-size: 12px; color: var(--mu)">
@@ -71,7 +71,7 @@
                 v-else
                 type="button"
                 class="btn sm primary"
-                @click="docStore.forkReferenceEntity('world', world.id)"
+                @click="handleFork('world', world.id)"
               >
                 📑 {{ tr('复制为衍生副本 (二次创作)', 'Fork Personal Copy') }}
               </button>
@@ -89,12 +89,17 @@
             <button type="button" class="btn sm" @click="uiStore.openGuide('world', WG)">
               🧭 {{ t.guide }}
             </button>
-            <button type="button" class="btn sm primary" @click="aiModalOpen = true">
+            <button
+              v-if="!isReadOnlyReference"
+              type="button"
+              class="btn sm primary"
+              @click="aiModalOpen = true"
+            >
               ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
             </button>
             <span class="spacer" />
             <button
-              v-if="!world.isReference || authStore.isAdmin"
+              v-if="!isReadOnlyReference"
               type="button"
               class="btn sm danger"
               @click="onClearAll"
@@ -144,6 +149,7 @@
             :data="world.data"
             :open="allOpenState"
             :invalid-fields="invalidFields"
+            :readonly="isReadOnlyReference"
             @update-field="onUpdateField"
             @clear-group="onClearGroup"
             @roll="fillInspiration"
@@ -154,6 +160,7 @@
           <!-- Custom Inspiration Pool -->
           <CustomInspPanel
             :list="world.customInsp || []"
+            :readonly="isReadOnlyReference"
             @update:list="onUpdateCustomInsp"
           />
 
@@ -242,6 +249,7 @@
             :order="WORLD_ORDER"
             prefix="CC3W"
             expected-kind="world"
+            :readonly="isReadOnlyReference"
             @import-data="onImportDraftData"
           />
 
@@ -256,6 +264,7 @@
             :entity-name="world.data.w_name || world.name"
             :draft-order="WORLD_ORDER"
             draft-prefix="CC3W"
+            :readonly="isReadOnlyReference"
             @validate-required="validateRequiredFields"
             @clear-all="onClearAll"
             @open-guide="uiStore.openGuide('world', WG)"
@@ -307,6 +316,30 @@ const { toast } = useToast();
 
 const world = computed(() => docStore.activeWorld);
 const worldList = computed(() => Object.values(docStore.doc.worlds || {}));
+const isReadOnlyReference = computed(() => Boolean(world.value?.isReference && !authStore.isAdmin));
+
+function handleCreate() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定素材~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.createWorld();
+}
+
+function handleFork(kind: any, id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方素材至您的专属库进行二次创作~', 'Please sign in to fork official materials into your personal studio.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferenceEntity(kind, id);
+}
+
+function handleDuplicate() {
+  if (isReadOnlyReference.value) return;
+  docStore.duplicateWorld();
+}
 
 const allOpenState = ref(true);
 const relOpen = ref(false);
@@ -374,7 +407,7 @@ function onSelectWorld(id: string) {
 }
 
 function onUpdateField(fieldId: string, val: string) {
-  if (!world.value) return;
+  if (!world.value || isReadOnlyReference.value) return;
   world.value.data[fieldId] = val;
   invalidFields.value.delete(fieldId);
   docStore.syncEntityName('world', world.value);
@@ -403,7 +436,7 @@ function applyPendingRename() {
 }
 
 function onClearGroup(fieldIds: string[]) {
-  if (!world.value) return;
+  if (!world.value || isReadOnlyReference.value) return;
   fieldIds.forEach((fid) => {
     world.value!.data[fid] = '';
   });
@@ -412,11 +445,7 @@ function onClearGroup(fieldIds: string[]) {
 }
 
 async function onClearAll() {
-  if (!world.value) return;
-  if (world.value.isReference && !authStore.isAdmin) {
-    toast('官方公共参考素材不可直接清空。如需调整，请点击「📑 复制为衍生副本」在个人库中修改~', 'warn');
-    return;
-  }
+  if (!world.value || isReadOnlyReference.value) return;
   if (!(await confirm(t.value.clearConfirm, t.value.clearAllConfirm))) return;
   world.value.data = {};
   docStore.syncEntityName('world', world.value);
@@ -448,13 +477,13 @@ async function onDeleteWorld() {
 }
 
 function onUpdateCustomInsp(next: string[]) {
-  if (!world.value) return;
+  if (!world.value || isReadOnlyReference.value) return;
   world.value.customInsp = next;
   docStore.touch();
 }
 
 function onApplyAIGen(content: string) {
-  if (!world.value) return;
+  if (!world.value || isReadOnlyReference.value) return;
   if (!world.value.data.w_core) {
     world.value.data.w_core = content;
   } else {
@@ -465,7 +494,7 @@ function onApplyAIGen(content: string) {
 }
 
 function onImportDraftData(data: Record<string, string>) {
-  if (!world.value) return;
+  if (!world.value || isReadOnlyReference.value) return;
   world.value.data = { ...data };
   docStore.syncEntityName('world', world.value);
   committedName.value = (world.value.data.w_name || '').trim();

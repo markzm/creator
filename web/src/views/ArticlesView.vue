@@ -158,7 +158,7 @@
               v-else
               type="button"
               class="btn sm primary"
-              @click="docStore.forkReferenceArticle(activeArt.id)"
+              @click="handleForkArticle(activeArt.id)"
             >
               📑 {{ tr('复制为衍生副本 (继续创作)', 'Fork Personal Copy') }}
             </button>
@@ -167,10 +167,16 @@
 
         <!-- Top Toolbar -->
         <div class="row" style="margin: 0 0 12px; flex-wrap: wrap; gap: 8px">
-          <button type="button" class="btn sm primary" @click="aiWriteModalOpen = true">
+          <button
+            v-if="!isReadOnlyReference"
+            type="button"
+            class="btn sm primary"
+            @click="aiWriteModalOpen = true"
+          >
             ✨ {{ tr('AI 设定成文', 'AI Write') }}
           </button>
           <button
+            v-if="!isReadOnlyReference"
             type="button"
             class="btn sm"
             :disabled="aiStore.loading || !(activeArt.content || '').trim()"
@@ -179,6 +185,7 @@
             ✒️ {{ aiStore.loading ? tr('续写中…', 'Continuing…') : tr('AI 智能续写', 'AI Continue') }}
           </button>
           <button
+            v-if="!isReadOnlyReference"
             type="button"
             class="btn sm"
             :disabled="aiStore.loading || !(activeArt.content || '').trim()"
@@ -188,6 +195,7 @@
           </button>
           <span class="spacer" />
           <button
+            v-if="!isReadOnlyReference"
             type="button"
             class="btn sm"
             :style="{ color: activeArt.visibility === 'public' ? 'var(--ok)' : 'var(--ink2)' }"
@@ -195,7 +203,12 @@
           >
             {{ activeArt.visibility === 'public' ? '🌐 ' + tr('已公开（点击设为私有）', 'Public (Click for Private)') : '🔒 ' + tr('私有（点击公开共享）', 'Private (Click to Share)') }}
           </button>
-          <button type="button" class="btn sm" @click="onShareOrSyncToLobby">
+          <button
+            v-if="!isReadOnlyReference"
+            type="button"
+            class="btn sm"
+            @click="onShareOrSyncToLobby"
+          >
             📤 {{ tr('发布/同步大厅', 'Sync Lobby') }}
           </button>
           <button
@@ -219,14 +232,19 @@
                 v-model="activeArt.title"
                 type="text"
                 style="font-size: 15px; font-weight: 700"
-                @input="docStore.touch()"
+                :readonly="isReadOnlyReference"
+                @input="!isReadOnlyReference && docStore.touch()"
               />
             </div>
             <div>
               <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
                 {{ tr('分类', 'Category') }}
               </label>
-              <select v-model="activeArt.category" @change="docStore.touch()">
+              <select
+                v-model="activeArt.category"
+                :disabled="isReadOnlyReference"
+                @change="!isReadOnlyReference && docStore.touch()"
+              >
                 <option value="小说正文">小说正文</option>
                 <option value="设定集专题">设定集专题</option>
                 <option value="外传番外">外传番外</option>
@@ -245,7 +263,12 @@
               <!-- World Select -->
               <div style="display: flex; align-items: center; gap: 6px">
                 <span>🌍</span>
-                <select v-model="activeArt.worldId" style="font-size: 12px; padding: 2px 6px" @change="docStore.touch()">
+                <select
+                  v-model="activeArt.worldId"
+                  style="font-size: 12px; padding: 2px 6px"
+                  :disabled="isReadOnlyReference"
+                  @change="!isReadOnlyReference && docStore.touch()"
+                >
                   <option :value="undefined">{{ tr('不绑定世界观', 'No World') }}</option>
                   <option v-for="w in Object.values(docStore.doc.worlds)" :key="w.id" :value="w.id">
                     {{ w.data.w_name || w.name }} {{ w.isReference ? ' [📚 官方]' : '' }}
@@ -261,12 +284,13 @@
                   v-for="o in Object.values(docStore.doc.orgs)"
                   :key="o.id"
                   class="pill"
-                  style="cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 99px"
+                  style="font-size: 11px; padding: 2px 8px; border-radius: 99px"
                   :style="{
+                    cursor: isReadOnlyReference ? 'default' : 'pointer',
                     background: isOrgSelected(o.id) ? 'var(--ac)' : 'var(--card)',
                     color: isOrgSelected(o.id) ? '#fff' : 'var(--ink2)'
                   }"
-                  @click="toggleOrgSelect(o.id)"
+                  @click="!isReadOnlyReference && toggleOrgSelect(o.id)"
                 >
                   {{ o.data.o_name || o.name }} <small v-if="o.isReference" style="opacity: 0.8; font-size: 9px">📚</small>
                 </span>
@@ -280,12 +304,13 @@
                   v-for="c in Object.values(docStore.doc.chars)"
                   :key="c.id"
                   class="pill"
-                  style="cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 99px"
+                  style="font-size: 11px; padding: 2px 8px; border-radius: 99px"
                   :style="{
+                    cursor: isReadOnlyReference ? 'default' : 'pointer',
                     background: isCharSelected(c.id) ? 'var(--ac)' : 'var(--card)',
                     color: isCharSelected(c.id) ? '#fff' : 'var(--ink2)'
                   }"
-                  @click="toggleCharSelect(c.id)"
+                  @click="!isReadOnlyReference && toggleCharSelect(c.id)"
                 >
                   {{ c.data.name || c.name }} <small v-if="c.isReference" style="opacity: 0.8; font-size: 9px">📚</small>
                 </span>
@@ -302,7 +327,8 @@
               v-model="activeArt.summary"
               rows="2"
               :placeholder="tr('概括本章核心矛盾与看点…', 'Brief synopsis…')"
-              @input="docStore.touch()"
+              :readonly="isReadOnlyReference"
+              @input="!isReadOnlyReference && docStore.touch()"
             />
           </div>
         </div>
@@ -321,6 +347,7 @@
             rows="18"
             style="font: 14.5px/1.85 'Noto Serif SC', 'Songti SC', serif; padding: 14px 16px; border-radius: 8px"
             :placeholder="tr('从这里开始撰写你的故事，或者点上方「✨ AI 设定成文」根据设定自动撰写…', 'Start writing your story here…')"
+            :readonly="isReadOnlyReference"
             @input="onContentInput"
           />
 
@@ -417,6 +444,16 @@ function onSelectArticleItem(id: string) {
 
 const activeArt = computed(() => docStore.activeArticle);
 const articleList = computed(() => docStore.doc.articles || []);
+const isReadOnlyReference = computed(() => Boolean(activeArt.value?.isReference && !authStore.isAdmin));
+
+function handleForkArticle(id: string) {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可一键复制官方文章至您的专属库自由修改~', 'Please sign in to fork official articles.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  docStore.forkReferenceArticle(id);
+}
 
 const filteredArticles = computed(() => {
   return articleList.value.filter((a) => {
@@ -467,12 +504,17 @@ function toggleOrgSelect(orgId: string) {
 }
 
 function createNewArticle() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定与文章~', 'Please sign in to create personal materials.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
   docStore.createArticle(tr('新建文章', 'New Article'));
   toast(tr('已创建新文章', 'Article created'), 'ok');
 }
 
 function onContentInput() {
-  if (activeArt.value) {
+  if (activeArt.value && !isReadOnlyReference.value) {
     activeArt.value.wordCount = (activeArt.value.content || '').length;
     docStore.touch();
   }
@@ -530,7 +572,7 @@ function buildBoundContext(): string {
 }
 
 async function executeAIWrite() {
-  if (!activeArt.value || !aiWritePrompt.value.trim()) {
+  if (!activeArt.value || isReadOnlyReference.value || !aiWritePrompt.value.trim()) {
     toast(tr('请填写写作意图', 'Prompt required'), 'warn');
     return;
   }
@@ -552,7 +594,7 @@ async function executeAIWrite() {
 }
 
 async function onAIContinue() {
-  if (!activeArt.value || !(activeArt.value.content || '').trim()) return;
+  if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
   const context = buildBoundContext();
   toast(tr('AI 正在续写剧情…', 'AI Continuing story…'), 'ok');
   try {
@@ -572,7 +614,7 @@ async function onAIContinue() {
 }
 
 async function onAISummary() {
-  if (!activeArt.value || !(activeArt.value.content || '').trim()) return;
+  if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
   toast(tr('正在提取文章摘要…', 'Generating summary…'), 'ok');
   try {
     const res = await aiStore.generate({
@@ -588,7 +630,7 @@ async function onAISummary() {
 }
 
 async function toggleVisibility() {
-  if (!activeArt.value) return;
+  if (!activeArt.value || isReadOnlyReference.value) return;
   const next = docStore.toggleArticleVisibility(activeArt.value.id);
   toast(
     next === 'public'
@@ -606,6 +648,7 @@ async function toggleVisibility() {
 }
 
 async function onShareOrSyncToLobby() {
+  if (isReadOnlyReference.value) return;
   if (!authStore.isLoggedIn) {
     uiStore.openModal('auth');
     return;

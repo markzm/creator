@@ -25,6 +25,7 @@
         >
           <span style="flex: 1; font-size: 12.5px">{{ item }}</span>
           <span
+            v-if="!readonly"
             style="cursor: pointer; color: var(--dg); font-size: 14px"
             @click="onRemove(idx)"
           >
@@ -33,7 +34,7 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top: 10px">
+      <div v-if="!readonly" class="row" style="margin-top: 10px">
         <input
           v-model="newItem"
           type="text"
@@ -76,6 +77,7 @@ import { buildCode, parseRawCodeItems, SEP } from '../../core/draftCode';
 
 const props = defineProps<{
   list: string[];
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -92,6 +94,7 @@ const showImport = ref(false);
 const importCodeStr = ref('');
 
 function onAdd() {
+  if (props.readonly) return;
   const v = newItem.value.trim();
   if (!v) return;
   const next = [...props.list, v];
@@ -101,6 +104,7 @@ function onAdd() {
 }
 
 function onRemove(idx: number) {
+  if (props.readonly) return;
   const next = props.list.slice();
   next.splice(idx, 1);
   emit('update:list', next);

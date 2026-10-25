@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 
-export type ToastType = 'ok' | 'warn' | 'err' | '';
+export type ToastType = 'ok' | 'warn' | 'err' | 'info' | '';
 
 const toastMessage = ref('');
 const toastType = ref<ToastType>('');

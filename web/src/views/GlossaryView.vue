@@ -139,9 +139,11 @@ import {
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
 import { useAuthStore } from '../stores/auth';
+import { useUIStore } from '../stores/ui';
 
 const docStore = useDocStore();
 const authStore = useAuthStore();
+const uiStore = useUIStore();
 const { tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -186,7 +188,7 @@ async function doReplaceAll() {
   if (!ok) return;
 
   docStore.saveUndoSnapshot();
-  const res = replaceAllOccurrences(docStore.doc, from, to);
+  const res = replaceAllOccurrences(docStore.doc, from, to, !authStore.isAdmin);
   docStore.replaceDoc(res.doc, false, true);
   hasScanned.value = false;
   scanHits.value = [];
@@ -208,6 +210,11 @@ const newTerm = reactive({
 });
 
 function addTerm() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定词典~', 'Please sign in to create personal glossary terms.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
   const term = newTerm.term.trim();
   if (!term) {
     toast(tr('请填写术语名称', 'Term is required'), 'warn');

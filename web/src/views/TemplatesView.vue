@@ -10,7 +10,7 @@
       <div class="row" style="display: flex; gap: 8px; flex-wrap: wrap">
         <button class="btn sm" @click="exportAllCode">⌘ {{ tr('导出模板集码 (CC3P)', 'Export CC3P') }}</button>
         <button class="btn sm" @click="showImportModal = true">📥 {{ tr('导入模板集码', 'Import CC3P') }}</button>
-        <button class="btn sm primary" @click="openNewModal">＋ {{ t.tmplNew }}</button>
+        <button class="btn sm primary" @click="handleNewTemplate">＋ {{ t.tmplNew }}</button>
       </div>
     </div>
 
@@ -23,7 +23,7 @@
       >
         <div>
           <button
-            v-if="!tpl.builtin"
+            v-if="(!tpl.builtin && !tpl.isReference) || authStore.isAdmin"
             class="btn sm icon danger"
             style="position: absolute; top: 12px; right: 12px"
             @click="deleteTpl(tpl.id, tpl.name)"
@@ -107,12 +107,25 @@ import { buildCode, parseRawCodeItems } from '../core/draftCode';
 import type { TemplateDef } from '../core/schema/types';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
+import { useUIStore } from '../stores/ui';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
+const uiStore = useUIStore();
 const router = useRouter();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
+
+function handleNewTemplate() {
+  if (!authStore.isLoggedIn) {
+    toast(tr('请先登录个人账号，登录后即可自由创建与管理您的专属设定模板~', 'Please sign in to create personal templates.'), 'info');
+    uiStore.openModal('auth');
+    return;
+  }
+  openNewModal();
+}
 
 const templatesList = computed(() => Object.values(docStore.doc.templates || {}));
 
@@ -160,6 +173,11 @@ function createTemplate() {
 }
 
 async function deleteTpl(id: string, name: string) {
+  const tpl = docStore.doc.templates[id];
+  if ((tpl?.builtin || tpl?.isReference) && !authStore.isAdmin) {
+    toast('官方公共参考素材不可直接删除~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, t.value.tmplDelConfirm(name)))) return;
   delete docStore.doc.templates[id];
   docStore.touch(true);

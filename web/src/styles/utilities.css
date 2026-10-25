@@ -487,6 +487,10 @@
   background: linear-gradient(135deg, #d97706, #f59e0b);
 }
 
+.toast.info {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+}
+
 .toast.err {
   background: linear-gradient(135deg, #dc2626, #ef4444);
 }
