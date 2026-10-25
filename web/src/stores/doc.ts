@@ -23,8 +23,73 @@ import {
   saveDocToIDB,
   subscribeMultiTabSync
 } from '../data/repo';
+import { useAuthStore } from './auth';
+import { useToast } from '../composables/useToast';
+import { api } from '../data/api';
+
+const GENTLE_REF_MSG = '此条目为官方公共参考素材，仅供大家查阅与引用。如需在此基础上修改或创作，请点击「📑 复制为衍生副本」即可在您的专属库中自由调整~';
+
+function mergeReferenceMaterials(target: DocV6, refDoc: DocV6) {
+  // Worlds
+  for (const [id, w] of Object.entries(refDoc.worlds || {})) {
+    if (w.isReference && !target.worlds[id]) {
+      target.worlds[id] = w;
+    }
+  }
+  // Orgs
+  for (const [id, o] of Object.entries(refDoc.orgs || {})) {
+    if (o.isReference && !target.orgs[id]) {
+      target.orgs[id] = o;
+    }
+  }
+  // Chars
+  for (const [id, c] of Object.entries(refDoc.chars || {})) {
+    if (c.isReference && !target.chars[id]) {
+      target.chars[id] = c;
+    }
+  }
+  // Templates
+  for (const [id, t] of Object.entries(refDoc.templates || {})) {
+    if (t.isReference && !target.templates[id]) {
+      target.templates[id] = t;
+    }
+  }
+  // Timeline
+  for (const item of refDoc.timeline || []) {
+    if (item.isReference && !target.timeline.some((x) => x.id === item.id)) {
+      target.timeline.push(item);
+    }
+  }
+  // Plots
+  for (const item of refDoc.plots || []) {
+    if (item.isReference && !target.plots.some((x) => x.id === item.id)) {
+      target.plots.push(item);
+    }
+  }
+  // Scenes
+  for (const item of refDoc.scenes || []) {
+    if (item.isReference && !target.scenes.some((x) => x.id === item.id)) {
+      target.scenes.push(item);
+    }
+  }
+  // Glossary
+  for (const item of refDoc.glossary || []) {
+    if (item.isReference && !target.glossary.some((x) => x.id === item.id)) {
+      target.glossary.push(item);
+    }
+  }
+  // Articles
+  if (!target.articles) target.articles = [];
+  for (const item of refDoc.articles || []) {
+    if (item.isReference && !target.articles.some((x) => x.id === item.id)) {
+      target.articles.push(item);
+    }
+  }
+}
 
 export const useDocStore = defineStore('doc', () => {
+  const authStore = useAuthStore();
+  const { toast } = useToast();
   const doc = ref<DocV6>(createEmptyDocV6());
   const ready = ref(false);
   const saving = ref(false);
@@ -91,12 +156,27 @@ export const useDocStore = defineStore('doc', () => {
     ready.value = true;
     lastSavedAt.value = Date.now();
 
+    void fetchAndMergeReferenceMaterials();
+
     if (unsubMultiTab) unsubMultiTab();
     unsubMultiTab = subscribeMultiTabSync((externalDoc) => {
       doc.value = migrateToV6(externalDoc);
       ensureActiveIds();
       lastSavedAt.value = Date.now();
     });
+  }
+
+  async function fetchAndMergeReferenceMaterials() {
+    try {
+      const refDoc = await api.getReferenceMaterials();
+      if (refDoc && typeof refDoc === 'object' && (refDoc.worlds || refDoc.chars || refDoc.orgs)) {
+        mergeReferenceMaterials(doc.value, refDoc);
+        ensureActiveIds();
+        touch(false, false);
+      }
+    } catch {
+      // Ignore network errors
+    }
   }
 
   function ensureActiveIds() {
@@ -255,6 +335,11 @@ export const useDocStore = defineStore('doc', () => {
   function deleteWorld(targetId?: string): boolean {
     const id = targetId || doc.value.ui.activeW;
     if (!id || Object.keys(doc.value.worlds).length <= 1) return false;
+    const ent = doc.value.worlds[id];
+    if (ent?.isReference && !authStore.isAdmin) {
+      toast(GENTLE_REF_MSG, 'warn');
+      return false;
+    }
     delete doc.value.worlds[id];
     ensureActiveIds();
     touch(true);
@@ -308,6 +393,11 @@ export const useDocStore = defineStore('doc', () => {
   function deleteOrg(targetId?: string): boolean {
     const id = targetId || doc.value.ui.activeO;
     if (!id || Object.keys(doc.value.orgs).length <= 1) return false;
+    const ent = doc.value.orgs[id];
+    if (ent?.isReference && !authStore.isAdmin) {
+      toast(GENTLE_REF_MSG, 'warn');
+      return false;
+    }
     delete doc.value.orgs[id];
     ensureActiveIds();
     touch(true);
@@ -363,6 +453,11 @@ export const useDocStore = defineStore('doc', () => {
   function deleteChar(targetId?: string): boolean {
     const id = targetId || doc.value.ui.activeC;
     if (!id || Object.keys(doc.value.chars).length <= 1) return false;
+    const ent = doc.value.chars[id];
+    if (ent?.isReference && !authStore.isAdmin) {
+      toast(GENTLE_REF_MSG, 'warn');
+      return false;
+    }
     delete doc.value.chars[id];
     ensureActiveIds();
     touch(true);
@@ -431,6 +526,11 @@ export const useDocStore = defineStore('doc', () => {
 
   function deleteArticle(id: string): boolean {
     if (!doc.value.articles) return false;
+    const found = doc.value.articles.find((a) => a.id === id);
+    if (found?.isReference && !authStore.isAdmin) {
+      toast(GENTLE_REF_MSG, 'warn');
+      return false;
+    }
     const prevLen = doc.value.articles.length;
     doc.value.articles = doc.value.articles.filter((a) => a.id !== id);
     if (doc.value.articles.length !== prevLen) {
@@ -492,6 +592,120 @@ export const useDocStore = defineStore('doc', () => {
     touch(true);
   }
 
+  function forkReferenceEntity(kind: EntityKind, sourceId: string): BaseEntity | null {
+    const now = Date.now();
+    if (kind === 'world') {
+      const src = doc.value.worlds[sourceId];
+      if (!src) return null;
+      const id = uid('wd_');
+      const copyName = (src.name || T.zh.unnamed) + ' (衍生副本)';
+      const w: WorldEntity = {
+        id,
+        name: copyName,
+        isReference: false,
+        visibility: 'private',
+        customInsp: [...(src.customInsp || [])],
+        data: {
+          ...src.data,
+          w_name: copyName
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+      doc.value.worlds[id] = w;
+      doc.value.ui.activeW = id;
+      touch(true);
+      toast('已复制为您的专属副本，您现在可以自由修改~', 'ok');
+      return w;
+    } else if (kind === 'org') {
+      const src = doc.value.orgs[sourceId];
+      if (!src) return null;
+      const id = uid('og_');
+      const copyName = (src.name || T.zh.unnamed) + ' (衍生副本)';
+      const o: OrgEntity = {
+        id,
+        name: copyName,
+        isReference: false,
+        visibility: 'private',
+        data: {
+          ...src.data,
+          o_name: copyName
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+      doc.value.orgs[id] = o;
+      doc.value.ui.activeO = id;
+      touch(true);
+      toast('已复制为您的专属副本，您现在可以自由修改~', 'ok');
+      return o;
+    } else if (kind === 'char') {
+      const src = doc.value.chars[sourceId];
+      if (!src) return null;
+      const id = uid('ch_');
+      const copyName = (src.name || T.zh.unnamed) + ' (衍生副本)';
+      const c: CharEntity = {
+        id,
+        name: copyName,
+        isReference: false,
+        visibility: 'private',
+        templateId: src.templateId,
+        data: {
+          ...src.data,
+          name: copyName
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+      doc.value.chars[id] = c;
+      doc.value.ui.activeC = id;
+      touch(true);
+      toast('已复制为您的专属副本，您现在可以自由修改~', 'ok');
+      return c;
+    }
+    return null;
+  }
+
+  function forkReferenceArticle(sourceId: string): ArticleItem | null {
+    const src = (doc.value.articles || []).find((a) => a.id === sourceId);
+    if (!src) return null;
+    const id = uid('art_');
+    const now = Date.now();
+    const art: ArticleItem = {
+      ...JSON.parse(JSON.stringify(src)),
+      id,
+      title: src.title + ' (衍生副本)',
+      isReference: false,
+      visibility: 'private',
+      shareId: undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!doc.value.articles) doc.value.articles = [];
+    doc.value.articles.unshift(art);
+    doc.value.ui.activeArticle = id;
+    touch(true);
+    toast('已复制为您的个人文章草稿，可自由编辑与续写~', 'ok');
+    return art;
+  }
+
+  async function saveOfficialReferenceMaterials(): Promise<boolean> {
+    if (!authStore.isAdmin) {
+      toast('只有网站管理员才有权限保存官方公共素材', 'err');
+      return false;
+    }
+    try {
+      toast('正在保存全站官方公共参考素材…', 'ok');
+      const refDoc: DocV6 = JSON.parse(JSON.stringify(doc.value));
+      const res = await api.updateReferenceMaterials(refDoc);
+      toast(res.message || '官方公共素材已更新 ✓', 'ok');
+      return true;
+    } catch (err: any) {
+      toast(err?.message || '保存失败', 'err');
+      return false;
+    }
+  }
+
   function clearAllData() {
     saveUndoSnapshot();
     const empty = createEmptyDocV6();
@@ -539,6 +753,9 @@ export const useDocStore = defineStore('doc', () => {
     updateArticle,
     toggleArticleVisibility,
     updatePreferences,
+    forkReferenceEntity,
+    forkReferenceArticle,
+    saveOfficialReferenceMaterials,
     resetToStarterExample,
     clearAllData
   };

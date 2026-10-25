@@ -161,6 +161,9 @@ export function migrateToV6(
         name: String(data.w_name || val.name || T.zh.unnamed),
         data,
         customInsp: Array.isArray(val.customInsp) ? val.customInsp.map(String) : [],
+        ...(val.isReference ? { isReference: true } : {}),
+        ...(val.visibility ? { visibility: val.visibility } : {}),
+        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
         createdAt,
         updatedAt
       };
@@ -179,6 +182,9 @@ export function migrateToV6(
         id,
         name: String(data.o_name || val.name || T.zh.unnamed),
         data,
+        ...(val.isReference ? { isReference: true } : {}),
+        ...(val.visibility ? { visibility: val.visibility } : {}),
+        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
         createdAt,
         updatedAt
       };
@@ -197,6 +203,9 @@ export function migrateToV6(
         id,
         name: String(data.name || val.name || T.zh.unnamed),
         data,
+        ...(val.isReference ? { isReference: true } : {}),
+        ...(val.visibility ? { visibility: val.visibility } : {}),
+        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
         createdAt,
         updatedAt
       };
@@ -224,6 +233,7 @@ export function migrateToV6(
         ...(val.enDesc ? { enDesc: String(val.enDesc) } : {}),
         fields: Array.isArray(val.fields) ? val.fields.map(String) : [],
         builtin: Boolean(val.builtin),
+        ...(val.isReference ? { isReference: true } : {}),
         updatedAt: typeof val.updatedAt === 'number' ? val.updatedAt : now
       };
     }
@@ -251,6 +261,7 @@ export function migrateToV6(
         ...(item.chars ? { chars: String(item.chars) } : {}),
         ...(item.desc !== undefined ? { desc: String(item.desc) } : {}),
         ...(item.link !== undefined ? { link: String(item.link) } : {}),
+        ...(item.isReference ? { isReference: true } : {}),
         src: item.src || 'manual',
         updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : now
       };
@@ -294,6 +305,7 @@ export function migrateToV6(
         id: String(p.id || uidFn('pl_')),
         title: String(p.title || T.zh.unnamed),
         ...(p.note !== undefined ? { note: String(p.note) } : {}),
+        ...(p.isReference ? { isReference: true } : {}),
         acts,
         updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : now
       });
@@ -316,6 +328,7 @@ export function migrateToV6(
         ...(s.mood !== undefined ? { mood: String(s.mood) } : {}),
         ...(purpose !== undefined ? { purpose: String(purpose), conflict: String(purpose) } : {}),
         ...(beat !== undefined ? { beat: String(beat), note: String(beat) } : {}),
+        ...(s.isReference ? { isReference: true } : {}),
         status: s.status === '写作中' || s.status === '已完成' ? s.status : '未写',
         updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : now
       });
@@ -333,6 +346,7 @@ export function migrateToV6(
         term: String(g.term || ''),
         ...(cat !== undefined ? { cat: String(cat), std: String(cat) } : {}),
         ...(def !== undefined ? { def: String(def), note: String(def) } : {}),
+        ...(g.isReference ? { isReference: true } : {}),
         updatedAt: typeof g.updatedAt === 'number' ? g.updatedAt : now
       });
     }
@@ -369,6 +383,7 @@ export function migrateToV6(
         charIds: Array.isArray(a.charIds) ? a.charIds.map(String) : [],
         visibility: a.visibility === 'public' ? 'public' : 'private',
         shareId: a.shareId ? String(a.shareId) : undefined,
+        ...(a.isReference ? { isReference: true } : {}),
         wordCount: typeof a.wordCount === 'number' ? a.wordCount : content.length,
         createdAt: typeof a.createdAt === 'number' ? a.createdAt : now,
         updatedAt: typeof a.updatedAt === 'number' ? a.updatedAt : now

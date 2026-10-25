@@ -155,6 +155,10 @@ export function mergeBackupIntoDoc(
   mergeById(next.plots, incomingV6.plots);
   mergeById(next.scenes, incomingV6.scenes);
   mergeById(next.glossary, incomingV6.glossary);
+  if (incomingV6.articles) {
+    if (!next.articles) next.articles = [];
+    mergeById(next.articles, incomingV6.articles);
+  }
 
   incomingV6.stats.forEach((s) => {
     if (!next.stats.some((y) => y.date === s.date)) {

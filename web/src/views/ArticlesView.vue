@@ -68,12 +68,21 @@
               @click="onSelectArticleItem(a.id)"
             >
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px">
-                <span
-                  class="pill"
-                  style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--soft)"
-                >
-                  {{ a.category }}
-                </span>
+                <div style="display: flex; gap: 4px; align-items: center">
+                  <span
+                    class="pill"
+                    style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--soft)"
+                  >
+                    {{ a.category }}
+                  </span>
+                  <span
+                    v-if="a.isReference"
+                    class="pill"
+                    style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--acs); color: var(--ac); font-weight: 700"
+                  >
+                    📚 {{ tr('官方', 'Official') }}
+                  </span>
+                </div>
                 <span
                   class="pill"
                   :style="{
@@ -101,6 +110,61 @@
 
       <!-- Right Main: Article Editor -->
       <div v-if="activeArt">
+        <!-- Reference Material Status Banner -->
+        <div
+          v-if="activeArt.isReference"
+          class="card open"
+          style="
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            background: var(--acs);
+            border-color: var(--ac);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+          "
+        >
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="font-size: 18px">{{ authStore.isAdmin ? '👑' : '📚' }}</span>
+            <div>
+              <strong>
+                {{
+                  authStore.isAdmin
+                    ? tr('官方管理员编辑模式（已解锁）', 'Admin Mode (Editing Official Article)')
+                    : tr('官方公共示范章节（查阅与参考模式）', 'Official Reference Article (Read-only)')
+                }}
+              </strong>
+              <div style="font-size: 12px; color: var(--mu)">
+                {{
+                  authStore.isAdmin
+                    ? tr('您正以网站管理员身份修改全站示范文章，保存后将同步至全站。', 'You are editing official materials as admin.')
+                    : tr('此条目为官方示范章节，仅供查阅。如需在此基础上续写或修改，请点击右侧按钮复制为衍生副本~', 'Official reference. Click to fork a personal editable copy.')
+                }}
+              </div>
+            </div>
+          </div>
+          <div>
+            <button
+              v-if="authStore.isAdmin"
+              type="button"
+              class="btn sm primary"
+              @click="docStore.saveOfficialReferenceMaterials()"
+            >
+              💾 {{ tr('保存为全站最新公共素材', 'Save to Server') }}
+            </button>
+            <button
+              v-else
+              type="button"
+              class="btn sm primary"
+              @click="docStore.forkReferenceArticle(activeArt.id)"
+            >
+              📑 {{ tr('复制为衍生副本 (继续创作)', 'Fork Personal Copy') }}
+            </button>
+          </div>
+        </div>
+
         <!-- Top Toolbar -->
         <div class="row" style="margin: 0 0 12px; flex-wrap: wrap; gap: 8px">
           <button type="button" class="btn sm primary" @click="aiWriteModalOpen = true">
@@ -134,7 +198,12 @@
           <button type="button" class="btn sm" @click="onShareOrSyncToLobby">
             📤 {{ tr('发布/同步大厅', 'Sync Lobby') }}
           </button>
-          <button type="button" class="btn sm icon danger" @click="deleteCurrent">
+          <button
+            v-if="!activeArt.isReference || authStore.isAdmin"
+            type="button"
+            class="btn sm icon danger"
+            @click="deleteCurrent"
+          >
             ✕
           </button>
         </div>
@@ -179,13 +248,32 @@
                 <select v-model="activeArt.worldId" style="font-size: 12px; padding: 2px 6px" @change="docStore.touch()">
                   <option :value="undefined">{{ tr('不绑定世界观', 'No World') }}</option>
                   <option v-for="w in Object.values(docStore.doc.worlds)" :key="w.id" :value="w.id">
-                    {{ w.data.w_name || w.name }}
+                    {{ w.data.w_name || w.name }} {{ w.isReference ? ' [📚 官方]' : '' }}
                   </option>
                 </select>
               </div>
 
+              <!-- Org Select -->
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+                <span>🏛️</span>
+                <span style="color: var(--mu)">{{ tr('关联组织:', 'Orgs:') }}</span>
+                <span
+                  v-for="o in Object.values(docStore.doc.orgs)"
+                  :key="o.id"
+                  class="pill"
+                  style="cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 99px"
+                  :style="{
+                    background: isOrgSelected(o.id) ? 'var(--ac)' : 'var(--card)',
+                    color: isOrgSelected(o.id) ? '#fff' : 'var(--ink2)'
+                  }"
+                  @click="toggleOrgSelect(o.id)"
+                >
+                  {{ o.data.o_name || o.name }} <small v-if="o.isReference" style="opacity: 0.8; font-size: 9px">📚</small>
+                </span>
+              </div>
+
               <!-- Char Select -->
-              <div style="display: flex; align-items: center; gap: 6px">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
                 <span>👤</span>
                 <span style="color: var(--mu)">{{ tr('出场角色:', 'Chars:') }}</span>
                 <span
@@ -199,7 +287,7 @@
                   }"
                   @click="toggleCharSelect(c.id)"
                 >
-                  {{ c.data.name || c.name }}
+                  {{ c.data.name || c.name }} <small v-if="c.isReference" style="opacity: 0.8; font-size: 9px">📚</small>
                 </span>
               </div>
             </div>
@@ -362,6 +450,22 @@ function toggleCharSelect(charId: string) {
   docStore.touch();
 }
 
+function isOrgSelected(orgId: string): boolean {
+  return Boolean(activeArt.value?.orgIds?.includes(orgId));
+}
+
+function toggleOrgSelect(orgId: string) {
+  if (!activeArt.value) return;
+  if (!activeArt.value.orgIds) activeArt.value.orgIds = [];
+  const idx = activeArt.value.orgIds.indexOf(orgId);
+  if (idx >= 0) {
+    activeArt.value.orgIds.splice(idx, 1);
+  } else {
+    activeArt.value.orgIds.push(orgId);
+  }
+  docStore.touch();
+}
+
 function createNewArticle() {
   docStore.createArticle(tr('新建文章', 'New Article'));
   toast(tr('已创建新文章', 'Article created'), 'ok');
@@ -398,6 +502,17 @@ function buildBoundContext(): string {
     if (w.data.w_core) lines.push(`核心法则: ${w.data.w_core}`);
     if (w.data.w_power_system) lines.push(`力量体系: ${w.data.w_power_system}`);
     if (w.data.w_era) lines.push(`纪元历史: ${w.data.w_era}`);
+  }
+
+  // Organization contexts
+  if (activeArt.value.orgIds && activeArt.value.orgIds.length) {
+    lines.push('【关联组织/势力】:');
+    activeArt.value.orgIds.forEach((oid) => {
+      const o = docStore.doc.orgs[oid];
+      if (o) {
+        lines.push(`- 组织名: ${o.data.o_name || o.name}, 类型: ${o.data.o_type || ''}, 宗旨/格言: ${o.data.o_creed_line || o.data.o_core || ''}`);
+      }
+    });
   }
 
   // Character contexts
@@ -542,6 +657,10 @@ function downloadMarkdown() {
 
 async function deleteCurrent() {
   if (!activeArt.value) return;
+  if (activeArt.value.isReference && !authStore.isAdmin) {
+    docStore.deleteArticle(activeArt.value.id);
+    return;
+  }
   const title = activeArt.value.title || tr('未命名文章', 'Untitled');
   if (!(await confirm(t.value.delConfirm, tr(`确定删除文章「${title}」？`, `Delete "${title}"?`)))) {
     return;

@@ -229,6 +229,22 @@ func (s *Store) SetUserDisabled(ctx context.Context, email string, disabled bool
 	return nil
 }
 
+func (s *Store) SetUserAdmin(ctx context.Context, email string, isAdmin bool) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	val := 0
+	if isAdmin {
+		val = 1
+	}
+	res, err := s.WriteDB.ExecContext(ctx, `UPDATE users SET is_admin = ?, updated_at = ? WHERE email = ?`, val, time.Now().Unix(), email)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.ReadDB.QueryContext(ctx, `
 		SELECT id, email, nickname, avatar_url, bio, last_seen_at, is_admin, is_disabled, created_at

@@ -19,10 +19,66 @@
           @select="docStore.selectChar"
           @create="(tplId) => docStore.createChar(tplId)"
           @duplicate="docStore.duplicateChar()"
+          @fork="(id) => docStore.forkReferenceEntity('char', id)"
           @delete="onDeleteChar"
         />
 
         <div>
+          <!-- Reference Material Status Banner -->
+          <div
+            v-if="char.isReference"
+            class="card open"
+            style="
+              padding: 12px 16px;
+              margin-bottom: 12px;
+              background: var(--acs);
+              border-color: var(--ac);
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 10px;
+              flex-wrap: wrap;
+            "
+          >
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 18px">{{ authStore.isAdmin ? '👑' : '📚' }}</span>
+              <div>
+                <strong>
+                  {{
+                    authStore.isAdmin
+                      ? tr('官方管理员编辑模式（已解锁）', 'Admin Mode (Editing Reference Material)')
+                      : tr('官方公共参考素材（查阅与引用模式）', 'Official Reference Material (Read-only)')
+                  }}
+                </strong>
+                <div style="font-size: 12px; color: var(--mu)">
+                  {{
+                    authStore.isAdmin
+                      ? tr('您正以网站管理员身份修改全站示范角色，保存后将同步至全站。', 'You are editing official materials as admin.')
+                      : tr('此条目为官方公共参考素材，仅供大家查阅与引用。如需在此基础上修改或创作，请点击「📑 复制为衍生副本」即可在您的专属库中自由调整~', 'Official reference. Click to fork a personal editable copy.')
+                  }}
+                </div>
+              </div>
+            </div>
+            <div>
+              <button
+                v-if="authStore.isAdmin"
+                type="button"
+                class="btn sm primary"
+                @click="docStore.saveOfficialReferenceMaterials()"
+              >
+                💾 {{ tr('保存为全站最新公共素材', 'Save to Server') }}
+              </button>
+              <button
+                v-else
+                type="button"
+                class="btn sm primary"
+                @click="docStore.forkReferenceEntity('char', char.id)"
+              >
+                📑 {{ tr('复制为衍生副本 (二次创作)', 'Fork Personal Copy') }}
+              </button>
+            </div>
+          </div>
+
           <!-- Toolbar -->
           <div class="row" style="margin: 0 0 12px">
             <button
@@ -46,7 +102,12 @@
               ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
             </button>
             <span class="spacer" />
-            <button type="button" class="btn sm danger" @click="onClearAll">
+            <button
+              v-if="!char.isReference || authStore.isAdmin"
+              type="button"
+              class="btn sm danger"
+              @click="onClearAll"
+            >
               {{ t.clear }}
             </button>
           </div>
@@ -164,9 +225,11 @@ import { CHAR_ORDER } from '../core/legacy/fields';
 import { generateRandomPersona } from '../core/persona';
 import { useDocStore } from '../stores/doc';
 import { useUIStore } from '../stores/ui';
+import { useAuthStore } from '../stores/auth';
 
 const docStore = useDocStore();
 const uiStore = useUIStore();
+const authStore = useAuthStore();
 const route = useRoute();
 const { t, tr } = useI18n();
 const { confirm } = useConfirm();
@@ -289,6 +352,10 @@ function onClearGroup(fieldIds: string[]) {
 
 async function onClearAll() {
   if (!char.value) return;
+  if (char.value.isReference && !authStore.isAdmin) {
+    toast('官方公共参考素材不可直接清空。如需调整，请点击「📑 复制为衍生副本」在个人库中修改~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.clearConfirm, t.value.clearAllConfirm))) return;
   char.value.data = {};
   docStore.syncEntityName('char', char.value);
@@ -298,6 +365,10 @@ async function onClearAll() {
 
 async function onDeleteChar() {
   if (!char.value) return;
+  if (char.value.isReference && !authStore.isAdmin) {
+    docStore.deleteChar(char.value.id);
+    return;
+  }
   if (charList.value.length <= 1) {
     toast(tr('至少保留一个角色', 'Keep at least one character'), 'warn');
     return;

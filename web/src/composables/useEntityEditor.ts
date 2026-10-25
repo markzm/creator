@@ -91,6 +91,22 @@ export function useEntityEditor(
     const label = fieldDef?.l || fieldId;
     const cur = (ent.data[fieldId] || '').trim();
     toast(tr(`正在请求 AI 生成「${label}」…`, `AI generating ${label}…`), 'ok');
+
+    // Build rich context anchor so AI has solid grounding
+    let contextStr = '';
+    const activeWorld = docStore.activeWorld;
+    if (activeWorld && activeWorld.name) {
+      contextStr += `所属世界观：${activeWorld.name}`;
+      if (activeWorld.data?.w_type) contextStr += `（类型：${activeWorld.data.w_type}）`;
+      if (activeWorld.data?.w_era) contextStr += `，纪元：${activeWorld.data.w_era}`;
+      contextStr += '\n';
+    }
+    if (kind === 'char' && docStore.activeOrg?.name) {
+      contextStr += `所属组织：${docStore.activeOrg.name}`;
+      if (docStore.activeOrg.data?.o_type) contextStr += `（${docStore.activeOrg.data.o_type}）`;
+      contextStr += '\n';
+    }
+
     try {
       const res = await aiStore.generate({
         task: 'field_gen',
@@ -98,7 +114,8 @@ export function useEntityEditor(
         fieldLabel: label,
         entityKind: kind,
         entityData: ent.data,
-        currentText: cur
+        currentText: cur,
+        context: contextStr.trim()
       });
       const generated = res.content.trim();
       if (!generated) return false;

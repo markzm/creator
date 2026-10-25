@@ -15,6 +15,7 @@ export function createStarterExampleDoc(): DocV6 {
     [wId]: {
       id: wId,
       name: '星渊群岛',
+      isReference: true,
       customInsp: ['以太洋流', '蒸汽飞空艇', '星核裂隙', '遗忘巨像', '失落星图'],
       visibility: 'public',
       createdAt: now,
@@ -40,6 +41,7 @@ export function createStarterExampleDoc(): DocV6 {
     [oId]: {
       id: oId,
       name: '观星塔学会',
+      isReference: true,
       visibility: 'public',
       createdAt: now,
       updatedAt: now,
@@ -62,6 +64,7 @@ export function createStarterExampleDoc(): DocV6 {
     [c1Id]: {
       id: c1Id,
       name: '林汐',
+      isReference: true,
       visibility: 'public',
       createdAt: now,
       updatedAt: now,
@@ -88,6 +91,7 @@ export function createStarterExampleDoc(): DocV6 {
     [c2Id]: {
       id: c2Id,
       name: '怀特·克劳',
+      isReference: true,
       visibility: 'public',
       createdAt: now,
       updatedAt: now,
@@ -136,6 +140,7 @@ export function createStarterExampleDoc(): DocV6 {
       orgIds: [oId],
       charIds: [c1Id, c2Id],
       visibility: 'public',
+      isReference: true,
       wordCount: 685,
       createdAt: now,
       updatedAt: now
@@ -147,6 +152,7 @@ export function createStarterExampleDoc(): DocV6 {
       id: 'pl_vol1',
       title: '第一卷 · 雾海灯塔之谜',
       note: '讲述破晓号发现失落以太灯塔，引来多方势力追逐的冒险。',
+      isReference: true,
       acts: [
         {
           id: 'at_act1',

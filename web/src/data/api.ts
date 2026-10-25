@@ -6,6 +6,7 @@ export interface AuthUser {
   name: string;
   avatar: string;
   bio: string;
+  isAdmin?: boolean;
   customPrefs?: StudioPreferences;
   lastSeenAt?: number;
   createdAt?: number;
@@ -380,6 +381,18 @@ export const api = {
     return requestJson<{ ok: boolean }>('/api/me/ai-config', {
       method: 'PUT',
       body: JSON.stringify(payload)
+    });
+  },
+
+  // Reference Materials
+  getReferenceMaterials(): Promise<DocV6 | null> {
+    return requestJson<DocV6 | null>('/api/reference-materials').catch(() => null);
+  },
+
+  updateReferenceMaterials(doc: DocV6): Promise<{ status: string; message: string }> {
+    return requestJson<{ status: string; message: string }>('/api/admin/reference-materials', {
+      method: 'PUT',
+      body: JSON.stringify(doc)
     });
   }
 };

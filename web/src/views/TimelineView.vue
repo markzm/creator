@@ -46,6 +46,13 @@
             <strong style="font-size: 14.5px">
               <WikiText :text="ev.name" />
             </strong>
+            <span
+              v-if="ev.isReference"
+              class="pill"
+              style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700"
+            >
+              📚 {{ tr('官方', 'Official') }}
+            </span>
             <span class="pill" style="font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--li2); color: var(--mu)">
               {{ ev.source }}
             </span>
@@ -58,8 +65,8 @@
           </p>
         </div>
         <div v-if="ev.source === '独立' && ev.id" style="display: flex; gap: 6px">
-          <button class="btn sm" @click="openEventModal(ev.id)">{{ tr('编辑', 'Edit') }}</button>
-          <button class="btn sm icon danger" @click="deleteManualEvent(ev.id)">✕</button>
+          <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm" @click="openEventModal(ev.id)">{{ tr('编辑', 'Edit') }}</button>
+          <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteManualEvent(ev.id)">✕</button>
         </div>
       </div>
     </div>
@@ -120,8 +127,10 @@ import { buildCode, parseRawCodeItems } from '../core/draftCode';
 import { collectAllEvents, parseYear } from '../core/timeline';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -210,6 +219,11 @@ function saveManualEvent() {
 }
 
 async function deleteManualEvent(id: string) {
+  const ev = docStore.doc.timeline.find((x) => x.id === id);
+  if (ev?.isReference && !authStore.isAdmin) {
+    toast('此条目为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, tr('确定删除这条时间线事件？', 'Delete this event?')))) return;
   docStore.doc.timeline = docStore.doc.timeline.filter((x) => x.id !== id);
   docStore.touch(true);

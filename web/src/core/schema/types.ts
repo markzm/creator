@@ -6,6 +6,7 @@ export interface BaseEntity {
   data: Record<string, string>;
   visibility?: 'private' | 'public';
   shareId?: string;
+  isReference?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -28,6 +29,7 @@ export interface TemplateDef {
   enDesc?: string;
   fields: string[];
   builtin?: boolean;
+  isReference?: boolean;
   updatedAt?: number;
 }
 
@@ -42,6 +44,7 @@ export interface TimelineEvent {
   desc?: string;
   link?: string;
   src?: 'manual' | 'world' | 'org' | 'char';
+  isReference?: boolean;
   updatedAt?: number;
 }
 
@@ -71,6 +74,7 @@ export interface PlotVolume {
   title: string;
   note?: string;
   acts: PlotAct[];
+  isReference?: boolean;
   updatedAt?: number;
 }
 
@@ -87,6 +91,7 @@ export interface SceneCard {
   beat?: string;
   note?: string;
   status?: ChapterStatus;
+  isReference?: boolean;
   updatedAt?: number;
 }
 
@@ -97,6 +102,7 @@ export interface GlossaryItem {
   std?: string;
   def?: string;
   note?: string;
+  isReference?: boolean;
   updatedAt?: number;
 }
 
@@ -119,6 +125,7 @@ export interface ArticleItem {
   charIds?: string[];
   visibility: 'private' | 'public';
   shareId?: string;
+  isReference?: boolean;
   wordCount: number;
   createdAt: number;
   updatedAt: number;

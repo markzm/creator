@@ -61,7 +61,7 @@ func Load() *Config {
 
 	smtpPort, _ := strconv.Atoi(envOr("SMTP_PORT", "587"))
 
-	modelsStr := envOr("OPENROUTER_FREE_MODELS", "deepseek/deepseek-chat-v3-0324:free,qwen/qwen3-235b-a22b:free,google/gemini-2.0-flash-exp:free,meta-llama/llama-3.3-70b-instruct:free,openrouter/free")
+	modelsStr := envOr("OPENROUTER_FREE_MODELS", envOr("OPENROUTER_MODELS", "openrouter/free,nvidia/nemotron-3-ultra-550b-a55b:free,nvidia/nemotron-3.5-lightning:free,google/gemini-2.0-flash-exp:free,meta-llama/llama-3.3-70b-instruct:free"))
 	var models []string
 	for _, m := range strings.Split(modelsStr, ",") {
 		m = strings.TrimSpace(m)

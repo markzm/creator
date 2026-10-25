@@ -18,10 +18,19 @@
     <div v-for="(vol, vi) in docStore.doc.plots" :key="vol.id" class="card open" style="margin-bottom: 14px">
       <div class="card-h" style="display: flex; align-items: center; gap: 10px">
         <span class="idx">{{ tr(`卷${vi + 1}`, `Vol ${vi + 1}`) }}</span>
-        <h3 style="flex: 1; margin: 0">{{ vol.title || tr('未命名', 'Untitled') }}</h3>
-        <button class="btn sm" @click="openVolModal(vol)">{{ tr('重命名', 'Rename') }}</button>
-        <button class="btn sm" @click="openActModal(vol)">＋ {{ tr('添加幕', 'Add Act') }}</button>
-        <button class="btn sm icon danger" @click="deleteVol(vol.id, vol.title)">✕</button>
+        <h3 style="flex: 1; margin: 0; display: flex; align-items: center; gap: 8px">
+          <span>{{ vol.title || tr('未命名', 'Untitled') }}</span>
+          <span
+            v-if="vol.isReference"
+            class="pill"
+            style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700"
+          >
+            📚 {{ tr('官方', 'Official') }}
+          </span>
+        </h3>
+        <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openVolModal(vol)">{{ tr('重命名', 'Rename') }}</button>
+        <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm" @click="openActModal(vol)">＋ {{ tr('添加幕', 'Add Act') }}</button>
+        <button v-if="!vol.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteVol(vol.id, vol.title)">✕</button>
       </div>
       <div class="card-b" style="display: block">
         <p v-if="vol.note" class="hint" style="margin: 0 0 12px">
@@ -141,8 +150,10 @@ import { useToast } from '../composables/useToast';
 import type { ChapterStatus, PlotAct, PlotChapter, PlotVolume } from '../core/schema/types';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -199,6 +210,11 @@ function saveVol() {
 }
 
 async function deleteVol(id: string, title: string) {
+  const vol = (docStore.doc.plots || []).find((x) => x.id === id);
+  if (vol?.isReference && !authStore.isAdmin) {
+    toast('此条目为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, tr(`确定删除卷「${title}」及其所有幕、章？`, `Delete volume "${title}"?`)))) return;
   docStore.doc.plots = docStore.doc.plots.filter((x) => x.id !== id);
   docStore.touch(true);

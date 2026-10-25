@@ -7,6 +7,7 @@ export interface CollectedEvent {
   yearNum: number | null;
   desc: string;
   link?: string;
+  isReference?: boolean;
   source: '独立' | '角色' | '组织' | '世界观' | '剧情';
 }
 
@@ -54,6 +55,7 @@ export function collectAllEvents(doc: DocV6): CollectedEvent[] {
       yearNum,
       desc: e.desc || '',
       link: e.link ?? e.world ?? e.chars,
+      isReference: e.isReference,
       source: '独立'
     });
   });

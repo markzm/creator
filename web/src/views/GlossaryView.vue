@@ -98,7 +98,16 @@
             :key="g.id"
             style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; background: var(--soft); border: 1px solid var(--li)"
           >
-            <strong style="font-size: 14px">{{ g.term }}</strong>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <strong style="font-size: 14px">{{ g.term }}</strong>
+              <span
+                v-if="g.isReference"
+                class="pill"
+                style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700"
+              >
+                📚 {{ tr('官方', 'Official') }}
+              </span>
+            </div>
             <template v-if="g.std || g.cat">
               <span style="color: var(--mu)">→</span>
               <span class="pill" style="font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--acs); color: var(--ac); font-weight: 600">
@@ -108,7 +117,7 @@
             <span style="flex: 1; font-size: 13px; color: var(--ink2)">
               <WikiText :text="g.note || g.def || ''" />
             </span>
-            <button class="btn sm icon danger" @click="removeTerm(g.id)">✕</button>
+            <button v-if="!g.isReference || authStore.isAdmin" class="btn sm icon danger" @click="removeTerm(g.id)">✕</button>
           </div>
         </div>
       </div>
@@ -129,8 +138,10 @@ import {
 } from '../core/glossary';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
 const { tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -222,6 +233,11 @@ function addTerm() {
 }
 
 function removeTerm(id: string) {
+  const g = (docStore.doc.glossary || []).find((x) => x.id === id);
+  if (g?.isReference && !authStore.isAdmin) {
+    toast('此词条为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   docStore.doc.glossary = docStore.doc.glossary.filter((g) => g.id !== id);
   docStore.touch(true);
   toast(tr('已删除', 'Deleted'), 'ok');

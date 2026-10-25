@@ -62,37 +62,101 @@
       </div>
 
       <div style="max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 5px">
-        <div
-          v-for="item in filteredList"
-          :key="item.id"
-          class="sres"
-          :class="{ active: item.id === activeId }"
-          style="margin-bottom: 0; padding: 8px 10px"
-          @click="onSelectItem(item.id)"
-        >
-          <div style="flex: 1; min-width: 0">
-            <div
-              style="
-                font-weight: 600;
-                font-size: 13px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-              "
-            >
-              {{ displayName(item) }}
-            </div>
-            <div style="font-size: 11px; color: var(--mu)">
-              {{ subtitleText(item) }}
-            </div>
+        <!-- Personal creations section -->
+        <template v-if="personalItems.length">
+          <div style="font-size: 11px; font-weight: 700; color: var(--mu); padding: 4px 6px; display: flex; align-items: center; gap: 4px">
+            <span>👤</span>
+            <span>{{ tr('我的创作条目', 'My Creations') }} ({{ personalItems.length }})</span>
           </div>
-          <span
-            v-if="(item as any).templateId && templates?.[(item as any).templateId]"
-            class="k"
+          <div
+            v-for="item in personalItems"
+            :key="item.id"
+            class="sres"
+            :class="{ active: item.id === activeId }"
+            style="margin-bottom: 0; padding: 8px 10px"
+            @click="onSelectItem(item.id)"
           >
-            {{ templates[(item as any).templateId].name }}
-          </span>
-        </div>
+            <div style="flex: 1; min-width: 0">
+              <div
+                style="
+                  font-weight: 600;
+                  font-size: 13px;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  white-space: nowrap;
+                "
+              >
+                {{ displayName(item) }}
+              </div>
+              <div style="font-size: 11px; color: var(--mu)">
+                {{ subtitleText(item) }}
+              </div>
+            </div>
+            <span
+              v-if="(item as any).templateId && templates?.[(item as any).templateId]"
+              class="k"
+            >
+              {{ templates[(item as any).templateId].name }}
+            </span>
+          </div>
+        </template>
+
+        <!-- Official Reference materials section -->
+        <template v-if="referenceItems.length">
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              color: var(--mu);
+              padding: 8px 6px 4px;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              border-top: 1px dashed var(--li2);
+              margin-top: 4px;
+            "
+          >
+            <div style="display: flex; align-items: center; gap: 4px">
+              <span>📚</span>
+              <span>{{ tr('官方参考素材', 'Official Reference') }} ({{ referenceItems.length }})</span>
+            </div>
+            <span style="font-size: 10.5px; color: var(--mu)">{{ tr('查阅与跨实体引用', 'Read & Quote') }}</span>
+          </div>
+          <div
+            v-for="item in referenceItems"
+            :key="item.id"
+            class="sres"
+            :class="{ active: item.id === activeId }"
+            style="margin-bottom: 0; padding: 8px 10px; border-left: 3px solid var(--ac)"
+            @click="onSelectItem(item.id)"
+          >
+            <div style="flex: 1; min-width: 0">
+              <div style="display: flex; align-items: center; gap: 6px">
+                <span
+                  style="
+                    font-weight: 600;
+                    font-size: 13px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                >
+                  {{ displayName(item) }}
+                </span>
+                <span class="pill ref-pill">📚 {{ tr('官方', 'Official') }}</span>
+              </div>
+              <div style="font-size: 11px; color: var(--mu)">
+                {{ subtitleText(item) }}
+              </div>
+            </div>
+            <span
+              v-if="(item as any).templateId && templates?.[(item as any).templateId]"
+              class="k"
+            >
+              {{ templates[(item as any).templateId].name }}
+            </span>
+          </div>
+        </template>
       </div>
 
       <div
@@ -104,18 +168,31 @@
           border-top: 1px solid var(--li2);
         "
       >
-        <button type="button" class="btn sm" style="flex: 1" @click="$emit('duplicate')">
-          {{ tr('复制', 'Duplicate') }}
-        </button>
-        <button
-          type="button"
-          class="btn sm danger"
-          style="flex: 1"
-          :disabled="items.length <= 1"
-          @click="$emit('delete')"
-        >
-          {{ tr('删除', 'Delete') }}
-        </button>
+        <template v-if="isActiveReference && !authStore.isAdmin">
+          <button
+            type="button"
+            class="btn sm primary"
+            style="flex: 1"
+            :title="tr('复制为您的衍生副本，自由修改', 'Fork as personal copy')"
+            @click="$emit('fork', activeId || '')"
+          >
+            📑 {{ tr('复制衍生副本', 'Fork Copy') }}
+          </button>
+        </template>
+        <template v-else>
+          <button type="button" class="btn sm" style="flex: 1" @click="$emit('duplicate')">
+            {{ tr('复制', 'Duplicate') }}
+          </button>
+          <button
+            type="button"
+            class="btn sm danger"
+            style="flex: 1"
+            :disabled="items.length <= 1"
+            @click="$emit('delete')"
+          >
+            {{ tr('删除', 'Delete') }}
+          </button>
+        </template>
       </div>
     </div>
   </aside>
@@ -123,6 +200,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useAuthStore } from '../../stores/auth';
 import { useI18n } from '../../composables/useI18n';
 import type { BaseEntity, EntityKind, TemplateDef } from '../../core/schema/types';
 
@@ -138,18 +216,22 @@ const emit = defineEmits<{
   (e: 'select', id: string): void;
   (e: 'create', templateId?: string): void;
   (e: 'duplicate'): void;
+  (e: 'fork', id: string): void;
   (e: 'delete'): void;
 }>();
 
+const authStore = useAuthStore();
 const { t, tr } = useI18n();
 const searchQuery = ref('');
 const sortBy = ref<'updated' | 'name'>('updated');
 const selectedTplId = ref('');
 const mobileCollapsed = ref(false);
 
+const activeItem = computed(() => props.items.find((i) => i.id === props.activeId));
+const isActiveReference = computed(() => Boolean(activeItem.value?.isReference));
+
 const activeEntityName = computed(() => {
-  const cur = props.items.find((i) => i.id === props.activeId);
-  return cur ? displayName(cur) : '';
+  return activeItem.value ? displayName(activeItem.value) : '';
 });
 
 function onSelectItem(id: string) {
@@ -191,6 +273,9 @@ const filteredList = computed(() => {
   return list;
 });
 
+const referenceItems = computed(() => filteredList.value.filter((i) => i.isReference));
+const personalItems = computed(() => filteredList.value.filter((i) => !i.isReference));
+
 function onCreateWithTemplate() {
   emit('create', selectedTplId.value || undefined);
   selectedTplId.value = '';
@@ -203,6 +288,14 @@ function onCreateWithTemplate() {
   top: 48px;
   margin-bottom: 0;
   padding: 14px;
+}
+.ref-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--acs);
+  color: var(--ac);
+  font-weight: 700;
 }
 .mobile-active-pill {
   font-size: 11px;

@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const challenge = ref<ChallengeResponse | null>(null);
 
   const isLoggedIn = computed(() => Boolean(user.value));
+  const isAdmin = computed(() => Boolean(user.value?.isAdmin));
 
   const displayName = computed(() => {
     if (!user.value) return '创作者';
@@ -112,6 +113,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     challenge,
     isLoggedIn,
+    isAdmin,
     displayName,
     fetchChallenge,
     initSession,

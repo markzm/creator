@@ -32,7 +32,16 @@
       >
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px">
-            <strong style="font-size: 15px">{{ sc.title }}</strong>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <strong style="font-size: 15px">{{ sc.title }}</strong>
+              <span
+                v-if="sc.isReference"
+                class="pill"
+                style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700"
+              >
+                📚 {{ tr('官方', 'Official') }}
+              </span>
+            </div>
             <span
               class="pill"
               style="font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600"
@@ -57,8 +66,8 @@
         </div>
 
         <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px">
-          <button class="btn sm" @click="openSceneModal(sc)">{{ tr('编辑', 'Edit') }}</button>
-          <button class="btn sm danger" @click="deleteScene(sc.id, sc.title)">{{ tr('删除', 'Delete') }}</button>
+          <button v-if="!sc.isReference || authStore.isAdmin" class="btn sm" @click="openSceneModal(sc)">{{ tr('编辑', 'Edit') }}</button>
+          <button v-if="!sc.isReference || authStore.isAdmin" class="btn sm danger" @click="deleteScene(sc.id, sc.title)">{{ tr('删除', 'Delete') }}</button>
         </div>
       </div>
     </div>
@@ -105,8 +114,10 @@ import { useToast } from '../composables/useToast';
 import type { ChapterStatus, SceneCard } from '../core/schema/types';
 import { uid } from '../core/uid';
 import { useDocStore } from '../stores/doc';
+import { useAuthStore } from '../stores/auth';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -203,6 +214,11 @@ function saveScene() {
 }
 
 async function deleteScene(id: string, title: string) {
+  const sc = (docStore.doc.scenes || []).find((s) => s.id === id);
+  if (sc?.isReference && !authStore.isAdmin) {
+    toast('此场景卡为官方公共参考素材，仅供大家查阅与引用~', 'warn');
+    return;
+  }
   if (!(await confirm(t.value.delConfirm, tr(`确定删除场景「${title}」？`, `Delete scene "${title}"?`)))) return;
   docStore.doc.scenes = docStore.doc.scenes.filter((s) => s.id !== id);
   docStore.touch(true);

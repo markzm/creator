@@ -112,7 +112,7 @@ func runInvite(args []string) {
 
 func runUser(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: creator user [list | create | reset-password | disable | enable]")
+		fmt.Fprintln(os.Stderr, "Usage: creator user [list | create | reset-password | set-admin | disable | enable]")
 		os.Exit(1)
 	}
 	cfg := config.Load()
@@ -130,9 +130,9 @@ func runUser(args []string) {
 		if err != nil {
 			log.Fatalf("list users: %v", err)
 		}
-		fmt.Printf("%-4s %-28s %-16s %-8s\n", "ID", "EMAIL", "NICKNAME", "DISABLED")
+		fmt.Printf("%-4s %-28s %-16s %-7s %-8s\n", "ID", "EMAIL", "NICKNAME", "ADMIN", "DISABLED")
 		for _, u := range users {
-			fmt.Printf("%-4d %-28s %-16s %-8v\n", u.ID, u.Email, u.Nickname, u.IsDisabled)
+			fmt.Printf("%-4d %-28s %-16s %-7v %-8v\n", u.ID, u.Email, u.Nickname, u.IsAdmin, u.IsDisabled)
 		}
 
 	case "create":
@@ -182,6 +182,19 @@ func runUser(args []string) {
 			log.Fatalf("%s user: %v", sub, err)
 		}
 		fmt.Printf("User %s disabled=%v\n", *email, dis)
+
+	case "set-admin":
+		fs := flag.NewFlagSet("user set-admin", flag.ExitOnError)
+		email := fs.String("email", "", "User email")
+		admin := fs.Bool("admin", true, "Admin status (true or false)")
+		_ = fs.Parse(args[1:])
+		if *email == "" {
+			log.Fatalf("--email is required")
+		}
+		if err := st.SetUserAdmin(ctx, *email, *admin); err != nil {
+			log.Fatalf("set admin failed: %v", err)
+		}
+		fmt.Printf("Updated admin status for %s to %v\n", *email, *admin)
 
 	default:
 		log.Fatalf("unknown user subcommand: %s", sub)

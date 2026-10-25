@@ -102,6 +102,42 @@ func (s *AIService) GetPublicFreeModels() []string {
 	return []string{"openrouter/free"}
 }
 
+func isRefusalOrInterrogation(text string) bool {
+	lower := strings.ToLower(text)
+	triggers := []string{
+		"我无法直接为你生成",
+		"我无法直接",
+		"我无法为你生成",
+		"我无法生成",
+		"仅凭一个",
+		"很难判断",
+		"贸然生成",
+		"产生冲突",
+		"你可以告诉我更多",
+		"告诉我更多关于它的细节",
+		"有了这些信息，我就能",
+		"有了这些信息",
+		"核心目标是什么",
+		"无法直接判断",
+		"你可以告诉我",
+		"为了让“",
+		"为了让【",
+	}
+	for _, t := range triggers {
+		if strings.Contains(lower, t) {
+			return true
+		}
+	}
+	trimmed := strings.TrimSpace(text)
+	if strings.HasSuffix(trimmed, "？") || strings.HasSuffix(trimmed, "?") {
+		return true
+	}
+	if strings.Count(text, "？") >= 2 || strings.Count(text, "?") >= 2 {
+		return true
+	}
+	return false
+}
+
 func (s *AIService) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
 	systemPrompt, userPrompt := buildPrompts(req)
 
@@ -119,8 +155,15 @@ func (s *AIService) Generate(ctx context.Context, req GenerateRequest) (*Generat
 		if err != nil {
 			return nil, fmt.Errorf("个人外部 AI 调用失败: %w", err)
 		}
+		if isRefusalOrInterrogation(content) {
+			retryPrompt := fmt.Sprintf("【系统严厉指令】：刚才的回复违反规则！绝对禁止反问或提问！不要问‘核心目标是什么’或‘更多细节’！立刻依据名称直接输出【%s】的【%s】设定正文！只输出最终设定结果：", req.EntityKind, req.FieldLabel)
+			retryContent, retryErr := s.callOpenAICompatible(ctx, baseURL, req.CustomAI.APIKey, model, systemPrompt, retryPrompt)
+			if retryErr == nil && strings.TrimSpace(retryContent) != "" && !isRefusalOrInterrogation(retryContent) {
+				content = retryContent
+			}
+		}
 		return &GenerateResponse{
-			Content: content,
+			Content: strings.TrimSpace(content),
 			Model:   model,
 			UsedAI:  "custom",
 		}, nil
@@ -136,8 +179,21 @@ func (s *AIService) Generate(ctx context.Context, req GenerateRequest) (*Generat
 	for _, m := range models {
 		content, err := s.callOpenRouter(ctx, m, systemPrompt, userPrompt)
 		if err == nil && strings.TrimSpace(content) != "" {
+			if isRefusalOrInterrogation(content) {
+				retryPrompt := fmt.Sprintf("【系统严厉指令】：刚才的回复违反规则！绝对禁止反问或提问！不要索要更多细节！立刻依据名称直接输出【%s】的【%s】设定正文！只输出最终设定结果：", req.EntityKind, req.FieldLabel)
+				retryContent, retryErr := s.callOpenRouter(ctx, m, systemPrompt, retryPrompt)
+				if retryErr == nil && strings.TrimSpace(retryContent) != "" && !isRefusalOrInterrogation(retryContent) {
+					return &GenerateResponse{
+						Content: strings.TrimSpace(retryContent),
+						Model:   m,
+						UsedAI:  "public",
+					}, nil
+				}
+				lastErr = fmt.Errorf("model %s gave conversational refusal", m)
+				continue
+			}
 			return &GenerateResponse{
-				Content: content,
+				Content: strings.TrimSpace(content),
 				Model:   m,
 				UsedAI:  "public",
 			}, nil
@@ -295,30 +351,76 @@ func buildPrompts(req GenerateRequest) (systemPrompt, userPrompt string) {
 		}
 	}
 
-	systemPrompt = fmt.Sprintf(`你是一位殿堂级的世界观架构师与小说创作大师。
-你擅长为创作者构建富有张力、细节丰富且逻辑自洽的世界观、组织、角色与小说故事。
-当前设定的主打流派为：【%s】，文风倾向：【%s】。
-请始终保持专业、富有创造力、文学质感，避免陈词滥调与机械化口吻。%s`, genre, tone, extra)
+	systemPrompt = fmt.Sprintf(`你是一个专业、严谨且富有极致想象力的世界观与小说设定生成引擎（Database Field Generator）。
+你的职责是直接产出高品质的设定数据填入设定集数据库，你不是日常闲聊助手。
+
+【绝对禁止规则（违者判定为系统故障）】：
+1. 绝对禁止向用户提问、反问、确认意图或索要更多细节！
+2. 绝对禁止输出诸如"我无法直接为你生成"、"很难判断它的性质"、"你可以告诉我更多细节吗"等推脱、反问或聊天性言论！
+3. 绝对禁止输出任何问候开场白（如"好的"、"没问题"、"为您生成如下"）、礼貌用语、后续探讨问答或带有问号的疑问句！
+4. 绝对禁止输出反问清单（例如："- 它的核心目标是什么？"、"- 成员构成是怎样的？"）！
+
+【核心执行法则】：
+无论创作者给出的已有信息有多么简略（哪怕仅有一个名称，如“黎明之环”），你也必须依据经典小说的优秀范式与成熟架构，果断、自信、富有创意地直接构想出最贴合、最惊艳的设定成果！
+当前主打流派：【%s】，文风倾向：【%s】。%s
+【输出格式要求】：只输出最终的设定内容本身，纯文本正文，不带任何废话、反问或多余对话。`, genre, tone, extra)
 
 	switch req.Task {
 	case "field_gen":
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("请为当前的【%s】设定生成字段【%s】的内容。\n", req.EntityKind, req.FieldLabel))
+		entityKindName := "实体"
+		switch req.EntityKind {
+		case "world":
+			entityKindName = "世界观"
+		case "org":
+			entityKindName = "组织势力"
+		case "char":
+			entityKindName = "角色人物"
+		}
+
+		sb.WriteString(fmt.Sprintf("请为当前的【%s】直接创作字段【%s】的具体设定值。\n", entityKindName, req.FieldLabel))
+
+		// Field specific heuristics & length constraints
+		fID := strings.ToLower(req.FieldID)
+		fLabel := req.FieldLabel
+
+		if fID == "o_type" || strings.Contains(fLabel, "类型") || fID == "w_type" {
+			if req.EntityKind == "org" {
+				sb.WriteString("【字段定性指引】：此字段为组织类型/定位标签。请直接给出一个极具质感的组织类型称谓（字数控制在 2~12 字以内，例如：圣光隐秘救赎结社 / 浮空舰队探险商会 / 遗物收容调查局 / 异端探索学术联盟 / 皇家炼金学者评议会 / 影匿刺客密契同盟）。直接输出答案，绝不反问！\n")
+			} else if req.EntityKind == "world" {
+				sb.WriteString("【字段定性指引】：此字段为世界类型/形态标签。请直接给出一个 2~12 字的世界形态定性（例如：破碎浮空群岛 / 蒸汽魔导星球 / 溃烂纪废土界域 / 位面晶壁系）。直接输出答案，绝不反问！\n")
+			} else {
+				sb.WriteString("【字段定性指引】：此字段为分类标签。请直接输出 2~12 字的核心定性词，直接输出答案，绝不反问！\n")
+			}
+		} else if strings.Contains(fID, "magic") || strings.Contains(fLabel, "魔力") || strings.Contains(fLabel, "战力") {
+			sb.WriteString("【字段定性指引】：请直接输出体系层级定性（例如：高魔·以太泛滥 / 衰退微魔 / 严谨硬科幻法则 / 畸变圣血高危），字数 4~16 字。\n")
+		} else if strings.Contains(fID, "slogan") || strings.Contains(fID, "creed") || strings.Contains(fLabel, "格言") || strings.Contains(fLabel, "口号") || strings.Contains(fLabel, "箴言") {
+			sb.WriteString("【字段定性指引】：请直接输出一至两句铿锵有力、蕴含哲理与张力的格言口号（例如：「于长夜之中执掌黎明，唯光芒破晓诸界。」）。\n")
+		} else if fID == "c_gender" || fLabel == "性别" || fID == "c_age" || fLabel == "年龄" || fID == "c_race" || fLabel == "种族" {
+			sb.WriteString("【字段定性指引】：请直接输出简明属性词（如：女 / 20岁 / 半血星灵 / 纯血人类），字数 1~10 字。\n")
+		} else if strings.Contains(fID, "desc") || strings.Contains(fID, "history") || strings.Contains(fID, "story") || strings.Contains(fID, "core") || strings.Contains(fLabel, "描述") || strings.Contains(fLabel, "历史") || strings.Contains(fLabel, "背景") || strings.Contains(fLabel, "宗旨") {
+			sb.WriteString("【字段定性指引】：请直接输出一段 80~250 字左右生动细腻、逻辑自洽的设定文本，直接切入核心，严禁反问。\n")
+		}
+
 		if len(req.EntityData) > 0 {
-			sb.WriteString("【当前已有上下文信息】：\n")
+			sb.WriteString("【已有参考属性】：\n")
 			for k, v := range req.EntityData {
 				if strings.TrimSpace(v) != "" {
 					sb.WriteString(fmt.Sprintf("- %s: %s\n", k, v))
 				}
 			}
 		}
+		if req.Context != "" {
+			sb.WriteString("【关联宏观背景】：\n" + req.Context + "\n")
+		}
 		if req.CurrentText != "" {
-			sb.WriteString(fmt.Sprintf("【字段已有草稿/前文】：%s\n", req.CurrentText))
+			sb.WriteString(fmt.Sprintf("【已有文本草稿】：%s\n", req.CurrentText))
 		}
 		if req.Prompt != "" {
-			sb.WriteString(fmt.Sprintf("【创作者的灵感或要求】：%s\n", req.Prompt))
+			sb.WriteString(fmt.Sprintf("【用户灵感或微调要求】：%s\n", req.Prompt))
 		}
-		sb.WriteString("要求：直接输出该字段的生成内容，不要附加多余的寒暄开场白或解释。")
+
+		sb.WriteString("【强制执行要求】：直接输出字段内容！绝对不要输出任何问句、反问、确认或建议，禁止说‘我无法生成’，只输出设定内容！")
 		userPrompt = sb.String()
 
 	case "entity_gen":
