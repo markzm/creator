@@ -14,7 +14,7 @@ server/internal/api/dist/
 *.db-wal
 /var/
 legacy-export-*/
-data/
+/data/
 
 # Environment & IDE
 .env

@@ -39,6 +39,24 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 		})
 	})
 
+	// Initial seed data (if <DATA_DIR>/seed.json is present)
+	mux.HandleFunc("/api/seed", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		seedPath := filepath.Join(cfg.DataDir, "seed.json")
+		b, err := os.ReadFile(seedPath)
+		if err != nil || len(b) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(b)
+	})
+
 	// Auth endpoints
 	mux.HandleFunc("/api/auth/challenge", srv.handleAuthChallenge)
 	mux.HandleFunc("/api/auth/register", srv.handleRegister)

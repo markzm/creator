@@ -4,6 +4,7 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('cc_tut_done', '1');
+      localStorage.setItem('cc_seeded_v6', '1');
       localStorage.setItem('cc_lang', 'zh');
       localStorage.setItem('cc_dark', '0');
     });
@@ -215,5 +216,17 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
     // Switch Language ZH -> EN
     await page.locator('.topbar').getByRole('button', { name: /🌐 EN/ }).click();
     await expect(page.locator('.topbar').getByText('Worldbuilding Studio')).toBeVisible();
+  });
+
+  test('6. Server seed (/api/seed) automatically populates imported user data on first visit', async ({
+    page
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.removeItem('cc_seeded_v6');
+    });
+    await page.goto('/char');
+    await expect(page.getByText('洛徽霜').first()).toBeVisible();
+    await expect(page.getByText('伊露米娅·米拉克尔').first()).toBeVisible();
+    await expect(page.getByText('青栗薄月').first()).toBeVisible();
   });
 });
