@@ -261,6 +261,7 @@
             kind="world"
             :groups="WG"
             :data="world.data"
+            :entity-id="world.id"
             :entity-name="world.data.w_name || world.name"
             :draft-order="WORLD_ORDER"
             draft-prefix="CC3W"

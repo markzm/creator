@@ -1,13 +1,40 @@
 import { h32 } from './draftCode';
+import { stripReferenceItems } from './reference';
 import type {
   BaseEntity,
+  ConflictKind,
   DailyStat,
   DiffSummary,
   DocV6,
   EntityKind,
   FieldConflict,
+  StudioPreferences,
   TemplateDef
 } from './schema/types';
+
+/** Entity metadata that must take part in change detection and 3-way merging. */
+export const ENTITY_META_KEYS = [
+  'visibility',
+  'shareId',
+  'avatar',
+  'tachiE',
+  'templateId',
+  'canonStatus',
+  'cocreationId',
+  'canonRequested',
+  'isCocreation',
+  'cocreationAdmins',
+  'cocreationSummary'
+] as const;
+
+const PREFERENCE_KEYS: (keyof StudioPreferences)[] = [
+  'preferredGenre',
+  'writingTone',
+  'defaultPerspective',
+  'aiCustomInstruction'
+];
+
+const WHOLE_RECORD = '*';
 
 /**
  * Recursively serializes an object with alphabetically sorted keys for deterministic hashing.
@@ -33,7 +60,9 @@ export function canonicalStringify(val: unknown): string {
 /**
  * Strips the volatile `ui` state from a DocV6 before computing sync hashes or comparing content.
  */
-export function stripUIForSync(doc: DocV6): Omit<DocV6, 'ui'> {
+export function stripUIForSync(docIn: DocV6): Omit<DocV6, 'ui'> {
+  // Official reference materials are server-owned and never part of a user's synced payload.
+  const doc = stripReferenceItems(docIn);
   return {
     _version: 6,
     worlds: doc.worlds || {},
@@ -86,9 +115,41 @@ export function computeSyncHash(doc: DocV6): string {
   return h32(bytes).toString(16).padStart(8, '0') + ':' + bytes.length;
 }
 
+function metaOf(ent: BaseEntity | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!ent) return out;
+  const anyEnt = ent as unknown as Record<string, unknown>;
+  for (const k of ENTITY_META_KEYS) {
+    if (anyEnt[k] !== undefined) out[k] = anyEnt[k];
+  }
+  return out;
+}
+
 function entityChanged(a: BaseEntity, b: BaseEntity): boolean {
   if (a.name !== b.name) return true;
-  return canonicalStringify(a.data || {}) !== canonicalStringify(b.data || {});
+  if (canonicalStringify(a.data || {}) !== canonicalStringify(b.data || {})) return true;
+  return canonicalStringify(metaOf(a)) !== canonicalStringify(metaOf(b));
+}
+
+/**
+ * Classic 3-way pick for a scalar: unchanged on one side -> take the other; both changed to
+ * different values -> conflict (caller decides the provisional value).
+ */
+function pick3<V>(
+  base: V | undefined,
+  local: V | undefined,
+  remote: V | undefined
+): { value: V | undefined; conflict: boolean } {
+  const eq = (x: V | undefined, y: V | undefined) => canonicalStringify(x) === canonicalStringify(y);
+  if (eq(local, remote)) return { value: local, conflict: false };
+  if (eq(local, base)) return { value: remote, conflict: false };
+  if (eq(remote, base)) return { value: local, conflict: false };
+  return { value: local, conflict: true };
+}
+
+function recordLabel(x: unknown): string {
+  const r = (x || {}) as Record<string, unknown>;
+  return String(r.title || r.name || r.term || r.id || '');
 }
 
 function diffEntityMap<T extends BaseEntity>(
@@ -150,7 +211,9 @@ export function summarizeDocDiff(local: DocV6, remote: DocV6): DiffSummary {
     timelineDelta: diffArrayDelta(local.timeline || [], remote.timeline || []),
     plotsDelta: diffArrayDelta(local.plots || [], remote.plots || []),
     scenesDelta: diffArrayDelta(local.scenes || [], remote.scenes || []),
-    glossaryDelta: diffArrayDelta(local.glossary || [], remote.glossary || [])
+    glossaryDelta: diffArrayDelta(local.glossary || [], remote.glossary || []),
+    articlesDelta: diffArrayDelta(local.articles || [], remote.articles || []),
+    templatesDelta: diffArrayDelta(Object.values(local.templates || {}), Object.values(remote.templates || {}))
   };
 }
 
@@ -288,6 +351,8 @@ function mergeEntityCollection<T extends BaseEntity>(
         }
       }
 
+      // Start from remote, overlay unknown local extras, then settle every metadata key by a
+      // real 3-way pick (previously `...local` silently won, dropping remote visibility/shareId).
       const entityObj: any = {
         ...clone(rEnt),
         ...clone(lEnt),
@@ -297,6 +362,28 @@ function mergeEntityCollection<T extends BaseEntity>(
         createdAt: Math.min(lEnt.createdAt || Date.now(), rEnt.createdAt || Date.now()),
         updatedAt: Math.max(lEnt.updatedAt || 0, rEnt.updatedAt || 0)
       };
+      const bMeta = metaOf(bEnt);
+      const lMeta = metaOf(lEnt);
+      const rMeta = metaOf(rEnt);
+      for (const key of ENTITY_META_KEYS) {
+        const picked = pick3(bMeta[key], lMeta[key], rMeta[key]);
+        if (picked.value === undefined) {
+          delete entityObj[key];
+        } else {
+          entityObj[key] = clone(picked.value);
+        }
+        if (picked.conflict) {
+          conflicts.push({
+            kind,
+            entityId: id,
+            entityName: lEnt.name || rEnt.name || id,
+            fieldId: '$' + key,
+            localVal: lMeta[key] === undefined ? '' : String(lMeta[key]),
+            remoteVal: rMeta[key] === undefined ? '' : String(rMeta[key]),
+            baseVal: bMeta[key] === undefined ? '' : String(bMeta[key])
+          });
+        }
+      }
 
       if (kind === 'world') {
         const bInsp = new Set((bEnt as any)?.customInsp || []);
@@ -322,9 +409,11 @@ function mergeEntityCollection<T extends BaseEntity>(
 }
 
 function mergeByIdArray<T extends { id: string; updatedAt?: number }>(
+  kind: ConflictKind,
   baseArr: T[] | undefined,
   localArr: T[],
-  remoteArr: T[]
+  remoteArr: T[],
+  conflicts: FieldConflict[]
 ): T[] {
   const bMap = new Map<string, T>((baseArr || []).map((x) => [x.id, x]));
   const lMap = new Map<string, T>((localArr || []).map((x) => [x.id, x]));
@@ -363,8 +452,19 @@ function mergeByIdArray<T extends { id: string; updatedAt?: number }>(
       } else if (b && canonicalStringify(r) === canonicalStringify(b)) {
         out.push(clone(l));
       } else {
+        // Both sides changed the same record: keep the newer one provisionally but surface it,
+        // instead of silently dropping one side's edits.
         const pick = (r.updatedAt || 0) > (l.updatedAt || 0) ? r : l;
         out.push(clone(pick));
+        conflicts.push({
+          kind,
+          entityId: id,
+          entityName: recordLabel(l) || recordLabel(r) || id,
+          fieldId: WHOLE_RECORD,
+          localVal: JSON.stringify(l),
+          remoteVal: JSON.stringify(r),
+          baseVal: b ? JSON.stringify(b) : ''
+        });
       }
     }
   }
@@ -374,7 +474,8 @@ function mergeByIdArray<T extends { id: string; updatedAt?: number }>(
 function mergeTemplates(
   baseMap: Record<string, TemplateDef> | undefined,
   localMap: Record<string, TemplateDef>,
-  remoteMap: Record<string, TemplateDef>
+  remoteMap: Record<string, TemplateDef>,
+  conflicts: FieldConflict[]
 ): Record<string, TemplateDef> {
   const allIds = new Set<string>([
     ...Object.keys(baseMap || {}),
@@ -392,9 +493,51 @@ function mergeTemplates(
     if (l && !r) out[id] = clone(l);
     else if (!l && r) out[id] = clone(r);
     else if (l && r) {
-      if (b && canonicalStringify(l) === canonicalStringify(b)) out[id] = clone(r);
+      if (canonicalStringify(l) === canonicalStringify(r)) out[id] = clone(l);
+      else if (b && canonicalStringify(l) === canonicalStringify(b)) out[id] = clone(r);
       else if (b && canonicalStringify(r) === canonicalStringify(b)) out[id] = clone(l);
-      else out[id] = clone((r.updatedAt || 0) > (l.updatedAt || 0) ? r : l);
+      else {
+        out[id] = clone((r.updatedAt || 0) > (l.updatedAt || 0) ? r : l);
+        if (!l.builtin || !r.builtin) {
+          conflicts.push({
+            kind: 'template',
+            entityId: id,
+            entityName: l.name || r.name || id,
+            fieldId: WHOLE_RECORD,
+            localVal: JSON.stringify(l),
+            remoteVal: JSON.stringify(r),
+            baseVal: b ? JSON.stringify(b) : ''
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function mergePreferences(
+  base: StudioPreferences | undefined,
+  local: StudioPreferences | undefined,
+  remote: StudioPreferences | undefined,
+  conflicts: FieldConflict[]
+): StudioPreferences | undefined {
+  if (!local && !remote) return base ? clone(base) : undefined;
+  if (!local) return clone(remote!);
+  if (!remote) return clone(local);
+  const out: StudioPreferences = { ...clone(remote), ...clone(local) };
+  for (const key of PREFERENCE_KEYS) {
+    const picked = pick3(base?.[key], local[key], remote[key]);
+    if (picked.value !== undefined) out[key] = picked.value as string;
+    if (picked.conflict) {
+      conflicts.push({
+        kind: 'preferences',
+        entityId: 'preferences',
+        entityName: 'preferences',
+        fieldId: key,
+        localVal: String(local[key] ?? ''),
+        remoteVal: String(remote[key] ?? ''),
+        baseVal: String(base?.[key] ?? '')
+      });
     }
   }
   return out;
@@ -462,16 +605,16 @@ export function threeWayMerge(
     conflicts
   );
 
-  const templates = mergeTemplates(base?.templates, local.templates || {}, remote.templates || {});
-  const timeline = mergeByIdArray(base?.timeline, local.timeline || [], remote.timeline || []);
-  const plots = mergeByIdArray(base?.plots, local.plots || [], remote.plots || []);
-  const scenes = mergeByIdArray(base?.scenes, local.scenes || [], remote.scenes || []);
-  const glossary = mergeByIdArray(base?.glossary, local.glossary || [], remote.glossary || []);
+  const templates = mergeTemplates(base?.templates, local.templates || {}, remote.templates || {}, conflicts);
+  const timeline = mergeByIdArray('timeline', base?.timeline, local.timeline || [], remote.timeline || [], conflicts);
+  const plots = mergeByIdArray('plot', base?.plots, local.plots || [], remote.plots || [], conflicts);
+  const scenes = mergeByIdArray('scene', base?.scenes, local.scenes || [], remote.scenes || [], conflicts);
+  const glossary = mergeByIdArray('glossary', base?.glossary, local.glossary || [], remote.glossary || [], conflicts);
   const stats = mergeStats(local.stats || [], remote.stats || []);
-  const articles = mergeByIdArray(base?.articles, local.articles || [], remote.articles || []);
-  const preferences = local.preferences || remote.preferences || base?.preferences;
+  const articles = mergeByIdArray('article', base?.articles, local.articles || [], remote.articles || [], conflicts);
+  const preferences = mergePreferences(base?.preferences, local.preferences, remote.preferences, conflicts);
 
-  const lUi = local.ui || { activeW: null, activeO: null, activeC: null, activeTpl: '', nowYear: 0 };
+  const lUi = local.ui || { activeW: null, activeO: null, activeC: null, activeTpl: '', activeArticle: null, nowYear: 0 };
   const mergedDoc: DocV6 = {
     _version: 6,
     worlds,
@@ -490,6 +633,10 @@ export function threeWayMerge(
       activeO: lUi.activeO && orgs[lUi.activeO] ? lUi.activeO : Object.keys(orgs)[0] || null,
       activeC: lUi.activeC && chars[lUi.activeC] ? lUi.activeC : Object.keys(chars)[0] || null,
       activeTpl: lUi.activeTpl || '',
+      activeArticle:
+        lUi.activeArticle && articles.some((a) => a.id === lUi.activeArticle)
+          ? lUi.activeArticle
+          : articles[0]?.id || null,
       nowYear: lUi.nowYear || remote.ui?.nowYear || 0
     }
   };
@@ -502,4 +649,83 @@ export function threeWayMerge(
     conflicts,
     summary
   };
+}
+
+
+/**
+ * Applies the user's per-conflict choices onto a merged document (used by the conflict dialog).
+ * Whole-record conflicts (`fieldId === '*'`) replace the array item / template with the chosen
+ * side's JSON; `$meta` conflicts set the metadata key; everything else sets `data[fieldId]`.
+ */
+export function applyConflictChoices(
+  mergedDoc: DocV6,
+  conflicts: FieldConflict[],
+  choice: (conf: FieldConflict) => 'local' | 'remote'
+): DocV6 {
+  const doc: DocV6 = clone(mergedDoc);
+  const arrayFor = (kind: ConflictKind): Array<{ id: string }> | null => {
+    switch (kind) {
+      case 'timeline':
+        return doc.timeline;
+      case 'plot':
+        return doc.plots;
+      case 'scene':
+        return doc.scenes;
+      case 'glossary':
+        return doc.glossary;
+      case 'article':
+        return (doc.articles = doc.articles || []);
+      default:
+        return null;
+    }
+  };
+  for (const conf of conflicts) {
+    const side = choice(conf);
+    const raw = side === 'remote' ? conf.remoteVal : conf.localVal;
+    if (conf.kind === 'preferences') {
+      doc.preferences = { ...(doc.preferences || ({} as StudioPreferences)), [conf.fieldId]: raw } as StudioPreferences;
+      continue;
+    }
+    if (conf.fieldId === WHOLE_RECORD) {
+      let parsed: any = null;
+      try {
+        parsed = raw ? JSON.parse(raw) : null;
+      } catch {
+        parsed = null;
+      }
+      if (conf.kind === 'template') {
+        if (parsed) doc.templates[conf.entityId] = parsed;
+        else delete doc.templates[conf.entityId];
+        continue;
+      }
+      const arr = arrayFor(conf.kind);
+      if (!arr) continue;
+      const idx = arr.findIndex((x) => x.id === conf.entityId);
+      if (parsed) {
+        if (idx >= 0) arr[idx] = parsed;
+        else arr.push(parsed);
+      } else if (idx >= 0) {
+        arr.splice(idx, 1);
+      }
+      continue;
+    }
+    const coll =
+      conf.kind === 'world' ? doc.worlds : conf.kind === 'org' ? doc.orgs : conf.kind === 'char' ? doc.chars : null;
+    const ent = coll?.[conf.entityId] as any;
+    if (!ent) continue;
+    if (conf.fieldId.startsWith('$')) {
+      const key = conf.fieldId.slice(1);
+      if (raw === '') delete ent[key];
+      else if (key === 'canonRequested' || key === 'isCocreation') ent[key] = raw === 'true';
+      else if (key === 'cocreationAdmins') ent[key] = raw.split(',').filter(Boolean);
+      else ent[key] = raw;
+      continue;
+    }
+    ent.data = ent.data || {};
+    ent.data[conf.fieldId] = raw;
+    if (conf.fieldId === 'w_name' || conf.fieldId === 'o_name' || conf.fieldId === 'name') {
+      ent.name = raw.trim().slice(0, 24) || ent.name;
+    }
+  }
+  return doc;
 }

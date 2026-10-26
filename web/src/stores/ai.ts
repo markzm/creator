@@ -195,7 +195,8 @@ export const useAIStore = defineStore('ai', () => {
     try {
       const fullReq: AIGenerateRequest = {
         ...req,
-        preferences: preferences.value
+        preferences: preferences.value,
+        publicModel: selectedFreeModel.value || undefined
       };
       if (activeProvider.value === 'custom') {
         if (customAi.value.apiKey) {

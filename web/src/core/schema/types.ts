@@ -205,8 +205,25 @@ export interface FieldGroupDef {
 
 export type EntityKind = 'world' | 'org' | 'char';
 
+/** Collections that can surface a merge conflict. */
+export type ConflictKind =
+  | EntityKind
+  | 'template'
+  | 'timeline'
+  | 'plot'
+  | 'scene'
+  | 'glossary'
+  | 'article'
+  | 'preferences';
+
+/**
+ * A single merge conflict.
+ * - `fieldId` is a data key for entity fields,
+ * - `$<meta>` (e.g. `$visibility`) for entity metadata,
+ * - `*` for a whole record (array items / templates) whose local & remote JSON differ.
+ */
 export interface FieldConflict {
-  kind: EntityKind;
+  kind: ConflictKind;
   entityId: string;
   entityName: string;
   fieldId: string;
@@ -226,6 +243,8 @@ export interface DiffSummary {
   plotsDelta: number;
   scenesDelta: number;
   glossaryDelta: number;
+  articlesDelta: number;
+  templatesDelta: number;
 }
 
 export interface SettingComment {

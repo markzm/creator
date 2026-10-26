@@ -52,6 +52,9 @@ type GenerateRequest struct {
 	Context     string             `json:"context,omitempty"`
 	CustomAI    *UserAIConfig      `json:"customAi,omitempty"`
 	Preferences *StudioPreferences `json:"preferences,omitempty"`
+	// PublicModel is the user's preferred free model; it is tried first when it is in the
+	// server's configured list, the others remain as fallbacks.
+	PublicModel string `json:"publicModel,omitempty"`
 }
 
 type GenerateResponse struct {
@@ -258,6 +261,15 @@ func (s *AIService) Generate(ctx context.Context, req GenerateRequest) (*Generat
 	}
 
 	models := s.GetPublicFreeModels()
+	if pref := strings.TrimSpace(req.PublicModel); pref != "" {
+		for i, m := range models {
+			if m == pref && i > 0 {
+				reordered := append([]string{pref}, append(append([]string{}, models[:i]...), models[i+1:]...)...)
+				models = reordered
+				break
+			}
+		}
+	}
 	var lastErr error
 	for _, m := range models {
 		content, err := s.callOpenRouter(ctx, m, systemPrompt, userPrompt)

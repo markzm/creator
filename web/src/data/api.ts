@@ -53,6 +53,32 @@ export class ApiError extends Error {
   }
 }
 
+/** Thrown when the request never reached the server (offline, DNS, CORS...). */
+export class ApiNetworkError extends ApiError {
+  constructor(message = 'Network error') {
+    super(message, 0);
+    this.name = 'ApiNetworkError';
+  }
+}
+
+/** Normalises server timestamps (unix seconds) to milliseconds; passes ms through untouched. */
+export function toMs(ts: number | null | undefined): number {
+  if (!ts) return 0;
+  return ts < 1e12 ? ts * 1000 : ts;
+}
+
+export const SESSION_EXPIRED_EVENT = 'creator:session-expired';
+let lastSessionExpiredAt = 0;
+
+/** Fires at most once per 5s so a burst of 401s produces a single UI reaction. */
+function emitSessionExpired() {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  if (now - lastSessionExpiredAt < 5000) return;
+  lastSessionExpiredAt = now;
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+}
+
 export class ApiConflictError extends ApiError {
   serverData: DocV6;
   serverRev: number;
@@ -165,6 +191,8 @@ export interface AIGenerateRequest {
   context?: string;
   customAi?: UserAIConfig;
   preferences?: StudioPreferences;
+  /** Preferred free model (tried first by the public provider). */
+  publicModel?: string;
 }
 
 export interface AIGenerateResponse {
@@ -179,11 +207,16 @@ async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    ...init,
-    headers
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      credentials: 'same-origin',
+      ...init,
+      headers
+    });
+  } catch (e: any) {
+    throw new ApiNetworkError(e?.message || 'Network error');
+  }
 
   if (res.status === 204) {
     return null as unknown as T;
@@ -208,6 +241,11 @@ async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     if (res.status === 409 && body && body.serverData) {
       throw new ApiConflictError(body as SyncConflictPayload);
+    }
+    // A 401 on anything but the auth endpoints / the initial /api/me probe means the
+    // session cookie expired or was revoked while the app was open.
+    if (res.status === 401 && !url.startsWith('/api/auth/') && url !== '/api/me') {
+      emitSessionExpired();
     }
     const msg =
       (body && typeof body === 'object' && (body.error || body.message)) ||
@@ -351,6 +389,8 @@ export const api = {
     draftCode?: string;
     visibility?: 'public' | 'private';
     tags?: string;
+    cocreationId?: string;
+    tachiEUrl?: string;
   }): Promise<{ share: WorldShareItem }> {
     return requestJson<{ share: WorldShareItem }>('/api/shares', {
       method: 'POST',
@@ -363,7 +403,9 @@ export const api = {
         content: payload.content,
         draftCode: payload.draftCode || '',
         visibility: payload.visibility || 'public',
-        tags: payload.tags || ''
+        tags: payload.tags || '',
+        cocreationId: payload.cocreationId || '',
+        tachiEUrl: payload.tachiEUrl || ''
       })
     });
   },

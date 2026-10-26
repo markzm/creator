@@ -231,6 +231,57 @@
         </div>
       </div>
 
+      <!-- Cloud shares: what this account has actually published (any device) -->
+      <div class="card open" style="padding: 20px">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px">
+          <div>
+            <h3 style="margin: 0 0 4px; font-size: 16px">
+              ☁️ {{ tr('我的云端分享', 'My Cloud Shares') }} ({{ myShares.length }})
+            </h3>
+            <p class="hint" style="margin: 0; font-size: 12px">
+              {{ tr('账号在任意设备上发布到大厅的全部作品。可在此切换可见性、删除分享或定位到本地设定。', 'Everything this account has published to the lobby from any device.') }}
+            </p>
+          </div>
+          <button type="button" class="btn sm" :disabled="mySharesLoading" @click="loadMyShares">
+            🔄 {{ mySharesLoading ? tr('刷新中…', 'Refreshing…') : tr('刷新', 'Refresh') }}
+          </button>
+        </div>
+        <div v-if="mySharesLoaded && !myShares.length" class="hint" style="text-align: center; padding: 18px 0">
+          {{ tr('还没有发布过作品。', 'Nothing published yet.') }}
+        </div>
+        <div v-else style="display: flex; flex-direction: column; gap: 8px">
+          <div
+            v-for="sh in myShares"
+            :key="sh.id"
+            class="gl-row"
+            style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--card); border-radius: 8px; border: 1px solid var(--li2)"
+          >
+            <div style="min-width: 0; flex: 1">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                <strong style="font-size: 14px">{{ sh.title }}</strong>
+                <span class="pill" :style="{ fontSize: '11px', padding: '2px 7px', borderRadius: '99px', background: sh.visibility === 'public' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(100, 116, 139, 0.12)', color: sh.visibility === 'public' ? 'var(--ok)' : 'var(--mu)', fontWeight: 600 }">
+                  {{ sh.visibility === 'public' ? '🌐 ' + tr('公开', 'Public') : '🔒 ' + tr('私有', 'Private') }}
+                </span>
+                <span v-if="sh.canonStatus === 'doujin'" class="pill" style="font-size: 11px; padding: 2px 7px; border-radius: 99px; background: var(--wns); color: var(--wn); font-weight: 600">
+                  {{ tr('同人', 'Doujin') }}{{ sh.canonReview === 'pending' ? ' · ' + tr('审核中', 'pending') : sh.canonReview === 'rejected' ? ' · ' + tr('未通过', 'rejected') : '' }}
+                </span>
+                <span class="hint" style="font-size: 11px">{{ sh.kind }} · {{ sh.wordCount || 0 }} {{ tr('字', 'w') }}</span>
+              </div>
+              <div v-if="sh.summary" class="hint" style="font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                {{ sh.summary }}
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
+              <button type="button" class="btn sm" @click="toggleCloudShareVisibility(sh)">
+                {{ sh.visibility === 'public' ? '🔒 ' + tr('设为私有', 'To Private') : '🌐 ' + tr('公开', 'Publish') }}
+              </button>
+              <button type="button" class="btn sm" @click="locateCloudShare(sh)">📍 {{ tr('定位', 'Locate') }}</button>
+              <button type="button" class="btn sm danger" @click="deleteCloudShare(sh)">🗑️</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Reset & Data Management Card -->
       <div class="card open" style="padding: 16px 20px; background: rgba(239, 68, 68, 0.04); border: 1px solid rgba(239, 68, 68, 0.2)">
         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px">
@@ -325,7 +376,8 @@ import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
 import { AVATARS } from '../core/legacy/insp';
-import { api } from '../data/api';
+import { api, type WorldShareItem } from '../data/api';
+import { usePublish } from '../composables/usePublish';
 import { useAIStore } from '../stores/ai';
 import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
@@ -341,6 +393,7 @@ const router = useRouter();
 const { tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
+const { toggleVisibility: toggleShareVisibility } = usePublish();
 
 const bioInput = ref('');
 const filterKind = ref<'all' | 'world' | 'org' | 'char' | 'article'>('all');
@@ -377,6 +430,7 @@ interface WorkItem {
   kindLabel: string;
   icon: string;
   id: string;
+  isReference?: boolean;
   title: string;
   summary: string;
   visibility: 'public' | 'private';
@@ -394,9 +448,10 @@ const allWorks = computed<WorkItem[]>(() => {
       kindLabel: tr('世界观', 'World'),
       icon: '🌍',
       id: w.id,
+      isReference: Boolean(w.isReference),
       title: (w.data && w.data.w_name) || w.name || tr('未命名世界', 'Untitled World'),
       summary: (w.data && w.data.w_summary) || '',
-      visibility: (w as any).visibility || 'private',
+      visibility: w.visibility || 'private',
       extraInfo: `${Object.keys(w.data || {}).length} ${tr('项设定', 'fields')}`,
       updatedAt: w.updatedAt || 0
     });
@@ -409,9 +464,10 @@ const allWorks = computed<WorkItem[]>(() => {
       kindLabel: tr('组织', 'Organization'),
       icon: '🏛️',
       id: o.id,
+      isReference: Boolean(o.isReference),
       title: (o.data && o.data.o_name) || o.name || tr('未命名组织', 'Untitled Org'),
       summary: (o.data && o.data.o_motto) || '',
-      visibility: (o as any).visibility || 'private',
+      visibility: o.visibility || 'private',
       extraInfo: `${Object.keys(o.data || {}).length} ${tr('项设定', 'fields')}`,
       updatedAt: o.updatedAt || 0
     });
@@ -424,9 +480,10 @@ const allWorks = computed<WorkItem[]>(() => {
       kindLabel: tr('角色', 'Character'),
       icon: '👤',
       id: c.id,
+      isReference: Boolean(c.isReference),
       title: (c.data && c.data.name) || c.name || tr('未命名角色', 'Untitled Character'),
       summary: (c.data && c.data.personality) || '',
-      visibility: (c as any).visibility || 'private',
+      visibility: c.visibility || 'private',
       extraInfo: `${c.data?.role || tr('角色档案', 'Profile')}`,
       updatedAt: c.updatedAt || 0
     });
@@ -439,6 +496,7 @@ const allWorks = computed<WorkItem[]>(() => {
       kindLabel: tr('文章作品', 'Article'),
       icon: '🖋️',
       id: a.id,
+      isReference: Boolean(a.isReference),
       title: a.title || tr('未命名文章', 'Untitled Article'),
       summary: a.summary || '',
       visibility: a.visibility || 'private',
@@ -452,6 +510,7 @@ const allWorks = computed<WorkItem[]>(() => {
 
 const filteredWorks = computed(() => {
   return allWorks.value.filter((w) => {
+    if (w.isReference) return false;
     if (filterKind.value !== 'all' && w.kind !== filterKind.value) return false;
     if (filterVisibility.value !== 'all' && w.visibility !== filterVisibility.value) return false;
     return true;
@@ -459,74 +518,123 @@ const filteredWorks = computed(() => {
 });
 
 async function toggleWorkVisibility(item: WorkItem) {
-  const nextVis = item.visibility === 'public' ? 'private' : 'public';
-  if (item.kind === 'article') {
-    docStore.toggleArticleVisibility(item.id);
-    const art = (docStore.doc.articles || []).find((a) => a.id === item.id);
-    if (art) {
-      if (nextVis === 'public') {
-        try {
-          const res = await api.createShare({
-            id: art.shareId,
-            entityId: art.id,
-            kind: 'article',
-            title: art.title,
-            summary: art.summary || '',
-            content: art.content || '',
-            visibility: 'public',
-            tags: art.category || ''
-          });
-          art.shareId = String(res.share.id);
-          toast(tr('文章已成功公开共享到创作大厅 ✓', 'Published to lobby ✓'), 'ok');
-        } catch (err: any) {
-          toast(tr('同步到大厅失败：', 'Share sync failed: ') + (err?.message || ''), 'err');
-        }
-      } else if (art.shareId) {
-        try {
-          await api.updateShareVisibility(art.shareId, 'private');
-          toast(tr('文章已恢复为仅自己可见 🔒', 'Article set to private 🔒'), 'ok');
-        } catch (err: any) {
-          toast(tr('更新状态失败：', 'Update failed: ') + (err?.message || ''), 'err');
-        }
-      }
-    }
-  } else {
-    // Entities (world, org, char)
-    let entity: any = null;
-    if (item.kind === 'world') entity = docStore.doc.worlds?.[item.id];
-    else if (item.kind === 'org') entity = docStore.doc.orgs?.[item.id];
-    else if (item.kind === 'char') entity = docStore.doc.chars?.[item.id];
+  const next = await toggleShareVisibility(item.kind, item.id);
+  if (!next) return;
+  toast(
+    next === 'public'
+      ? tr('已公开共享到创作大厅 ✓', 'Published to lobby ✓')
+      : tr('已设为仅自己可见 🔒', 'Set to private 🔒'),
+    'ok'
+  );
+  void loadMyShares();
+}
 
-    if (entity) {
-      entity.visibility = nextVis;
-      docStore.touch(true);
-      if (nextVis === 'public') {
-        try {
-          const res = await api.createShare({
-            id: entity.shareId,
-            entityId: entity.id,
-            kind: item.kind,
-            title: item.title,
-            summary: item.summary || '',
-            content: JSON.stringify(entity.data, null, 2),
-            visibility: 'public'
-          });
-          entity.shareId = String(res.share.id);
-          toast(tr('设定已成功公开共享到创作大厅 ✓', 'Published to lobby ✓'), 'ok');
-        } catch (err: any) {
-          toast(tr('共享失败：', 'Share failed: ') + (err?.message || ''), 'err');
-        }
-      } else if (entity.shareId) {
-        try {
-          await api.updateShareVisibility(entity.shareId, 'private');
-          toast(tr('设定已设为私有 🔒', 'Entity set to private 🔒'), 'ok');
-        } catch (err: any) {
-          toast(tr('更新状态失败：', 'Update failed: ') + (err?.message || ''), 'err');
-        }
-      }
-    }
+// ---- Cloud shares (everything this account has published, from any device) ----
+const myShares = ref<WorldShareItem[]>([]);
+const mySharesLoading = ref(false);
+const mySharesLoaded = ref(false);
+
+async function loadMyShares() {
+  if (!authStore.isLoggedIn) return;
+  mySharesLoading.value = true;
+  try {
+    const res = await api.getShares({ owner: 'me', visibility: 'all', limit: 100 });
+    myShares.value = res.shares || [];
+    mySharesLoaded.value = true;
+  } catch {
+    // keep previous list
+  } finally {
+    mySharesLoading.value = false;
   }
 }
+
+async function toggleCloudShareVisibility(sh: WorldShareItem) {
+  const next = sh.visibility === 'public' ? 'private' : 'public';
+  try {
+    await api.updateShareVisibility(sh.id, next);
+    sh.visibility = next;
+    // Mirror onto the local record if we still have it.
+    if (sh.entityId) {
+      const local =
+        sh.kind === 'article'
+          ? (docStore.doc.articles || []).find((a) => a.id === sh.entityId)
+          : sh.kind === 'world'
+            ? docStore.doc.worlds[sh.entityId]
+            : sh.kind === 'org'
+              ? docStore.doc.orgs[sh.entityId]
+              : docStore.doc.chars[sh.entityId];
+      if (local) {
+        local.visibility = next;
+        local.shareId = String(sh.id);
+        docStore.touch(true);
+      }
+    }
+    toast(next === 'public' ? tr('已公开', 'Now public') : tr('已设为私有', 'Now private'), 'ok');
+  } catch (err: any) {
+    toast(tr('更新失败：', 'Update failed: ') + (err?.message || ''), 'err');
+  }
+}
+
+async function deleteCloudShare(sh: WorldShareItem) {
+  if (!(await confirm(tr('删除云端分享？', 'Delete this share?'), tr('只删除大厅中的分享记录，本地设定不受影响。', 'Only the lobby copy is removed; your local data is untouched.')))) {
+    return;
+  }
+  try {
+    await api.deleteShare(sh.id);
+    myShares.value = myShares.value.filter((x) => String(x.id) !== String(sh.id));
+    if (sh.entityId) {
+      const local =
+        sh.kind === 'article'
+          ? (docStore.doc.articles || []).find((a) => a.id === sh.entityId)
+          : sh.kind === 'world'
+            ? docStore.doc.worlds[sh.entityId]
+            : sh.kind === 'org'
+              ? docStore.doc.orgs[sh.entityId]
+              : docStore.doc.chars[sh.entityId];
+      if (local && local.shareId === String(sh.id)) {
+        delete local.shareId;
+        local.visibility = 'private';
+        docStore.touch(true);
+      }
+    }
+    toast(tr('已删除分享', 'Share deleted'), 'ok');
+  } catch (err: any) {
+    toast(tr('删除失败：', 'Delete failed: ') + (err?.message || ''), 'err');
+  }
+}
+
+function locateCloudShare(sh: WorldShareItem) {
+  if (!sh.entityId) {
+    toast(tr('该分享未关联本地条目（可能来自旧版本或已删除）', 'This share is not linked to a local item'), 'info');
+    return;
+  }
+  const kind = sh.kind as WorkItem['kind'];
+  const exists =
+    kind === 'article'
+      ? (docStore.doc.articles || []).some((a) => a.id === sh.entityId)
+      : kind === 'world'
+        ? Boolean(docStore.doc.worlds[sh.entityId])
+        : kind === 'org'
+          ? Boolean(docStore.doc.orgs[sh.entityId])
+          : Boolean(docStore.doc.chars[sh.entityId]);
+  if (!exists) {
+    toast(tr('本地已没有该条目', 'The local item no longer exists'), 'info');
+    return;
+  }
+  goToEdit({ kind, id: sh.entityId } as WorkItem);
+}
+
+watch(
+  () => authStore.isLoggedIn,
+  (v) => {
+    if (v) void loadMyShares();
+    else {
+      myShares.value = [];
+      mySharesLoaded.value = false;
+    }
+  },
+  { immediate: true }
+);
 
 function goToEdit(item: WorkItem) {
   if (item.kind === 'world') {

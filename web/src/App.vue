@@ -7,6 +7,8 @@ import { useAuthStore } from './stores/auth'
 import { useSyncStore } from './stores/sync'
 import { useAIStore } from './stores/ai'
 import { useHotkeys } from './composables/useHotkeys'
+import { showToast } from './composables/useToast'
+import { SESSION_EXPIRED_EVENT } from './data/api'
 import AppSidebar from './components/app/AppSidebar.vue'
 import AppTopbar from './components/app/AppTopbar.vue'
 import AppMobileNav from './components/app/AppMobileNav.vue'
@@ -45,20 +47,41 @@ function handleBeforeUnload() {
   void doc.flushSave(false)
 }
 
+function handleSessionExpired() {
+  void auth.onSessionExpired().then(() => {
+    showToast(ui.lang === 'zh' ? '登录已过期，请重新登录以继续同步' : 'Session expired – sign in to keep syncing', 'warn')
+    ui.openModal('auth')
+  })
+}
+
+function handleOnline() {
+  if (!auth.isLoggedIn && auth.sessionState === 'unknown') {
+    void auth.reprobeSession().then((u) => {
+      if (u) void sync.onAuthSuccess()
+    })
+  }
+}
+
 onMounted(async () => {
   await doc.init()
   await sync.init()
+  sync.setFocusLabelProvider(getFocusLabel)
+  // Session must be known before AI init so the account's AI settings can be loaded.
+  const user = await auth.initSession()
   await ai.init()
   ui.checkFirstRunTutorial()
-  const user = await auth.initSession()
   if (user) {
-    await sync.onAuthSuccess(getFocusLabel)
+    await sync.onAuthSuccess()
   }
   window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired)
+  window.addEventListener('online', handleOnline)
 })
 
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired)
+  window.removeEventListener('online', handleOnline)
   sync.stopPresenceHeartbeat()
 })
 </script>

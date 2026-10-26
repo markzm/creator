@@ -78,12 +78,11 @@
 import { computed, ref } from 'vue';
 import { useI18n } from '../../composables/useI18n';
 import { useToast } from '../../composables/useToast';
-import { buildCode } from '../../core/draftCode';
+import { usePublish } from '../../composables/usePublish';
 import { fmtOutput } from '../../core/format';
 import { exportPngCard } from '../../core/imageCard';
 import type { LegacyFieldGroup } from '../../core/legacy/fields';
 import type { EntityKind } from '../../core/schema/types';
-import { api } from '../../data/api';
 import { useAuthStore } from '../../stores/auth';
 import { useUIStore } from '../../stores/ui';
 import Modal from '../base/Modal.vue';
@@ -92,6 +91,7 @@ const props = defineProps<{
   kind: EntityKind;
   groups: LegacyFieldGroup[];
   data: Record<string, string>;
+  entityId: string;
   entityName: string;
   draftOrder: string[];
   draftPrefix: string;
@@ -110,6 +110,7 @@ const { lang, t, tr } = useI18n();
 const { toast } = useToast();
 const authStore = useAuthStore();
 const uiStore = useUIStore();
+const { publishEntity } = usePublish();
 
 const visible = ref(false);
 const fmt = ref<'text' | 'md' | 'json'>('text');
@@ -209,18 +210,18 @@ async function submitShare() {
   }
   sharing.value = true;
   try {
-    const draftCode = buildCode(props.data, props.draftOrder, props.draftPrefix) || '';
-    await api.createShare({
-      kind: props.kind,
+    // Same publish path as the "我的作品" toggles: links the share to this entity so a
+    // second share updates it instead of creating a duplicate.
+    const share = await publishEntity(props.kind, props.entityId, {
+      visibility: 'public',
       title: shareTitle.value.trim().slice(0, 60),
       summary: shareSummary.value.trim().slice(0, 120),
-      content: shareContent.value,
-      draftCode
+      content: shareContent.value
     });
-    shareModalOpen.value = false;
-    toast(tr('已分享到大厅 ✓', 'Shared to lobby ✓'), 'ok');
-  } catch (err: any) {
-    toast((tr('分享失败：', 'Share failed: ')) + (err?.message || ''), 'err');
+    if (share) {
+      shareModalOpen.value = false;
+      toast(tr('已分享到大厅 ✓', 'Shared to lobby ✓'), 'ok');
+    }
   } finally {
     sharing.value = false;
   }

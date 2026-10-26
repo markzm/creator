@@ -113,6 +113,7 @@ import { ref, watch } from 'vue';
 import { useI18n } from '../../composables/useI18n';
 import { useToast } from '../../composables/useToast';
 import { useAuthStore } from '../../stores/auth';
+import { useAIStore } from '../../stores/ai';
 import { useSyncStore } from '../../stores/sync';
 import { useUIStore } from '../../stores/ui';
 import Modal from '../base/Modal.vue';
@@ -120,6 +121,7 @@ import Modal from '../base/Modal.vue';
 const uiStore = useUIStore();
 const authStore = useAuthStore();
 const syncStore = useSyncStore();
+const aiStore = useAIStore();
 const { tr } = useI18n();
 const { toast } = useToast();
 
@@ -181,6 +183,7 @@ async function onSubmit() {
     }
     uiStore.closeModal('auth');
     await syncStore.onAuthSuccess();
+    void aiStore.loadCloudConfig();
   } catch (err: any) {
     errorMsg.value = err?.message || tr('操作失败，请重试', 'Operation failed');
     if (mode.value === 'register') {

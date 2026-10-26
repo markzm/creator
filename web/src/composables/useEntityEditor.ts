@@ -121,13 +121,21 @@ export function useEntityEditor(
       });
       const generated = res.content.trim();
       if (!generated) return false;
-      if (append && cur) {
-        const sep = isTextarea ? '\n' : '、';
-        ent.data[fieldId] = cur.replace(/([、,，\n\s])+$/, '') + sep + generated;
-      } else {
-        ent.data[fieldId] = generated;
+      // The entity object may have been replaced (tab sync / merge) while we awaited.
+      const coll = kind === 'world' ? docStore.doc.worlds : kind === 'org' ? docStore.doc.orgs : docStore.doc.chars;
+      const live = coll[ent.id];
+      if (!live) {
+        toast(tr('目标条目已不存在，AI 结果已丢弃', 'Target entry no longer exists; AI result discarded'), 'warn');
+        return false;
       }
-      docStore.syncEntityName(kind, ent);
+      const nowCur = (live.data[fieldId] || '').trim();
+      if (append && nowCur) {
+        const sep = isTextarea ? '\n' : '、';
+        live.data[fieldId] = nowCur.replace(/([、,，\n\s])+$/, '') + sep + generated;
+      } else {
+        live.data[fieldId] = generated;
+      }
+      docStore.syncEntityName(kind, live);
       docStore.touch();
       toast(tr(`AI 已生成「${label}」✓`, `Generated ${label} ✓`), 'ok');
       return true;

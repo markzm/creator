@@ -413,8 +413,8 @@
 import { computed, ref } from 'vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
+import { usePublish } from '../composables/usePublish';
 import { useToast } from '../composables/useToast';
-import { api } from '../data/api';
 import { useAIStore } from '../stores/ai';
 import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
@@ -428,6 +428,7 @@ const uiStore = useUIStore();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
+const { publishEntity, toggleVisibility: toggleShareVisibility } = usePublish();
 
 const filterCategory = ref('all');
 const searchKeyword = ref('');
@@ -571,20 +572,33 @@ function buildBoundContext(): string {
   return lines.join('\n');
 }
 
+/** Resolves the article an AI request was made for; it may have been switched or deleted meanwhile. */
+function findArticleOrWarn(artId: string) {
+  const art = (docStore.doc.articles || []).find((a) => a.id === artId);
+  if (!art) {
+    toast(tr('目标文章已切换或删除，AI 结果已丢弃', 'Target article changed; AI result discarded'), 'warn');
+  }
+  return art || null;
+}
+
 async function executeAIWrite() {
   if (!activeArt.value || isReadOnlyReference.value || !aiWritePrompt.value.trim()) {
     toast(tr('请填写写作意图', 'Prompt required'), 'warn');
     return;
   }
   const context = buildBoundContext();
+  const artId = activeArt.value.id;
   try {
     const res = await aiStore.generate({
       task: 'article_write',
       prompt: aiWritePrompt.value.trim(),
       context
     });
-    activeArt.value.content = res.content;
-    activeArt.value.wordCount = res.content.length;
+    const art = findArticleOrWarn(artId);
+    if (!art) return;
+    art.content = res.content;
+    art.wordCount = res.content.length;
+    art.updatedAt = Date.now();
     docStore.touch(true);
     aiWriteModalOpen.value = false;
     toast(tr('AI 正文创作完成 ✓', 'AI Story Generated ✓'), 'ok');
@@ -596,6 +610,7 @@ async function executeAIWrite() {
 async function onAIContinue() {
   if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
   const context = buildBoundContext();
+  const artId = activeArt.value.id;
   toast(tr('AI 正在续写剧情…', 'AI Continuing story…'), 'ok');
   try {
     const res = await aiStore.generate({
@@ -604,8 +619,11 @@ async function onAIContinue() {
       prompt: '顺畅接续前文剧情，生动展现冲突，推进情节发展。',
       context
     });
-    activeArt.value.content = activeArt.value.content + '\n\n' + res.content;
-    activeArt.value.wordCount = activeArt.value.content.length;
+    const art = findArticleOrWarn(artId);
+    if (!art) return;
+    art.content = (art.content || '') + '\n\n' + res.content;
+    art.wordCount = art.content.length;
+    art.updatedAt = Date.now();
     docStore.touch(true);
     toast(tr('续写完成 ✓', 'Continued ✓'), 'ok');
   } catch (err: any) {
@@ -615,13 +633,17 @@ async function onAIContinue() {
 
 async function onAISummary() {
   if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
+  const artId = activeArt.value.id;
   toast(tr('正在提取文章摘要…', 'Generating summary…'), 'ok');
   try {
     const res = await aiStore.generate({
       task: 'article_summary',
       currentText: activeArt.value.content.slice(0, 4000)
     });
-    activeArt.value.summary = res.content;
+    const art = findArticleOrWarn(artId);
+    if (!art) return;
+    art.summary = res.content;
+    art.updatedAt = Date.now();
     docStore.touch(true);
     toast(tr('摘要已生成 ✓', 'Summary ready ✓'), 'ok');
   } catch (err: any) {
@@ -631,49 +653,26 @@ async function onAISummary() {
 
 async function toggleVisibility() {
   if (!activeArt.value || isReadOnlyReference.value) return;
-  const next = docStore.toggleArticleVisibility(activeArt.value.id);
+  const next = await toggleShareVisibility('article', activeArt.value.id);
+  if (!next) return;
   toast(
     next === 'public'
-      ? tr('已设为公开共享（可在创作大厅展示）', 'Set to Public')
+      ? tr('已公开共享到创作大厅 ✓', 'Published to the lobby ✓')
       : tr('已设为私有（仅自己可见）', 'Set to Private'),
     'ok'
   );
-  if (activeArt.value.shareId) {
-    try {
-      await api.updateShareVisibility(activeArt.value.shareId, next || 'private');
-    } catch {
-      // Ignore
-    }
-  }
 }
 
 async function onShareOrSyncToLobby() {
-  if (isReadOnlyReference.value) return;
-  if (!authStore.isLoggedIn) {
-    uiStore.openModal('auth');
-    return;
-  }
-  if (!activeArt.value || !(activeArt.value.content || '').trim()) {
+  if (isReadOnlyReference.value || !activeArt.value) return;
+  if (!(activeArt.value.content || '').trim()) {
     toast(tr('文章内容为空', 'Content is empty'), 'warn');
     return;
   }
-  try {
-    const res = await api.createShare({
-      id: activeArt.value.shareId,
-      entityId: activeArt.value.id,
-      kind: 'article',
-      title: activeArt.value.title || tr('未命名文章', 'Untitled'),
-      summary: activeArt.value.summary || activeArt.value.content.slice(0, 80),
-      content: activeArt.value.content,
-      visibility: activeArt.value.visibility,
-      tags: activeArt.value.category
-    });
-    activeArt.value.shareId = String(res.share.id);
-    docStore.touch(true);
-    toast(tr('已成功同步至创作大厅 ✓', 'Synced to Lobby ✓'), 'ok');
-  } catch (err: any) {
-    toast((tr('同步失败：', 'Sync failed: ')) + (err?.message || ''), 'err');
-  }
+  const share = await publishEntity('article', activeArt.value.id, {
+    visibility: activeArt.value.visibility === 'private' ? 'private' : 'public'
+  });
+  if (share) toast(tr('已成功同步至创作大厅 ✓', 'Synced to Lobby ✓'), 'ok');
 }
 
 async function copyContent() {

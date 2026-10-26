@@ -120,7 +120,6 @@ export const useUIStore = defineStore('ui', () => {
   function closeTopModal(): boolean {
     const order: ModalName[] = [
       'commandPalette',
-      'conflict',
       'revisions',
       'auth',
       'backup',

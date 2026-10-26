@@ -236,6 +236,7 @@
             kind="org"
             :groups="OG"
             :data="org.data"
+            :entity-id="org.id"
             :entity-name="org.data.o_name || org.name"
             :draft-order="ORG_ORDER"
             draft-prefix="CC2O"

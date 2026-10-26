@@ -4,7 +4,8 @@ import { showToast } from '../composables/useToast';
 import { computeSyncHash, threeWayMerge, isDocEffectivelyEmpty } from '../core/diff';
 import { migrateToV6 } from '../core/schema/migrations';
 import type { DiffSummary, DocV6, FieldConflict } from '../core/schema/types';
-import { ApiConflictError, api } from '../data/api';
+import { ApiConflictError, ApiNetworkError, api, toMs } from '../data/api';
+import { stripReferenceItems } from '../core/reference';
 import { loadBaseSyncState, saveBaseSyncState } from '../data/repo';
 import { useAuthStore } from './auth';
 import { useDocStore } from './doc';
@@ -32,6 +33,21 @@ export const useSyncStore = defineStore('sync', () => {
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let presenceTimer: ReturnType<typeof setInterval> | null = null;
   let initialized = false;
+  /** The PUT currently on the wire (if any); further pushes coalesce behind it. */
+  let inFlight: Promise<boolean> | null = null;
+  let queued = false;
+  /** Set after a 401: no automatic pushes until the user signs in again. */
+  let suspended = false;
+  let focusLabelProvider: (() => string) | null = null;
+
+  function clone(doc: DocV6): DocV6 {
+    return JSON.parse(JSON.stringify(doc));
+  }
+
+  /** The document exactly as it goes over the wire (no UI state, no reference items). */
+  function wireDoc(doc: DocV6): DocV6 {
+    return stripReferenceItems(doc);
+  }
 
   async function init() {
     if (initialized) return;
@@ -44,18 +60,43 @@ export const useSyncStore = defineStore('sync', () => {
     docStore.onDirty(() => {
       markDirty();
     });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        const authStore = useAuthStore();
+        if (authStore.isLoggedIn && !suspended && status.value === 'dirty') {
+          schedulePush(500);
+        }
+      });
+    }
   }
 
   function markDirty() {
     const authStore = useAuthStore();
-    if (!authStore.isLoggedIn) {
+    if (!authStore.isLoggedIn || suspended) {
       status.value = 'offline';
       return;
     }
-    if (status.value !== 'conflict') {
-      status.value = 'dirty';
-    }
+    // While a conflict is open, keep editing local-only: another PUT would just 409 again and
+    // reset the user's choices in the dialog.
+    if (status.value === 'conflict') return;
+    status.value = 'dirty';
     schedulePush();
+  }
+
+  /** Stops automatic syncing (session expired). State is kept so a re-login can resume. */
+  function suspend() {
+    suspended = true;
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+    }
+    stopPresenceHeartbeat();
+    status.value = 'offline';
+  }
+
+  function setFocusLabelProvider(fn: () => string) {
+    focusLabelProvider = fn;
   }
 
   function schedulePush(delayMs = 1800) {
@@ -66,10 +107,23 @@ export const useSyncStore = defineStore('sync', () => {
   }
 
   async function updateBaseState(doc: DocV6, rev: number, syncedAt?: number) {
-    baseDoc.value = JSON.parse(JSON.stringify(doc));
+    baseDoc.value = wireDoc(clone(doc));
     baseRev.value = rev;
-    lastSyncedAt.value = syncedAt || Date.now();
+    lastSyncedAt.value = syncedAt ? toMs(syncedAt) : Date.now();
     await saveBaseSyncState(baseDoc.value, rev);
+  }
+
+  /**
+   * Sends a snapshot of the current document. Edits made while the request is in flight are
+   * detected by hash and leave the status `dirty` so they get pushed next.
+   */
+  async function putSnapshot(baseRevToUse: number): Promise<{ rev: number; updatedAt: number; changedMeanwhile: boolean }> {
+    const docStore = useDocStore();
+    const snapshot = clone(docStore.doc);
+    const sentHash = computeSyncHash(snapshot);
+    const res = await api.putSync(wireDoc(snapshot), baseRevToUse);
+    await updateBaseState(snapshot, res.rev, res.updatedAt);
+    return { rev: res.rev, updatedAt: res.updatedAt, changedMeanwhile: computeSyncHash(docStore.doc) !== sentHash };
   }
 
   async function handleConflictOrMerge(
@@ -102,17 +156,21 @@ export const useSyncStore = defineStore('sync', () => {
       return true;
     }
 
-    // Run 3-way merge
-    const mergeRes = threeWayMerge(baseDoc.value, docStore.doc, serverDoc);
+    // Run 3-way merge (reference items are stripped on all three sides)
+    const mergeRes = threeWayMerge(
+      baseDoc.value ? wireDoc(baseDoc.value) : null,
+      wireDoc(docStore.doc),
+      wireDoc(serverDoc)
+    );
     if (mergeRes.canAutoMerge) {
       docStore.replaceDoc(mergeRes.mergedDoc, false, false);
       docStore.reapplyReferences();
       await updateBaseState(serverDoc, serverRev, serverUpdatedAt);
       // Push merged result with baseRev = serverRev
-      const putRes = await api.putSync(docStore.doc, serverRev);
-      await updateBaseState(docStore.doc, putRes.rev, putRes.updatedAt);
+      const putRes = await putSnapshot(serverRev);
       conflictState.value = null;
-      status.value = 'synced';
+      status.value = putRes.changedMeanwhile ? 'dirty' : 'synced';
+      if (putRes.changedMeanwhile) schedulePush(500);
       showToast(
         uiStore.lang === 'zh' ? '已自动合并多端修改 ✓' : 'Auto-merged changes ✓',
         'ok'
@@ -136,26 +194,48 @@ export const useSyncStore = defineStore('sync', () => {
 
   async function push(manual = false): Promise<boolean> {
     const authStore = useAuthStore();
-    const docStore = useDocStore();
     const uiStore = useUIStore();
     if (!authStore.isLoggedIn) {
       status.value = 'offline';
       if (manual) uiStore.openModal('auth');
       return false;
     }
+    if (manual) suspended = false;
+    if (suspended) return false;
     if (pushTimer) {
       clearTimeout(pushTimer);
       pushTimer = null;
     }
+    // Coalesce: one PUT on the wire at a time; a request made meanwhile runs right after.
+    if (inFlight) {
+      queued = true;
+      return inFlight;
+    }
+    inFlight = doPush(manual).finally(() => {
+      inFlight = null;
+      if (queued) {
+        queued = false;
+        schedulePush(200);
+      }
+    });
+    return inFlight;
+  }
 
+  async function doPush(manual: boolean): Promise<boolean> {
+    const docStore = useDocStore();
+    const uiStore = useUIStore();
     status.value = 'syncing';
     lastError.value = '';
     try {
       await docStore.flushSave(false);
-      const res = await api.putSync(docStore.doc, baseRev.value);
-      await updateBaseState(docStore.doc, res.rev, res.updatedAt);
+      const res = await putSnapshot(baseRev.value);
       conflictState.value = null;
-      status.value = 'synced';
+      if (res.changedMeanwhile) {
+        status.value = 'dirty';
+        schedulePush(500);
+      } else {
+        status.value = 'synced';
+      }
       if (manual) {
         showToast(uiStore.lang === 'zh' ? '已同步到云端 ✓' : 'Synced to cloud ✓', 'ok');
       }
@@ -177,6 +257,17 @@ export const useSyncStore = defineStore('sync', () => {
       }
       lastError.value = err?.message || 'Sync failed';
       status.value = 'dirty';
+      if (err?.status === 401) {
+        // onSessionExpired() (via the api event) suspends us; nothing else to do here.
+        return false;
+      }
+      if (err instanceof ApiNetworkError) {
+        // Offline: wait for the `online` event instead of hammering the network.
+        if (manual) {
+          showToast(uiStore.lang === 'zh' ? '当前离线，恢复网络后会自动同步' : 'Offline – will sync when back online', 'warn');
+        }
+        return false;
+      }
       if (manual) {
         showToast(
           (uiStore.lang === 'zh' ? '同步失败：' : 'Sync failed: ') + lastError.value,
@@ -196,6 +287,7 @@ export const useSyncStore = defineStore('sync', () => {
       return false;
     }
 
+    if (manual) suspended = false;
     status.value = 'syncing';
     lastError.value = '';
     try {
@@ -204,8 +296,10 @@ export const useSyncStore = defineStore('sync', () => {
         // Server has no document yet -> initial push with baseRev=0
         baseRev.value = 0;
         baseDoc.value = null;
+        suspended = false;
         return await push(manual);
       }
+      suspended = false;
       return await handleConflictOrMerge(remote.data, remote.rev, remote.updatedAt, manual);
     } catch (err: any) {
       lastError.value = err?.message || 'Pull failed';
@@ -247,6 +341,7 @@ export const useSyncStore = defineStore('sync', () => {
     docStore.reapplyReferences();
     await updateBaseState(cState.serverDoc, cState.serverRev, cState.serverUpdatedAt);
     conflictState.value = null;
+    status.value = 'dirty';
     uiStore.closeModal('conflict');
     return await push(true);
   }
@@ -261,12 +356,14 @@ export const useSyncStore = defineStore('sync', () => {
     }
   }
 
-  function startPresenceHeartbeat(getFocusLabel: () => string) {
+  function startPresenceHeartbeat(getFocusLabel?: () => string) {
+    if (getFocusLabel) focusLabelProvider = getFocusLabel;
+    const provider = focusLabelProvider || (() => 'studio');
     if (presenceTimer) clearInterval(presenceTimer);
-    void sendPresence(getFocusLabel());
+    void sendPresence(provider());
     presenceTimer = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      void sendPresence(getFocusLabel());
+      void sendPresence(provider());
     }, 60000);
   }
 
@@ -278,11 +375,10 @@ export const useSyncStore = defineStore('sync', () => {
   }
 
   async function onAuthSuccess(getFocusLabel?: () => string) {
+    suspended = false;
     await init();
     await pull(false);
-    if (getFocusLabel) {
-      startPresenceHeartbeat(getFocusLabel);
-    }
+    startPresenceHeartbeat(getFocusLabel);
   }
 
   /**
@@ -304,6 +400,7 @@ export const useSyncStore = defineStore('sync', () => {
 
   async function onLogout() {
     stopPresenceHeartbeat();
+    suspended = false;
     status.value = 'offline';
     await resetBaseState();
   }
@@ -321,6 +418,8 @@ export const useSyncStore = defineStore('sync', () => {
     pull,
     resolveConflict,
     resetBaseState,
+    suspend,
+    setFocusLabelProvider,
     sendPresence,
     startPresenceHeartbeat,
     stopPresenceHeartbeat,

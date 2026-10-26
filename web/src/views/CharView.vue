@@ -281,6 +281,7 @@
             kind="char"
             :groups="charGroups"
             :data="char.data"
+            :entity-id="char.id"
             :entity-name="char.data.name || char.name"
             :draft-order="charDraftOrder"
             draft-prefix="CC2"
