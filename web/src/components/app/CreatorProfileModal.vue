@@ -175,8 +175,12 @@
             <p class="hint" style="margin: 0 0 6px; font-size: 12px">
               {{ p.summary || '暂无企划介绍' }}
             </p>
-            <div class="hint" style="font-size: 11.5px">
-              分部管理员 ({{ p.admins.length }}位): {{ p.admins.join(', ') || '暂无' }}
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+              <span class="hint" style="font-size: 11.5px">企划成员：</span>
+              <span v-for="m in p.members || []" :key="m.userId" class="pill sm" :class="m.role === 'owner' ? 'accent' : 'outline'">
+                {{ m.name }}{{ m.role === 'owner' ? ' · 负责人' : '' }}
+              </span>
+              <span v-if="p.pendingCount" class="pill sm warn">{{ p.pendingCount }} 件待审</span>
             </div>
           </div>
         </div>

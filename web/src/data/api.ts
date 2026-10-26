@@ -291,6 +291,20 @@ export const api = {
   },
 
   // Profile & Avatar
+  forgotPassword(email: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>('/api/auth/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  },
+
+  resetPassword(token: string, newPassword: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>('/api/auth/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword })
+    });
+  },
+
   getMe(): Promise<{ user: AuthUser }> {
     return requestJson<{ user: AuthUser }>('/api/me');
   },

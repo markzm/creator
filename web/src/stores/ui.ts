@@ -72,6 +72,14 @@ export const useUIStore = defineStore('ui', () => {
     modals.creatorProfile = true;
   }
 
+  /** World the co-creation manager should pre-select (null = manage existing projects). */
+  const activeCocreationWorldId = ref<string | null>(null);
+
+  function openCocreationManage(worldId: string | null = null) {
+    activeCocreationWorldId.value = worldId;
+    modals.cocreationManage = true;
+  }
+
   const guideContext = ref<{
     mode: EntityKind;
     groups: LegacyFieldGroup[];
@@ -179,6 +187,8 @@ export const useUIStore = defineStore('ui', () => {
     checkFirstRunTutorial,
     markTutorialDone,
     activeProfileUserId,
-    openCreatorProfile
+    openCreatorProfile,
+    activeCocreationWorldId,
+    openCocreationManage
   };
 });

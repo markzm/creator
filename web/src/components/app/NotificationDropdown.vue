@@ -3,104 +3,69 @@
     <button
       type="button"
       class="icon-btn"
-      :title="unreadCount ? `${unreadCount} 条未读通知` : '通知中心'"
-      style="position: relative; font-size: 16px; padding: 6px 10px; border-radius: 6px; background: transparent; border: 1px solid var(--li)"
+      :title="unreadCount ? tr(`${unreadCount} 条未读通知`, `${unreadCount} unread`) : tr('通知中心', 'Notifications')"
+      :aria-label="tr('通知', 'Notifications')"
+      aria-haspopup="menu"
+      :aria-expanded="open"
       @click="toggleDropdown"
     >
-      🔔
-      <span
-        v-if="unreadCount > 0"
-        class="badge"
-        style="
-          position: absolute;
-          top: -4px;
-          right: -4px;
-          background: var(--dg);
-          color: #fff;
-          font-size: 10px;
-          padding: 1px 5px;
-          border-radius: 99px;
-          font-weight: 800;
-        "
-      >
-        {{ unreadCount > 99 ? '99+' : unreadCount }}
-      </span>
+      <Bell />
+      <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
     </button>
 
-    <!-- Dropdown Menu -->
-    <div
-      v-if="open"
-      class="card notif-dropdown"
-      style="
-        position: absolute;
-        top: 38px;
-        right: 0;
-        width: 320px;
-        max-height: 420px;
-        display: flex;
-        flex-direction: column;
-        z-index: 1000;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-        padding: 0;
-        overflow: hidden;
-      "
-    >
-      <div style="padding: 10px 14px; border-bottom: 1px solid var(--li2); display: flex; justify-content: space-between; align-items: center; background: var(--soft)">
-        <strong style="font-size: 13.5px">🔔 站内通知与企划动态</strong>
-        <button
-          v-if="unreadCount > 0"
-          type="button"
-          class="btn sm"
-          style="font-size: 11px; padding: 2px 7px"
-          @click="markAllRead"
-        >
-          全部已读
-        </button>
-      </div>
+    <Transition name="toast">
+      <div v-if="open" class="card flat notif-dropdown" role="menu">
+        <div class="notif-head">
+          <strong>{{ tr('通知', 'Notifications') }}</strong>
+          <button v-if="unreadCount > 0" type="button" class="btn sm ghost" @click="markAllRead">
+            <CheckCheck /> {{ tr('全部已读', 'Mark all read') }}
+          </button>
+        </div>
 
-      <div style="flex: 1; overflow-y: auto; max-height: 340px; padding: 6px">
-        <div v-if="loading && !notifications.length" class="hint" style="text-align: center; padding: 20px 0">
-          加载通知中…
-        </div>
-        <div v-else-if="!notifications.length" class="hint" style="text-align: center; padding: 24px 0">
-          暂无通知信息
-        </div>
-        <div v-else style="display: flex; flex-direction: column; gap: 6px">
-          <div
+        <div class="notif-list">
+          <Skeleton v-if="loading && !notifications.length" variant="row" :count="3" />
+          <EmptyState v-else-if="!notifications.length" :icon="BellOff" :description="tr('暂无通知', 'No notifications yet')" />
+          <button
             v-for="n in notifications"
+            v-else
             :key="n.id"
+            type="button"
             class="notif-item"
-            :style="{
-              padding: '8px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              background: n.isRead ? 'transparent' : 'var(--acs)',
-              borderLeft: n.isRead ? '2px solid transparent' : '2px solid var(--ac)'
-            }"
+            :class="{ unread: !n.isRead }"
+            role="menuitem"
+            @click="openNotification(n)"
           >
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px">
-              <strong style="font-size: 12.5px; color: var(--ink)">
-                {{ n.title }}
-              </strong>
-              <span class="hint" style="font-size: 10.5px">{{ relTime(n.createdAt) }}</span>
-            </div>
-            <div style="color: var(--ink2); line-height: 1.4; word-break: break-word">
-              {{ n.content }}
-            </div>
-          </div>
+            <span class="notif-icon"><component :is="iconFor(n.type)" /></span>
+            <span style="min-width: 0; flex: 1">
+              <span class="notif-title">{{ n.title }}</span>
+              <span class="notif-body">{{ n.content }}</span>
+              <span class="notif-time">{{ formatRelative(n.createdAt, uiStore.lang) }}</span>
+            </span>
+          </button>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Bell, BellOff, CheckCheck, Handshake, Heart, MessageSquare, ShieldAlert, Sparkles, Stamp } from 'lucide-vue-next';
 import { onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useI18n } from '../../composables/useI18n';
+import { formatRelative } from '../../core/format';
 import type { NotificationItem } from '../../core/schema/types';
 import { api } from '../../data/api';
 import { useAuthStore } from '../../stores/auth';
+import { useUIStore } from '../../stores/ui';
+import EmptyState from '../base/EmptyState.vue';
+import Skeleton from '../base/Skeleton.vue';
 
 const authStore = useAuthStore();
+const uiStore = useUIStore();
+const router = useRouter();
+const { tr } = useI18n();
+
 const open = ref(false);
 const notifications = ref<NotificationItem[]>([]);
 const unreadCount = ref(0);
@@ -108,51 +73,81 @@ const loading = ref(false);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+function iconFor(type: string) {
+  switch (type) {
+    case 'comment_reply':
+      return MessageSquare;
+    case 'comment_liked':
+      return Heart;
+    case 'doujin_created':
+      return Sparkles;
+    case 'canon_requested':
+      return Handshake;
+    case 'canon_approved':
+    case 'canon_rejected':
+      return Stamp;
+    case 'admin_alert':
+      return ShieldAlert;
+    default:
+      return Bell;
+  }
+}
+
 async function fetchNotifications() {
   if (!authStore.isLoggedIn) return;
+  if (typeof document !== 'undefined' && document.hidden && !open.value) return;
+  loading.value = true;
   try {
     const res = await api.getNotifications(30);
     notifications.value = res.notifications || [];
     unreadCount.value = res.unreadCount || 0;
   } catch {
-    // Ignore error
+    // keep last state; auth expiry is handled globally
+  } finally {
+    loading.value = false;
   }
 }
 
 function toggleDropdown() {
   open.value = !open.value;
-  if (open.value) {
-    void fetchNotifications();
-  }
+  if (open.value) void fetchNotifications();
 }
 
 async function markAllRead() {
   try {
     await api.markNotificationsRead();
     unreadCount.value = 0;
-    notifications.value.forEach((n) => {
-      n.isRead = true;
-    });
+    notifications.value.forEach((n) => (n.isRead = true));
   } catch {
-    // Ignore error
+    // ignore
   }
 }
 
-function relTime(ts: number): string {
-  if (!ts) return '';
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - ts;
-  if (diff < 60) return '刚刚';
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return `${Math.floor(diff / 86400)}天前`;
+async function openNotification(n: NotificationItem) {
+  if (!n.isRead) {
+    n.isRead = true;
+    unreadCount.value = Math.max(0, unreadCount.value - 1);
+    api.markNotificationRead(n.id).catch(() => {
+      // ignore
+    });
+  }
+  open.value = false;
+  if (n.targetKind === 'share' && n.targetId) {
+    if (n.type === 'canon_requested' || n.type === 'doujin_created') {
+      uiStore.openCocreationManage(null);
+    } else {
+      await router.push({ path: '/lobby', query: { share: n.targetId } });
+    }
+  }
 }
 
 function handleClickOutside(e: MouseEvent) {
   const target = e.target as HTMLElement;
-  if (!target.closest('.notif-wrapper')) {
-    open.value = false;
-  }
+  if (!target.closest('.notif-wrapper')) open.value = false;
+}
+
+function handleVisibility() {
+  if (!document.hidden) void fetchNotifications();
 }
 
 onMounted(() => {
@@ -161,16 +156,87 @@ onMounted(() => {
     pollTimer = setInterval(fetchNotifications, 30000);
   }
   document.addEventListener('click', handleClickOutside);
+  document.addEventListener('visibilitychange', handleVisibility);
 });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
   document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('visibilitychange', handleVisibility);
 });
 </script>
 
 <style scoped>
-.notif-item:hover {
-  background: var(--soft) !important;
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--dg);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  border: 2px solid var(--card);
+  box-sizing: content-box;
 }
+.notif-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: min(360px, calc(100vw - 24px));
+  max-height: 460px;
+  display: flex;
+  flex-direction: column;
+  z-index: var(--z-dropdown);
+  box-shadow: var(--el-3);
+  padding: 0;
+  overflow: hidden;
+}
+.notif-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--li2);
+  background: var(--soft);
+  font-size: var(--fs-13);
+}
+.notif-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.notif-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.notif-item:hover { background: var(--li2); }
+.notif-item.unread { background: var(--acs); }
+.notif-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--li);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ac);
+}
+.notif-icon svg { width: 14px; height: 14px; }
+.notif-title { display: block; font-weight: 700; font-size: var(--fs-12); color: var(--ink); }
+.notif-body { display: block; font-size: var(--fs-12); color: var(--ink2); line-height: 1.4; word-break: break-word; }
+.notif-time { display: block; font-size: 10.5px; color: var(--mu2); margin-top: 2px; }
 </style>

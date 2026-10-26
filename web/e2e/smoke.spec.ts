@@ -248,11 +248,11 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
     await expect(page.locator('.sres').first()).toBeVisible();
   });
 
-  test('7. Offline guest cannot access Lobby, while authenticated user can browse & filter', async ({ page }) => {
-    // 7a. Unauthenticated guest is gated in offline mode
+  test('7. Guests can browse the Lobby read-only, authenticated users can filter', async ({ page }) => {
+    // 7a. Unauthenticated guest sees the public feed and a sign-in call to action
     await page.goto('/lobby');
-    await expect(page.getByText('离线体验版 · 创作大厅已锁定')).toBeVisible();
-    await expect(page.getByText('离线体验版（未登录）').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /登录后参与/ })).toBeVisible();
+    await expect(page.getByText('只读演示模式').first()).toBeVisible();
 
     // 7b. Authenticated user can access the Lobby
     await page.route('**/api/me', async (route) => {
@@ -277,10 +277,11 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
     await expect(page.getByText('作品展示列表')).toBeVisible();
   });
 
-  test('8. Offline guest cannot access Dashboard, while authenticated user views personal studio metrics', async ({ page }) => {
-    // 8a. Unauthenticated guest is gated in offline mode
+  test('8. Guests are routed from the Dashboard to the welcome page; authenticated users see personal metrics', async ({ page }) => {
+    // 8a. Unauthenticated guest lands on /welcome
     await page.goto('/');
-    await expect(page.getByText('离线体验版 · 创作看板已锁定')).toBeVisible();
+    await expect(page).toHaveURL(/\/welcome/);
+    await expect(page.getByRole('button', { name: /先看看官方范例/ })).toBeVisible();
 
     // 8b. Authenticated user can view personal dashboard
     await page.route('**/api/me', async (route) => {
@@ -299,8 +300,8 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
       });
     });
 
-    await page.reload();
-    await expect(page.getByText('个人创作大盘').first()).toBeVisible();
+    await page.goto('/');
+    await expect(page.getByText('我的创作').first()).toBeVisible();
     await expect(page.getByText('总创作用字')).toBeVisible();
   });
 

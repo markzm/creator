@@ -1,14 +1,5 @@
 <template>
   <div class="page narrow" style="max-width: 880px">
-    <LockedGate
-      v-if="!authStore.isLoggedIn"
-      :icon="Users"
-      :title="tr('创作大厅需要登录', 'The lobby is for signed-in creators')"
-      :description="tr('在大厅中可以浏览公开设定、查看创作者主页、参与共创企划并留言互动。登录或注册后即可进入。', 'Browse public lore, visit creator profiles, join co-creation projects and discuss. Sign in or register to enter.')"
-    />
-
-    <!-- Logged-in: Creator Lobby View -->
-    <template v-else>
       <!-- Header & Controls -->
       <PageHeader
         :title="tr('公共创作大厅', 'Community lobby')"
@@ -19,11 +10,50 @@
           <button type="button" class="btn sm" :disabled="loadingShares || loadingUsers" @click="refreshLobby">
             <RefreshCw :class="{ spin: loadingShares || loadingUsers }" /> {{ tr('刷新', 'Refresh') }}
           </button>
-          <button type="button" class="btn sm primary" @click="router.push('/me')">
+          <button v-if="authStore.isLoggedIn" type="button" class="btn sm" @click="uiStore.openCocreationManage(null)">
+            <Handshake /> {{ tr('我的企划', 'My projects') }}
+          </button>
+          <button v-if="authStore.isLoggedIn" type="button" class="btn sm primary" @click="router.push('/me')">
             <Upload /> {{ tr('管理我的分享', 'My shares') }}
+          </button>
+          <button v-else type="button" class="btn sm primary" @click="uiStore.openModal('auth')">
+            <LogIn /> {{ tr('登录后参与', 'Sign in to join') }}
           </button>
         </template>
       </PageHeader>
+
+      <!-- Co-creation projects -->
+      <div v-if="projects.length" class="card open flat" style="padding: 16px; margin-bottom: 16px">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; flex-wrap: wrap">
+          <h3 class="section-title" style="margin: 0"><Handshake /> {{ tr('共创企划', 'Co-creation projects') }} <span class="count">{{ projects.length }}</span></h3>
+          <button v-if="selectedProject" type="button" class="btn sm ghost" @click="selectedProject = null"><X /> {{ tr('取消筛选', 'Clear filter') }}</button>
+        </div>
+        <div class="project-row">
+          <button
+            v-for="p in projects"
+            :key="p.id"
+            type="button"
+            class="project-card"
+            :class="{ active: selectedProject === p.id }"
+            @click="selectedProject = selectedProject === p.id ? null : p.id"
+          >
+            <span class="project-title"><Globe2 /> {{ p.worldTitle }}</span>
+            <span class="hint project-summary">{{ p.summary || tr('欢迎为这个世界创作同人设定', 'Open for doujin lore') }}</span>
+            <span class="project-meta">
+              <span>@{{ p.ownerName }}</span>
+              <span class="pill sm" :class="p.isOpenDoujin ? 'ok' : ''">{{ p.isOpenDoujin ? tr('开放投稿', 'Open') : tr('暂停投稿', 'Closed') }}</span>
+              <span class="pill sm outline">{{ (p.members || []).length }} {{ tr('成员', 'members') }}</span>
+            </span>
+          </button>
+        </div>
+        <div v-if="selectedProjectObj" style="display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap">
+          <span class="hint" style="margin: 0">{{ tr('正在查看企划：', 'Viewing project: ') }}<strong>{{ selectedProjectObj.worldTitle }}</strong></span>
+          <span class="spacer" />
+          <button v-if="authStore.isLoggedIn && selectedProjectObj.isOpenDoujin" type="button" class="btn sm primary" @click="submitModalOpen = true">
+            <Sparkles /> {{ tr('为此企划投稿同人', 'Submit doujin to this project') }}
+          </button>
+        </div>
+      </div>
 
     <!-- Active Creators Row -->
     <div class="card open" style="padding: 16px; margin-bottom: 16px">
@@ -278,26 +308,28 @@
       </div>
 
       <template #footer>
-        <!-- Doujin author canon application -->
+        <!-- Doujin author: request canon (none / rejected -> pending) -->
         <button
-          v-if="viewingShare?.canonStatus === 'doujin' && authStore.user && viewingShare?.userId === authStore.user.id"
+          v-if="viewingShare?.canonStatus === 'doujin' && viewingShare.cocreationId && authStore.user && viewingShare.userId === authStore.user.id"
           type="button"
           class="btn sm"
-          style="color: var(--ac); font-weight: 700"
-          :disabled="viewingShare.canonRequested"
+          :disabled="viewingShare.canonReview === 'pending'"
           @click="handleRequestCanon(viewingShare)"
         >
-          📜 {{ viewingShare.canonRequested ? '已提交官方正典申请' : '申请转为官方正典' }}
+          <Stamp />
+          {{
+            viewingShare.canonReview === 'pending'
+              ? tr('转正审核中', 'Review pending')
+              : viewingShare.canonReview === 'rejected'
+                ? tr('再次申请转正', 'Request again')
+                : tr('申请转为官方正典', 'Request canon')
+          }}
         </button>
-        <!-- Project owner / admin canon promotion -->
-        <button
-          v-if="viewingShare?.canonStatus === 'doujin' && (authStore.isAdmin || viewingShare.cocreationId)"
-          type="button"
-          class="btn sm primary"
-          @click="handleApproveCanon(viewingShare)"
-        >
-          🌟 接纳并转为官方正典
-        </button>
+        <!-- Project members / site admins review -->
+        <template v-if="viewingShare?.canonStatus === 'doujin' && viewingShare.cocreationId && canReviewViewing">
+          <button type="button" class="btn sm" @click="handleReviewCanon(viewingShare, false)"><X /> {{ tr('退回', 'Reject') }}</button>
+          <button type="button" class="btn sm primary" @click="handleReviewCanon(viewingShare, true)"><Check /> {{ tr('接纳为官方正典', 'Canonise') }}</button>
+        </template>
         <button
           v-if="viewingShare?.kind === 'article'"
           type="button"
@@ -322,18 +354,35 @@
         </button>
       </template>
     </Modal>
-    </template>
+    <!-- Submit one of my items to the selected project -->
+    <Modal v-model="submitModalOpen" :title="tr('为企划投稿同人', 'Submit doujin')" max-width="560px">
+      <p class="hint" style="margin: 0 0 10px">
+        {{ tr('选择你的一个设定或文章，以同人身份发布到企划。企划团队审核后可转为官方正典。', 'Pick one of your items to publish as doujin for this project. The project team can canonise it after review.') }}
+      </p>
+      <EmptyState v-if="!myPublishable.length" :icon="Sparkles" :description="tr('你还没有可投稿的个人设定或文章。', 'You have no personal items to submit yet.')" />
+      <div v-else style="display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto">
+        <button v-for="it in myPublishable" :key="it.kind + it.id" type="button" class="entity-card" :disabled="submitting" @click="submitDoujin(it.kind, it.id)">
+          <span class="pill sm" :class="kindMeta(it.kind).pill">{{ kindLabel(it.kind, uiStore.lang) }}</span>
+          <span class="ec-main"><span class="ec-name">{{ it.name }}</span></span>
+          <Upload style="width: 14px; height: 14px; color: var(--mu)" />
+        </button>
+      </div>
+      <template #footer>
+        <button type="button" class="btn sm" @click="submitModalOpen = false">{{ tr('关闭', 'Close') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Palette, RefreshCw, Share2, Sparkles, Star, Trash2, Upload, Users } from 'lucide-vue-next';
+import { BookOpen, Check, Globe2, Handshake, LogIn, Palette, RefreshCw, Share2, Sparkles, Stamp, Star, Trash2, Upload, Users, X } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { usePublish } from '../composables/usePublish';
+import type { CocreationProject } from '../core/schema/types';
 import DiscussionSection from '../components/app/DiscussionSection.vue';
 import Avatar from '../components/base/Avatar.vue';
 import EmptyState from '../components/base/EmptyState.vue';
-import LockedGate from '../components/base/LockedGate.vue';
 import Modal from '../components/base/Modal.vue';
 import PageHeader from '../components/base/PageHeader.vue';
 import Skeleton from '../components/base/Skeleton.vue';
@@ -351,6 +400,8 @@ const authStore = useAuthStore();
 const docStore = useDocStore();
 const uiStore = useUIStore();
 const router = useRouter();
+const route = useRoute();
+const { publishEntity } = usePublish();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -365,6 +416,61 @@ const viewingShare = ref<WorldShareItem | null>(null);
 const selectedKind = ref<'all' | 'world' | 'org' | 'char' | 'article'>('all');
 const searchQuery = ref('');
 
+// ---- co-creation ----
+const projects = ref<CocreationProject[]>([]);
+const selectedProject = ref<string | null>(null);
+const selectedProjectObj = computed(() => projects.value.find((p) => p.id === selectedProject.value) || null);
+const viewingProject = ref<CocreationProject | null>(null);
+const submitModalOpen = ref(false);
+const submitting = ref(false);
+
+const canReviewViewing = computed(() => {
+  if (!authStore.user) return false;
+  if (authStore.isAdmin) return true;
+  const proj = viewingProject.value;
+  return Boolean(proj && (proj.members || []).some((m) => m.userId === authStore.user!.id));
+});
+
+const myPublishable = computed(() => {
+  const own = <T extends { id: string; name?: string; title?: string; isReference?: boolean }>(kind: 'world' | 'org' | 'char' | 'article', list: T[]) =>
+    list.filter((x) => !x.isReference).map((x) => ({ kind, id: x.id, name: x.name || x.title || '' }));
+  return [
+    ...own('world', Object.values(docStore.doc.worlds)),
+    ...own('org', Object.values(docStore.doc.orgs)),
+    ...own('char', Object.values(docStore.doc.chars)),
+    ...own('article', docStore.doc.articles || [])
+  ].filter((x) => x.name.trim());
+});
+
+async function loadProjects() {
+  try {
+    const res = await api.getCocreationProjects({ limit: 30 });
+    projects.value = res.projects || [];
+  } catch {
+    projects.value = [];
+  }
+}
+
+async function submitDoujin(kind: 'world' | 'org' | 'char' | 'article', id: string) {
+  if (!selectedProject.value) return;
+  submitting.value = true;
+  try {
+    const share = await publishEntity(kind, id, { visibility: 'public', cocreationId: selectedProject.value });
+    if (share) {
+      submitModalOpen.value = false;
+      toast(
+        share.canonStatus === 'canon'
+          ? tr('已作为官方正典发布到企划 ✓', 'Published as canon ✓')
+          : tr('已以同人身份投稿，可在作品详情中申请转正', 'Submitted as doujin — request canon from the detail view'),
+        'ok'
+      );
+      await refreshLobby();
+    }
+  } finally {
+    submitting.value = false;
+  }
+}
+
 const categories = computed(() => [
   { kind: 'all', label: tr('全部作品', 'All'), icon: Sparkles },
   { kind: 'world', label: tr('世界观', 'Worlds'), icon: KIND_META.world.icon },
@@ -377,6 +483,7 @@ const onlineCount = computed(() => users.value.filter((u) => u.isOnline).length)
 
 const filteredShares = computed(() => {
   return shares.value.filter((s) => {
+    if (selectedProject.value && s.cocreationId !== selectedProject.value) return false;
     if (selectedKind.value !== 'all' && s.kind !== selectedKind.value) return false;
     if (searchQuery.value.trim()) {
       const q = searchQuery.value.toLowerCase().trim();
@@ -425,10 +532,15 @@ async function refreshLobby() {
 async function openShare(sh: WorldShareItem) {
   // Feed rows are lightweight (no content / draft code); load the full share for the detail modal.
   viewingShare.value = sh;
+  viewingProject.value = null;
   try {
     const res = await api.getShareDetail(sh.id);
     if (viewingShare.value && String(viewingShare.value.id) === String(sh.id)) {
       viewingShare.value = res.share;
+    }
+    if (res.share.cocreationId) {
+      const cached = projects.value.find((p) => p.id === res.share.cocreationId);
+      viewingProject.value = cached || (await api.getCocreationProject(res.share.cocreationId)).project;
     }
   } catch {
     // keep the summary if the detail request fails
@@ -529,39 +641,80 @@ function importShareDraftCode() {
   }
 }
 
-async function handleRequestCanon(sh: any) {
-  if (!await confirm('申请转正为官方设定', `确认将同人设定《${sh.title}》向企划团队申请转为官方正典吗？`)) {
+async function handleRequestCanon(sh: WorldShareItem) {
+  if (!(await confirm(tr('申请转为官方正典', 'Request canon status'), tr(`确认将同人设定《${sh.title}》提交给企划团队审核？`, `Submit “${sh.title}” to the project team for review?`)))) {
     return;
   }
   try {
-    await api.requestCanon(sh.id);
+    await api.requestCanon(String(sh.id));
     sh.canonRequested = true;
-    toast('已提交转正申请，企划团队将收到通知审核！', 'ok');
+    sh.canonReview = 'pending';
+    toast(tr('已提交转正申请，企划团队会收到通知', 'Request sent — the project team has been notified'), 'ok');
   } catch (err: any) {
-    toast(err?.message || '申请失败', 'err');
+    toast(err?.message || tr('申请失败', 'Request failed'), 'err');
   }
 }
 
-async function handleApproveCanon(sh: any) {
-  if (!await confirm('确认转为官方正典', `确认接纳同人设定《${sh.title}》并正式转为官方正典设定吗？`)) {
-    return;
-  }
+async function handleReviewCanon(sh: WorldShareItem, approve: boolean) {
+  const title = approve ? tr('接纳为官方正典', 'Canonise this work') : tr('退回申请', 'Reject this request');
+  const body = approve
+    ? tr(`确认接纳《${sh.title}》为企划的官方正典设定？`, `Accept “${sh.title}” as canon for this project?`)
+    : tr(`确认退回《${sh.title}》的转正申请？作者可修改后再次申请。`, `Reject “${sh.title}”? The author can revise and ask again.`);
+  if (!(await confirm(title, body))) return;
   try {
-    await api.approveCanon(sh.id);
-    sh.canonStatus = 'canon';
-    toast('已成功转为官方正典！作者将收到站内通知 ✓', 'ok');
+    if (approve) await api.approveCanon(String(sh.id));
+    else await api.rejectCanon(String(sh.id));
+    sh.canonStatus = approve ? 'canon' : 'doujin';
+    sh.canonReview = approve ? 'approved' : 'rejected';
+    sh.canonRequested = false;
+    toast(approve ? tr('已转为官方正典，作者将收到通知 ✓', 'Canonised — the author has been notified ✓') : tr('已退回', 'Rejected'), 'ok');
   } catch (err: any) {
-    toast(err?.message || '审批失败', 'err');
+    toast(err?.message || tr('操作失败', 'Failed'), 'err');
   }
 }
 
-onMounted(() => {
-  // Always load lobby for both anonymous guests and logged in users
-  void refreshLobby();
+onMounted(async () => {
+  // The feed and projects are public; interactions require sign-in.
+  await Promise.all([refreshLobby(), loadProjects()]);
+  const deepLink = typeof route.query.share === 'string' ? route.query.share : '';
+  if (deepLink) {
+    const found = shares.value.find((s) => String(s.id) === deepLink);
+    void openShare(found || ({ id: deepLink, title: '', summary: '', content: '', kind: 'world', visibility: 'public', userId: 0, ownerName: '', createdAt: 0 } as WorldShareItem));
+  }
 });
+
+watch(
+  () => authStore.isLoggedIn,
+  (v, was) => {
+    if (v && !was) void Promise.all([refreshLobby(), loadProjects()]);
+  }
+);
 </script>
 
 <style scoped>
+.spacer { flex: 1; }
+.project-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.project-card {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--li);
+  background: var(--soft);
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--dur-2), background var(--dur-2), transform var(--dur-2);
+}
+.project-card:hover { border-color: color-mix(in srgb, var(--ac) 45%, var(--li)); transform: translateY(-1px); }
+.project-card.active { border-color: var(--ac); background: var(--acs); }
+.project-title { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: var(--fs-13); }
+.project-title svg { width: 14px; height: 14px; color: var(--k-world); }
+.project-summary { margin: 0; font-size: var(--fs-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-meta { display: flex; align-items: center; gap: 6px; font-size: var(--fs-11); color: var(--mu); flex-wrap: wrap; }
 .lobby-kind {
   width: 40px;
   height: 40px;

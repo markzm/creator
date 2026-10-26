@@ -97,6 +97,15 @@
             >
               ✨ {{ tr('AI 智能构思', 'AI Assistant') }}
             </button>
+            <button
+              v-if="!isReadOnlyReference && world"
+              type="button"
+              class="btn sm"
+              :title="tr('发起或管理这个世界的共创企划', 'Start or manage co-creation for this world')"
+              @click="uiStore.openCocreationManage(world.id)"
+            >
+              🤝 {{ world.isCocreation ? tr('共创企划', 'Co-creation') : tr('发起共创', 'Co-create') }}
+            </button>
             <span class="spacer" />
             <button
               v-if="!isReadOnlyReference"

@@ -19,3 +19,15 @@ export function useI18n() {
     tr
   };
 }
+
+/**
+ * Language-aware string for code that runs outside a component (stores, composables).
+ * Reads the UI store lazily so it is safe during store setup.
+ */
+export function trStatic(zhText: string, enText: string): string {
+  try {
+    return useUIStore().lang === 'zh' ? zhText : enText;
+  } catch {
+    return zhText;
+  }
+}

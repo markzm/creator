@@ -29,10 +29,15 @@ import {
 } from '../data/repo';
 import { useAuthStore } from './auth';
 import { useUIStore } from './ui';
+import { trStatic } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
 import { api } from '../data/api';
 
-const GENTLE_REF_MSG = '此条目为官方公共参考素材，仅供大家查阅与引用。如需在此基础上修改或创作，请点击「📑 复制为衍生副本」即可在您的专属库中自由调整~';
+const GENTLE_REF_MSG = () =>
+  trStatic(
+    '此条目为官方公共参考素材，仅供查阅与引用。如需在此基础上修改，请点击「复制为衍生副本」。',
+    'This is an official reference item (read-only). Use “Fork a copy” to edit it in your own library.'
+  );
 
 export const useDocStore = defineStore('doc', () => {
   const authStore = useAuthStore();
@@ -302,7 +307,7 @@ export const useDocStore = defineStore('doc', () => {
     if (!id || Object.keys(doc.value.worlds).length <= 1) return false;
     const ent = doc.value.worlds[id];
     if (ent?.isReference && !authStore.isAdmin) {
-      toast(GENTLE_REF_MSG, 'warn');
+      toast(GENTLE_REF_MSG(), 'warn');
       return false;
     }
     delete doc.value.worlds[id];
@@ -362,7 +367,7 @@ export const useDocStore = defineStore('doc', () => {
     if (!id || Object.keys(doc.value.orgs).length <= 1) return false;
     const ent = doc.value.orgs[id];
     if (ent?.isReference && !authStore.isAdmin) {
-      toast(GENTLE_REF_MSG, 'warn');
+      toast(GENTLE_REF_MSG(), 'warn');
       return false;
     }
     delete doc.value.orgs[id];
@@ -424,7 +429,7 @@ export const useDocStore = defineStore('doc', () => {
     if (!id || Object.keys(doc.value.chars).length <= 1) return false;
     const ent = doc.value.chars[id];
     if (ent?.isReference && !authStore.isAdmin) {
-      toast(GENTLE_REF_MSG, 'warn');
+      toast(GENTLE_REF_MSG(), 'warn');
       return false;
     }
     delete doc.value.chars[id];
@@ -447,7 +452,7 @@ export const useDocStore = defineStore('doc', () => {
         Object.values(doc.value.orgs).some((o) => o.name === oldName && o.isReference) ||
         Object.values(doc.value.chars).some((c) => c.name === oldName && c.isReference);
       if (isRef) {
-        toast(GENTLE_REF_MSG, 'warn');
+        toast(GENTLE_REF_MSG(), 'warn');
         return 0;
       }
     }
@@ -507,7 +512,7 @@ export const useDocStore = defineStore('doc', () => {
     if (!doc.value.articles) return false;
     const found = doc.value.articles.find((a) => a.id === id);
     if (found?.isReference && !authStore.isAdmin) {
-      toast(GENTLE_REF_MSG, 'warn');
+      toast(GENTLE_REF_MSG(), 'warn');
       return false;
     }
     const prevLen = doc.value.articles.length;
@@ -754,17 +759,17 @@ export const useDocStore = defineStore('doc', () => {
 
   async function saveOfficialReferenceMaterials(): Promise<boolean> {
     if (!authStore.isAdmin) {
-      toast('只有网站管理员才有权限保存官方公共素材', 'err');
+      toast(trStatic('只有网站管理员才能保存官方公共素材', 'Only site admins can save official materials'), 'err');
       return false;
     }
     try {
-      toast('正在保存全站官方公共参考素材…', 'ok');
+      toast(trStatic('正在保存官方公共参考素材…', 'Saving official materials…'), 'ok');
       const refDoc: DocV6 = extractReferenceSubset(JSON.parse(JSON.stringify(doc.value)));
       const res = await api.updateReferenceMaterials(refDoc);
-      toast(res.message || '官方公共素材已更新 ✓', 'ok');
+      toast(res.message || trStatic('官方公共素材已更新 ✓', 'Official materials updated ✓'), 'ok');
       return true;
     } catch (err: any) {
-      toast(err?.message || '保存失败', 'err');
+      toast(err?.message || trStatic('保存失败', 'Save failed'), 'err');
       return false;
     }
   }

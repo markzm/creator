@@ -24,6 +24,7 @@ import FieldGuideModal from './components/editor/FieldGuideModal.vue'
 import AnimeArtModal from './components/editor/AnimeArtModal.vue'
 import CreatorProfileModal from './components/app/CreatorProfileModal.vue'
 import AdminConsoleModal from './components/app/AdminConsoleModal.vue'
+import CocreationManageModal from './components/app/CocreationManageModal.vue'
 import ToastHost from './components/base/ToastHost.vue'
 import ConfirmHost from './components/base/ConfirmHost.vue'
 
@@ -116,6 +117,7 @@ onUnmounted(() => {
     <AnimeArtModal />
     <CreatorProfileModal />
     <AdminConsoleModal />
+    <CocreationManageModal />
     <ToastHost />
     <ConfirmHost />
   </div>

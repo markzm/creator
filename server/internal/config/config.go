@@ -30,7 +30,9 @@ type Config struct {
 	RegisterMode  RegisterMode
 	SecureCookie  bool
 	AllowedOrigin string
-	SecretKey     string // Used for stateless HMAC challenge signing
+	// PublicURL (PUBLIC_URL) is used to build absolute links in emails; falls back to ALLOWED_ORIGIN.
+	PublicURL string
+	SecretKey string // Used for stateless HMAC challenge signing
 
 	// SuperAdminEmail (SUPER_ADMIN_EMAIL) is promoted to super admin at startup. Super-admin status
 	// is otherwise only granted via the CLI (`creator user promote --super`), never by nickname.
@@ -107,6 +109,7 @@ func Load() *Config {
 		RegisterMode:     regMode,
 		SecureCookie:     envBool("SECURE_COOKIE", false),
 		AllowedOrigin:    os.Getenv("ALLOWED_ORIGIN"),
+		PublicURL:        strings.TrimRight(envOr("PUBLIC_URL", os.Getenv("ALLOWED_ORIGIN")), "/"),
 		SecretKey:        secret,
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenRouterModels: models,

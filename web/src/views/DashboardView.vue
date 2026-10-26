@@ -227,6 +227,7 @@ import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
 import { KIND_META, kindLabel, kindMeta } from '../core/entityMeta';
 import { formatRelative } from '../core/format';
+import { stripReferenceItems } from '../core/reference';
 import { avgDone, streakDays, totalChars } from '../core/stats';
 import { collectAllEvents } from '../core/timeline';
 import { api, type GlobalDashboardStats, type WorldShareItem } from '../data/api';
@@ -274,12 +275,14 @@ const worldCount = computed(() => myWorlds.value.length);
 const orgCount = computed(() => myOrgs.value.length);
 const charCount = computed(() => myChars.value.length);
 const articleCount = computed(() => myArticles.value.length);
+// Personal metrics must not count the official reference materials.
+const ownDoc = computed(() => stripReferenceItems(docStore.doc));
 const charCountTotal = computed(() => {
-  const settingsWords = totalChars(docStore.doc);
+  const settingsWords = totalChars(ownDoc.value);
   const articlesWords = (myArticles.value || []).reduce((acc, a) => acc + (a.wordCount || (a.content || '').length), 0);
   return settingsWords + articlesWords;
 });
-const completionAvg = computed(() => avgDone(docStore.doc));
+const completionAvg = computed(() => avgDone(ownDoc.value));
 const streak = computed(() => streakDays(docStore.doc));
 
 function formatNum(n: number): string {

@@ -133,7 +133,7 @@ export const TUT: { zh: [string, string][]; en: [string, string][] } = {
   "zh": [
     [
       "欢迎",
-      "v5.4 更新：账号云同步、在线大厅、世界观分享。手机号注册，换设备不丢设定。"
+      "世界观、组织、角色、时间线、剧情与文章互相链接。数据保存在本机，登录后多端同步并可发布到创作大厅。"
     ],
     [
       "世界观",
@@ -179,7 +179,7 @@ export const TUT: { zh: [string, string][]; en: [string, string][] } = {
   "en": [
     [
       "Welcome",
-      "v5.4: account cloud sync, online lobby, world sharing. Register with your phone — your settings follow you across devices."
+      "Worlds, orgs, characters, timelines, plots and stories link to each other. Data stays on this device; sign in to sync across devices and publish to the lobby."
     ],
     [
       "World",
