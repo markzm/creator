@@ -1,382 +1,232 @@
 <template>
-  <div class="page-container" style="max-width: 1080px; margin: 0 auto; padding: 24px 20px">
-    <!-- Guest / Offline Mode Locked Gate -->
-    <div
+  <div class="page">
+    <!-- Guest gate (routing sends guests to /welcome; this is the in-place fallback) -->
+    <LockedGate
       v-if="!authStore.isLoggedIn"
-      class="card"
-      style="padding: 44px 24px; text-align: center; max-width: 680px; margin: 40px auto; border: 2px dashed var(--ac); background: var(--card)"
-    >
-      <div style="font-size: 44px; margin-bottom: 12px">🔒</div>
-      <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 10px">
-        {{ tr('离线体验版 · 创作看板已锁定', 'Offline Mode · Studio Dashboard Locked') }}
-      </h2>
-      <p style="color: var(--mu); font-size: 14px; line-height: 1.6; margin-bottom: 22px; max-width: 520px; margin-left: auto; margin-right: auto">
-        {{ tr('您当前处于未登录的离线体验版本。离线版本仅提供基础设定构思与官方AI范例查阅。创作看板提供全方位的个人字数追踪、角色完成度图谱、创作连续打卡与全站生态数据，仅面向登录创作者开放。', 'You are currently in offline guest mode. The dashboard tracks personal word count, character completion, and community analytics, which require an account.') }}
-      </p>
-      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap">
-        <button type="button" class="btn primary" style="padding: 10px 24px; font-size: 15px; font-weight: 700" @click="uiStore.openModal('auth')">
-          ☁️ {{ tr('立即登录 / 注册 开启专属看板', 'Sign In / Register') }}
-        </button>
-        <button type="button" class="btn" style="padding: 10px 20px; font-size: 14px" @click="router.push('/char')">
-          ✍️ {{ tr('前往基础设定器构思', 'Open Character Studio') }}
-        </button>
-      </div>
-    </div>
+      :title="tr('个人创作看板需要登录', 'The dashboard is for signed-in creators')"
+      :description="tr('看板汇总你的字数、完成度、连续创作天数与全站生态数据。登录后即可解锁；未登录可先浏览官方范例与公共大厅。', 'Word counts, completion, streaks and community stats live here. Sign in to unlock, or browse the examples and the lobby first.')"
+    />
 
-    <!-- Logged in: Dashboard Content -->
     <template v-else>
-      <!-- View Switcher Tabs -->
-      <div style="display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid var(--li2); padding-bottom: 12px">
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: currentTab === 'personal' }"
-          @click="currentTab = 'personal'"
-        >
-          👤 {{ tr('个人创作大盘', 'Personal Studio') }}
-        </button>
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: currentTab === 'global' }"
-          @click="switchGlobalTab"
-        >
-          🌐 {{ tr('全站整体大盘', 'Community Overview') }}
-        </button>
-      </div>
-
-      <!-- ==================== TAB 1: 个人创作大盘 ==================== -->
-      <div v-if="currentTab === 'personal'">
-        <!-- Top Banner & Metrics -->
-        <div class="card" style="padding: 22px 24px; margin-bottom: 20px; background: linear-gradient(135deg, var(--card) 0%, var(--acs) 100%)">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px">
-            <div>
-              <h1 style="margin: 0; font-size: 22px; font-weight: 800">
-                ✨ {{ tr('设定创作器 v6 · 个人创作大盘', 'Worldbuilding Studio v6 · Personal Dashboard') }}
-                <span style="font-size: 14px; font-weight: 600; color: var(--ac); margin-left: 8px">@{{ authStore.displayName }}</span>
-              </h1>
-              <p class="hint" style="margin: 6px 0 0">
-                {{ tr('专属个人工作室 · 自由接入 AI 引擎 · 设定维基双向链接 · 沉浸式小说写作', 'Personal Studio · AI Powered · Wiki Backlinks · Immersive Story Studio') }}
-              </p>
-            </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
-              <button class="btn sm" @click="uiStore.openModal('aiConfig')">
-                🤖 {{ tr('定制设定器 & AI', 'AI & Studio') }}
-              </button>
-              <button class="btn sm" @click="uiStore.openModal('commandPalette')">
-                🔍 {{ tr('全局搜索 (⌘K)', 'Search (⌘K)') }}
-              </button>
-              <button class="btn sm" @click="uiStore.openModal('backup')">
-                💾 {{ tr('备份 / 导出', 'Backup / Export') }}
-              </button>
-              <button class="btn sm primary" @click="uiStore.openModal('tutorial')">
-                📖 {{ tr('新手引导', 'Tutorial') }}
-              </button>
-            </div>
-          </div>
-
-        <!-- Studio Preference & AI Indicator Banner -->
-        <div
-          class="card"
-          style="margin-top: 16px; padding: 10px 14px; background: rgba(var(--ac-rgb, 100, 110, 240), 0.08); border-left: 3px solid var(--ac); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px"
-        >
-          <div style="font-size: 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
-            <span style="font-weight: 700">🎨 {{ tr('设定器定制模式', 'Custom Studio') }}:</span>
-            <span class="pill" style="font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: var(--card); color: var(--ac); font-weight: 600">
-              {{ aiStore.preferences.preferredGenre || tr('通用', 'General') }}
-            </span>
-            <span class="hint" style="font-size: 12px">
-              {{ aiStore.preferences.writingTone || tr('细腻', 'Vivid') }} · {{ aiStore.preferences.defaultPerspective || tr('第三人称', '3rd Person') }}
-            </span>
-            <span style="border-left: 1px solid var(--li2); height: 14px" />
-            <span style="font-size: 12.5px">
-              🤖 <strong>{{ aiStore.activeProvider === 'custom' ? tr('个人外部 AI (DeepSeek等)', 'Custom AI API') : tr('公共免费大模型 (OpenRouter)', 'Free OpenRouter AI') }}</strong>
-              <span class="hint" style="margin-left: 4px; font-size: 11.5px">
-                ({{ aiStore.activeProvider === 'custom' ? aiStore.customAi.model || 'deepseek' : aiStore.selectedFreeModel.split('/')[1] || 'free' }})
-              </span>
-            </span>
-          </div>
-          <button class="btn sm" style="font-size: 11.5px; padding: 3px 9px" @click="uiStore.openModal('aiConfig')">
-            ⚙️ {{ tr('调整定制', 'Customize') }}
-          </button>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 16px">
-          <div class="card" style="padding: 12px 14px; text-align: center">
-            <div style="font-size: 22px; font-weight: 800; color: var(--ac)">{{ formatNum(charCountTotal) }}</div>
-            <div class="hint" style="font-size: 12px">{{ tr('总创作用字', 'Total Words') }}</div>
-          </div>
-          <div class="card" style="padding: 12px 14px; text-align: center">
-            <div style="font-size: 22px; font-weight: 800; color: var(--ok)">{{ completionAvg }}%</div>
-            <div class="hint" style="font-size: 12px">{{ tr('角色平均完成度', 'Avg Completion') }}</div>
-          </div>
-          <div class="card" style="padding: 12px 14px; text-align: center">
-            <div style="font-size: 22px; font-weight: 800; color: var(--wn)">🔥 {{ streak }} {{ tr('天', 'd') }}</div>
-            <div class="hint" style="font-size: 12px">{{ tr('连续创作天数', 'Day Streak') }}</div>
-          </div>
-          <div class="card" style="padding: 12px 14px; text-align: center">
-            <div style="font-size: 22px; font-weight: 800">{{ worldCount }} / {{ orgCount }} / {{ charCount }}</div>
-            <div class="hint" style="font-size: 12px">{{ tr('世界 / 组织 / 角色', 'World / Org / Char') }}</div>
-          </div>
-          <div class="card" style="padding: 12px 14px; text-align: center">
-            <div style="font-size: 22px; font-weight: 800; color: #8a63d2">{{ articleCount }} {{ tr('篇', 'items') }}</div>
-            <div class="hint" style="font-size: 12px">{{ tr('文章作品', 'Articles') }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recently Edited Entities & Articles -->
-      <div v-if="recentEntities.length" style="margin-bottom: 24px">
-        <h3 style="margin: 0 0 12px; font-size: 15px">⏱️ {{ tr('最近编辑与续写', 'Recently Edited') }}</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px">
-          <div
-            v-for="item in recentEntities"
-            :key="item.kind + '_' + item.id"
-            class="card"
-            style="padding: 12px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: transform 0.15s"
-            @click="openRecent(item)"
-          >
-            <span style="font-size: 20px">{{ item.icon }}</span>
-            <div style="min-width: 0; flex: 1">
-              <div style="font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
-                {{ item.name }}
-              </div>
-              <div class="hint" style="font-size: 11.5px; margin: 2px 0 0">{{ item.typeLabel }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Classic Grid Module Cards -->
-      <h3 style="margin: 0 0 12px; font-size: 15px">🧭 {{ tr('创作工作室模块导航', 'Studio Modules') }}</h3>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px">
-        <div
-          v-for="mod in modules"
-          :key="mod.path"
-          class="card"
-          style="padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 6px"
-          @click="router.push(mod.path)"
-        >
-          <div style="display: flex; justify-content: space-between; align-items: center">
-            <span style="font-size: 26px">{{ mod.icon }}</span>
-            <span class="pill" style="font-size: 11.5px; padding: 2px 9px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 600">
-              {{ mod.badge }}
-            </span>
-          </div>
-          <h4 style="margin: 6px 0 0; font-size: 15.5px">{{ mod.title }}</h4>
-          <p class="hint" style="margin: 0; font-size: 12.5px; line-height: 1.5">{{ mod.desc }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== TAB 2: 全站整体大盘 ==================== -->
-    <div v-else>
-      <div class="card" style="padding: 22px 24px; margin-bottom: 22px; background: linear-gradient(135deg, var(--card) 0%, rgba(99, 102, 241, 0.08) 100%)">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px">
-          <div>
-            <h1 style="margin: 0; font-size: 22px; font-weight: 800">
-              🌐 {{ tr('全站创作生态整体大盘', 'Global Community Dashboard') }}
-            </h1>
-            <p class="hint" style="margin: 6px 0 0">
-              {{ tr('汇聚全网创作者公开分享的世界观设定、组织体系、角色群像与创作文章', 'Aggregated open creations, active authors, and live worldbuilding stats') }}
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-main">
+          <Avatar :avatar="authStore.user?.avatar" :name="authStore.displayName" :size="52" />
+          <div style="min-width: 0">
+            <div class="page-eyebrow">{{ todayLabel }}</div>
+            <h1 class="display hero-title">{{ greeting }}，{{ authStore.displayName }}</h1>
+            <p class="hero-sub">
+              {{ heroHint }}
             </p>
           </div>
-          <div style="display: flex; gap: 8px">
-            <button class="btn sm" :disabled="loadingGlobal" @click="fetchGlobalStats">
-              🔄 {{ tr('刷新统计', 'Refresh') }}
-            </button>
-            <button class="btn sm primary" @click="router.push('/lobby')">
-              🚪 {{ tr('进入公共创作大厅', 'Enter Lobby') }}
-            </button>
-          </div>
+        </div>
+        <div class="hero-actions">
+          <button v-if="continueTarget" type="button" class="btn primary" @click="openRecent(continueTarget)">
+            <PenLine /> {{ tr('继续编辑', 'Continue') }} · {{ continueTarget.name }}
+          </button>
+          <button v-else type="button" class="btn primary" @click="router.push('/char')">
+            <Plus /> {{ tr('创建第一个角色', 'Create your first character') }}
+          </button>
+          <button type="button" class="btn" @click="uiStore.openModal('commandPalette')">
+            <Search /> {{ tr('搜索', 'Search') }} <kbd class="kbd">⌘K</kbd>
+          </button>
+          <button type="button" class="btn" @click="uiStore.openModal('aiConfig')">
+            <Bot /> {{ aiStore.effectiveProvider === 'custom' ? tr('个人 AI', 'Own AI') : tr('公共 AI', 'Public AI') }}
+          </button>
+        </div>
+      </section>
+
+      <SegmentedTabs
+        v-model="currentTab"
+        :items="[
+          { value: 'personal', label: tr('我的创作', 'My studio'), icon: LayoutDashboard },
+          { value: 'global', label: tr('全站生态', 'Community'), icon: Globe2 }
+        ]"
+        style="margin-bottom: 18px"
+        @update:model-value="(v) => v === 'global' && switchGlobalTab()"
+      />
+
+      <!-- ==================== Personal ==================== -->
+      <div v-if="currentTab === 'personal'">
+        <div class="stat-grid">
+          <StatTile :value="formatNum(charCountTotal)" :label="tr('总创作用字', 'Total words')" :icon="Type" />
+          <StatTile :value="completionAvg + '%'" :label="tr('角色平均完成度', 'Avg. completion')" :icon="CircleGauge" tone="ok" />
+          <StatTile :value="streak" :label="tr('连续创作天数', 'Day streak')" :icon="Flame" tone="warn" />
+          <StatTile :value="`${worldCount} / ${orgCount} / ${charCount}`" :label="tr('世界 / 组织 / 角色', 'Worlds / Orgs / Chars')" :icon="Globe2" tone="world" />
+          <StatTile :value="articleCount" :label="tr('文章作品', 'Articles')" :icon="PenLine" tone="article" />
         </div>
 
-        <!-- Global Big Metrics -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 18px">
-          <div class="card" style="padding: 14px; text-align: center">
-            <div style="font-size: 24px; font-weight: 800; color: var(--ac)">
-              {{ globalStats?.totalUsers ?? '—' }}
-            </div>
-            <div class="hint" style="font-size: 12px">{{ tr('注册创作者数', 'Registered Creators') }}</div>
-          </div>
-          <div class="card" style="padding: 14px; text-align: center">
-            <div style="font-size: 24px; font-weight: 800; color: var(--ok)">
-              🟢 {{ globalStats?.onlineUsers ?? '—' }}
-            </div>
-            <div class="hint" style="font-size: 12px">{{ tr('当前在线创作者', 'Online Creators') }}</div>
-          </div>
-          <div class="card" style="padding: 14px; text-align: center">
-            <div style="font-size: 24px; font-weight: 800; color: #8a63d2">
-              {{ globalStats?.totalPublicShares ?? '—' }}
-            </div>
-            <div class="hint" style="font-size: 12px">{{ tr('全网公开创作数', 'Public Creations') }}</div>
-          </div>
-          <div class="card" style="padding: 14px; text-align: center">
-            <div style="font-size: 24px; font-weight: 800; color: var(--wn)">
-              {{ formatNum(globalStats?.totalPublicWords || 0) }}
-            </div>
-            <div class="hint" style="font-size: 12px">{{ tr('累计公开创作用字', 'Public Word Count') }}</div>
-          </div>
-        </div>
-
-        <!-- Detailed Breakdown -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 12px">
-          <div class="card" style="padding: 10px 12px; text-align: center; background: var(--soft)">
-            <span style="font-size: 16px">🌍</span>
-            <div style="font-size: 16px; font-weight: 700; margin-top: 2px">
-              {{ globalStats?.kindCounts?.world || 0 }}
-            </div>
-            <div class="hint" style="font-size: 11px">{{ tr('公开世界观', 'Worlds') }}</div>
-          </div>
-          <div class="card" style="padding: 10px 12px; text-align: center; background: var(--soft)">
-            <span style="font-size: 16px">🏛️</span>
-            <div style="font-size: 16px; font-weight: 700; margin-top: 2px">
-              {{ globalStats?.kindCounts?.org || 0 }}
-            </div>
-            <div class="hint" style="font-size: 11px">{{ tr('组织势力', 'Orgs') }}</div>
-          </div>
-          <div class="card" style="padding: 10px 12px; text-align: center; background: var(--soft)">
-            <span style="font-size: 16px">👤</span>
-            <div style="font-size: 16px; font-weight: 700; margin-top: 2px">
-              {{ globalStats?.kindCounts?.char || 0 }}
-            </div>
-            <div class="hint" style="font-size: 11px">{{ tr('角色档案', 'Chars') }}</div>
-          </div>
-          <div class="card" style="padding: 10px 12px; text-align: center; background: var(--soft)">
-            <span style="font-size: 16px">🖋️</span>
-            <div style="font-size: 16px; font-weight: 700; margin-top: 2px">
-              {{ globalStats?.kindCounts?.article || 0 }}
-            </div>
-            <div class="hint" style="font-size: 11px">{{ tr('创作文章', 'Articles') }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Leaderboard & Recent Creations Grid -->
-      <div class="dashboard-community-grid">
-        <!-- Active Creators Column -->
-        <div class="card" style="padding: 18px">
-          <h3 style="margin: 0 0 12px; font-size: 15px">🌟 {{ tr('活跃创作者榜', 'Top Creators') }}</h3>
-          <div v-if="!globalStats?.activeCreators?.length" class="hint">
-            {{ tr('暂无活跃创作者', 'No creators yet') }}
-          </div>
-          <div v-else style="display: flex; flex-direction: column; gap: 10px">
-            <div
-              v-for="(u, idx) in globalStats.activeCreators"
-              :key="u.id"
-              style="display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--li2)"
+        <!-- Recently edited -->
+        <section v-if="recentEntities.length" style="margin-top: 24px">
+          <h3 class="section-title"><Clock3 /> {{ tr('最近编辑', 'Recently edited') }}</h3>
+          <div class="recent-grid">
+            <button
+              v-for="item in recentEntities"
+              :key="item.kind + '_' + item.id"
+              type="button"
+              class="card flat is-interactive recent-card"
+              @click="openRecent(item)"
             >
-              <span
-                style="font-size: 12px; font-weight: 700; width: 18px; text-align: center"
-                :style="{ color: idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : 'var(--mu)' }"
-              >
-                {{ idx + 1 }}
+              <span class="recent-icon" :style="{ color: kindMeta(item.kind).color, background: kindMeta(item.kind).soft }">
+                <component :is="kindMeta(item.kind).icon" />
               </span>
-              <Avatar :avatar="u.avatar" :name="u.name" :size="30" />
               <div style="min-width: 0; flex: 1">
-                <div style="font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                  {{ u.name || tr('匿名创作者', 'Creator') }}
-                </div>
-                <div class="hint" style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                  {{ u.bio || tr('创作中…', 'Creating…') }}
-                </div>
+                <div class="recent-name">{{ item.name }}</div>
+                <div class="recent-meta">{{ item.typeLabel }} · {{ formatRelative(item.updatedAt, uiStore.lang) }}</div>
               </div>
-              <span
-                :style="{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: u.isOnline ? 'var(--ok)' : 'var(--li)',
-                  flexShrink: 0
-                }"
-                :title="u.isOnline ? tr('在线', 'online') : tr('离线', 'offline')"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Recent Public Creations Feed -->
-        <div class="card" style="padding: 18px">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-            <h3 style="margin: 0; font-size: 15px">🆕 {{ tr('最新公开创作动态', 'Latest Public Creations') }}</h3>
-            <button class="btn sm" @click="router.push('/lobby')">
-              {{ tr('查看更多 →', 'View All →') }}
+              <ChevronRight class="recent-chevron" />
             </button>
           </div>
+        </section>
 
-          <div v-if="!globalStats?.recentCreations?.length" class="hint">
-            {{ tr('大厅还没有公开创作，去个人主页或各模块分享吧！', 'No public creations yet.') }}
-          </div>
-          <div v-else style="display: flex; flex-direction: column; gap: 10px">
-            <div
-              v-for="c in globalStats.recentCreations"
-              :key="c.id"
-              class="gl-row"
-              style="cursor: pointer"
-              @click="openShareDetail(c)"
+        <!-- Quick access -->
+        <section style="margin-top: 24px">
+          <h3 class="section-title"><Compass /> {{ tr('创作模块', 'Studio modules') }}</h3>
+          <div class="module-grid">
+            <button
+              v-for="mod in modules"
+              :key="mod.path"
+              type="button"
+              class="card flat is-interactive module-card"
+              @click="router.push(mod.path)"
             >
-              <span class="k" style="font-size: 10px; padding: 2px 7px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700">
-                {{ formatKindBadge(c.kind) }}
-              </span>
-              <strong style="font-size: 13.5px">{{ c.title }}</strong>
-              <span style="font-size: 11.5px; color: var(--ac); white-space: nowrap">
-                @{{ c.ownerName || tr('创作者', 'Creator') }}
-              </span>
-              <span class="gl-note">{{ c.summary || '' }}</span>
-              <span v-if="c.wordCount" class="pill" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--soft)">
-                {{ c.wordCount }} {{ tr('字', 'w') }}
-              </span>
-              <button type="button" class="btn sm" @click.stop="openShareDetail(c)">
-                {{ tr('查看', 'View') }}
-              </button>
-            </div>
+              <span class="module-icon" :style="{ color: mod.color, background: mod.soft }"><component :is="mod.icon" /></span>
+              <div style="min-width: 0; flex: 1">
+                <div class="module-title">
+                  {{ mod.title }}
+                  <span v-if="mod.badge" class="pill sm">{{ mod.badge }}</span>
+                </div>
+                <p class="module-desc">{{ mod.desc }}</p>
+              </div>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==================== Community ==================== -->
+      <div v-else>
+        <div class="page-header" style="margin-bottom: 14px">
+          <div>
+            <h2 class="page-title">{{ tr('全站创作生态', 'Community overview') }}</h2>
+            <p class="page-sub">{{ tr('汇聚全网创作者公开分享的世界观、组织、角色与文章。', 'Public worlds, orgs, characters and stories shared by everyone.') }}</p>
+          </div>
+          <div class="page-actions">
+            <button class="btn sm" :disabled="loadingGlobal" @click="fetchGlobalStats"><RefreshCw :class="{ spin: loadingGlobal }" /> {{ tr('刷新', 'Refresh') }}</button>
+            <button class="btn sm primary" @click="router.push('/lobby')"><Users /> {{ tr('进入大厅', 'Open lobby') }}</button>
           </div>
         </div>
+
+        <Skeleton v-if="loadingGlobal && !globalStats" variant="card" :count="2" />
+        <template v-else>
+          <div class="stat-grid">
+            <StatTile :value="globalStats?.totalUsers ?? '—'" :label="tr('注册创作者', 'Creators')" :icon="Users" />
+            <StatTile :value="globalStats?.onlineUsers ?? '—'" :label="tr('当前在线', 'Online now')" :icon="Radio" tone="ok" />
+            <StatTile :value="globalStats?.totalPublicShares ?? '—'" :label="tr('公开创作', 'Public creations')" :icon="Share2" tone="world" />
+            <StatTile :value="formatNum(globalStats?.totalPublicWords || 0)" :label="tr('公开创作用字', 'Public words')" :icon="Type" tone="article" />
+          </div>
+          <div class="kind-row">
+            <span v-for="k in ['world', 'org', 'char', 'article']" :key="k" class="pill" :class="kindMeta(k).pill">
+              <component :is="kindMeta(k).icon" /> {{ kindLabel(k, uiStore.lang) }} · {{ globalStats?.kindCounts?.[k] || 0 }}
+            </span>
+          </div>
+
+          <div class="dashboard-community-grid">
+            <section class="card flat" style="padding: 18px">
+              <h3 class="section-title"><Trophy /> {{ tr('活跃创作者', 'Top creators') }}</h3>
+              <EmptyState v-if="!globalStats?.activeCreators?.length" :icon="Users" :description="tr('暂无活跃创作者', 'No creators yet')" />
+              <div v-else class="creator-list">
+                <button
+                  v-for="(u, idx) in globalStats.activeCreators"
+                  :key="u.id"
+                  type="button"
+                  class="creator-row"
+                  @click="uiStore.openCreatorProfile(u.id)"
+                >
+                  <span class="rank" :class="'r' + (idx + 1)">{{ idx + 1 }}</span>
+                  <Avatar :avatar="u.avatar" :name="u.name" :size="30" />
+                  <div style="min-width: 0; flex: 1">
+                    <div class="creator-name">{{ u.name || tr('匿名创作者', 'Creator') }}</div>
+                    <div class="creator-bio">{{ u.bio || u.focus || tr('创作中…', 'Creating…') }}</div>
+                  </div>
+                  <span class="online-dot" :class="{ on: u.isOnline }" :title="u.isOnline ? tr('在线', 'online') : tr('离线', 'offline')" />
+                </button>
+              </div>
+            </section>
+
+            <section class="card flat" style="padding: 18px">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+                <h3 class="section-title" style="margin: 0"><Sparkles /> {{ tr('最新公开创作', 'Latest public creations') }}</h3>
+                <button class="btn sm ghost" @click="router.push('/lobby')">{{ tr('查看更多', 'View all') }} <ChevronRight /></button>
+              </div>
+              <EmptyState v-if="!globalStats?.recentCreations?.length" :icon="Share2" :description="tr('大厅还没有公开创作，去个人主页分享你的第一个设定吧！', 'No public creations yet.')" />
+              <div v-else class="feed-list">
+                <button v-for="c in globalStats.recentCreations" :key="c.id" type="button" class="feed-row" @click="openShareDetail(c)">
+                  <span class="pill sm" :class="kindMeta(c.kind).pill">{{ kindLabel(c.kind, uiStore.lang) }}</span>
+                  <strong class="feed-title">{{ c.title }}</strong>
+                  <span class="feed-author">@{{ c.ownerName || tr('创作者', 'Creator') }}</span>
+                  <span class="feed-summary">{{ c.summary || '' }}</span>
+                  <span v-if="c.wordCount" class="pill sm outline">{{ c.wordCount }} {{ tr('字', 'w') }}</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </template>
       </div>
-    </div>
     </template>
 
-    <!-- View Share Modal for Global Dashboard -->
+    <!-- Share detail -->
     <Modal
       :model-value="Boolean(viewingShare)"
       :title="viewingShare ? `${viewingShare.title} — @${viewingShare.ownerName || tr('创作者', 'Creator')}` : ''"
       max-width="680px"
       @update:model-value="(v) => !v && (viewingShare = null)"
     >
-      <div
-        v-if="viewingShare"
-        style="
-          max-height: 60vh;
-          overflow: auto;
-          padding: 16px;
-          background: var(--soft);
-          border-radius: 10px;
-          font: 13.5px/1.8 inherit;
-          white-space: pre-wrap;
-          color: var(--ink2);
-        "
-      >
-        {{ viewingShare.content }}
+      <div v-if="viewingShare" class="share-body">
+        {{ viewingShare.content || viewingShare.summary }}
       </div>
       <template #footer>
-        <button type="button" class="btn primary sm" @click="copyShareContent">
-          📋 {{ tr('复制内容', 'Copy Content') }}
-        </button>
-        <button type="button" class="btn sm" @click="viewingShare = null">
-          {{ tr('关闭', 'Close') }}
-        </button>
+        <button type="button" class="btn primary sm" @click="copyShareContent"><Copy /> {{ tr('复制内容', 'Copy') }}</button>
+        <button type="button" class="btn sm" @click="viewingShare = null">{{ tr('关闭', 'Close') }}</button>
       </template>
     </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
+import {
+  Bot,
+  ChevronRight,
+  CircleGauge,
+  Clock3,
+  Compass,
+  Copy,
+  Flame,
+  Globe2,
+  LayoutDashboard,
+  PenLine,
+  Plus,
+  Radio,
+  RefreshCw,
+  Search,
+  Share2,
+  Sparkles,
+  Trophy,
+  Type,
+  Users
+} from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';
+import EmptyState from '../components/base/EmptyState.vue';
+import LockedGate from '../components/base/LockedGate.vue';
 import Modal from '../components/base/Modal.vue';
+import SegmentedTabs from '../components/base/SegmentedTabs.vue';
+import Skeleton from '../components/base/Skeleton.vue';
+import StatTile from '../components/base/StatTile.vue';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
+import { KIND_META, kindLabel, kindMeta } from '../core/entityMeta';
+import { formatRelative } from '../core/format';
 import { avgDone, streakDays, totalChars } from '../core/stats';
 import { collectAllEvents } from '../core/timeline';
 import { api, type GlobalDashboardStats, type WorldShareItem } from '../data/api';
@@ -393,7 +243,24 @@ const router = useRouter();
 const { tr } = useI18n();
 const { toast } = useToast();
 
-const currentTab = ref<'personal' | 'global'>('personal');
+const currentTab = ref<string>('personal');
+
+const hour = new Date().getHours();
+const greeting = computed(() => {
+  if (hour < 5) return tr('夜深了', 'Burning the midnight oil');
+  if (hour < 11) return tr('早上好', 'Good morning');
+  if (hour < 14) return tr('中午好', 'Good afternoon');
+  if (hour < 18) return tr('下午好', 'Good afternoon');
+  return tr('晚上好', 'Good evening');
+});
+const todayLabel = computed(() =>
+  new Date().toLocaleDateString(uiStore.lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', weekday: 'long' })
+);
+const heroHint = computed(() => {
+  if (streak.value >= 3) return tr(`已连续创作 ${streak.value} 天，今天也写一点吧。`, `${streak.value}-day streak — keep it going today.`);
+  if (charCount.value === 0) return tr('从一个角色或一个世界开始，设定会自己长出来。', 'Start with one character or one world; the rest grows from there.');
+  return tr('设定、组织、角色与文章都在这里汇总。', 'Your worlds, orgs, characters and stories, in one place.');
+});
 const globalStats = ref<GlobalDashboardStats | null>(null);
 const loadingGlobal = ref(false);
 const viewingShare = ref<WorldShareItem | null>(null);
@@ -421,13 +288,6 @@ function formatNum(n: number): string {
   return String(n);
 }
 
-function formatKindBadge(kind: string): string {
-  if (kind === 'article') return tr('文章', 'Article');
-  if (kind === 'org') return tr('组织', 'Org');
-  if (kind === 'char') return tr('角色', 'Char');
-  return tr('世界观', 'World');
-}
-
 interface RecentEntry {
   kind: 'world' | 'org' | 'char' | 'article';
   id: string;
@@ -439,7 +299,7 @@ interface RecentEntry {
 
 const recentEntities = computed<RecentEntry[]>(() => {
   const list: RecentEntry[] = [];
-  Object.values(docStore.doc.worlds || {}).forEach((w) => {
+  myWorlds.value.forEach((w) => {
     list.push({
       kind: 'world',
       id: w.id,
@@ -449,7 +309,7 @@ const recentEntities = computed<RecentEntry[]>(() => {
       updatedAt: w.updatedAt || 0
     });
   });
-  Object.values(docStore.doc.orgs || {}).forEach((o) => {
+  myOrgs.value.forEach((o) => {
     list.push({
       kind: 'org',
       id: o.id,
@@ -459,7 +319,7 @@ const recentEntities = computed<RecentEntry[]>(() => {
       updatedAt: o.updatedAt || 0
     });
   });
-  Object.values(docStore.doc.chars || {}).forEach((c) => {
+  myChars.value.forEach((c) => {
     list.push({
       kind: 'char',
       id: c.id,
@@ -469,7 +329,7 @@ const recentEntities = computed<RecentEntry[]>(() => {
       updatedAt: c.updatedAt || 0
     });
   });
-  (docStore.doc.articles || []).forEach((a) => {
+  myArticles.value.forEach((a) => {
     list.push({
       kind: 'article',
       id: a.id,
@@ -481,6 +341,8 @@ const recentEntities = computed<RecentEntry[]>(() => {
   });
   return list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6);
 });
+
+const continueTarget = computed(() => recentEntities.value[0] || null);
 
 function openRecent(item: RecentEntry) {
   if (item.kind === 'world') {
@@ -548,133 +410,180 @@ onMounted(() => {
   });
 });
 
-const modules = computed(() => [
-  {
-    path: '/world',
-    icon: '🌍',
-    title: tr('世界观设定', 'Worlds'),
-    badge: `${worldCount.value}`,
-    desc: tr('构建法则、地理、力量体系、纪元历史与专属灵感池。', 'Magic systems, geography, eras, and custom inspiration.')
-  },
-  {
-    path: '/org',
-    icon: '🏛️',
-    title: tr('组织与势力', 'Organizations'),
-    badge: `${orgCount.value}`,
-    desc: tr('规划权力架构、信条仪式、敌友阵营与核心成员名录。', 'Hierarchy, beliefs, rituals, allies, and members.')
-  },
-  {
-    path: '/char',
-    icon: '👤',
-    title: tr('角色档案', 'Characters'),
-    badge: `${charCount.value}`,
-    desc: tr('塑造外貌、性格反差、能力代价、人物关系与高清设定卡。', 'Personality, powers, relationships, and PNG cards.')
-  },
-  {
-    path: '/articles',
-    icon: '🖋️',
-    title: tr('文章创作工作室', 'Article Studio'),
-    badge: `${articleCount.value}`,
-    desc: tr('结合世界观与角色的沉浸式写作，支持 AI 扩写、续写与一键生成摘要。', 'AI-assisted story writing, continuation, and synopsis.')
-  },
-  {
-    path: '/timeline',
-    icon: '📜',
-    title: tr('编年时间线', 'Timeline'),
-    badge: `${collectAllEvents(docStore.doc).length}`,
-    desc: tr('自动聚合全库纪元与生平事件，内置角色事件年龄推算器。', 'Auto-collected events and character age calculator.')
-  },
-  {
-    path: '/graph',
-    icon: '🕸️',
-    title: tr('三层关系网', 'Relationship Graph'),
-    badge: tr('可视化', 'SVG'),
-    desc: tr('角色人脉、组织归属、世界观绑定三层力导图一屏纵览。', 'Interactive 3-layer SVG network visualization.')
-  },
-  {
-    path: '/templates',
-    icon: '🎨',
-    title: tr('角色模板库', 'Templates'),
-    badge: `${Object.keys(docStore.doc.templates || {}).length}`,
-    desc: tr('小说向、跑团向、同人向、约稿向及自定义角色字段模板。', 'Built-in and custom character field templates.')
-  },
-  {
-    path: '/plots',
-    icon: '📖',
-    title: tr('剧情线大纲', 'Plot Outlines'),
-    badge: `${(docStore.doc.plots || []).length} ${tr('卷', 'vols')}`,
-    desc: tr('卷 → 幕 → 章三级大纲树，章节时间自动汇入时间线。', 'Volume / Act / Chapter hierarchy synced with timeline.')
-  },
-  {
-    path: '/scenes',
-    icon: '🎬',
-    title: tr('场景卡片', 'Scene Cards'),
-    badge: `${(docStore.doc.scenes || []).length}`,
-    desc: tr('管理每场戏的地点、出场角色、戏剧冲突与状态流转。', 'Scene locations, appearing characters, and core conflicts.')
-  },
-  {
-    path: '/glossary',
-    icon: '📚',
-    title: tr('术语表与全局替换', 'Glossary & Replace'),
-    badge: `${(docStore.doc.glossary || []).length}`,
-    desc: tr('统一专有名词写法，支持全库一键扫描替换与安全撤销。', 'Standardize terms and batch-replace across all entries.')
-  },
-  {
-    path: '/stats',
-    icon: '📊',
-    title: tr('写作看板', 'Writing Stats'),
-    badge: `${streak.value}d`,
-    desc: tr('近 14 天设定字数与角色完成度双轴趋势图。', '14-day character count and completion trend chart.')
-  },
-  {
-    path: '/lobby',
-    icon: '🌐',
-    title: tr('公共创作大厅', 'Community Lobby'),
-    badge: tr('公开', 'Public'),
-    desc: tr('匿名或在线浏览其他创作者的公开设定与精彩小说。', 'Browse public worlds and stories shared by the community.')
-  },
-  {
-    path: '/me',
-    icon: '☁️',
-    title: tr('个人主页与工作室', 'Profile & Studio'),
-    badge: tr('定制', 'Custom'),
-    desc: tr('管理个人资料、私有/公开作品库、AI 偏好定制与历史版本。', 'Manage personal creations, private/public works, and AI engine.')
-  }
-]);
+const modules = computed(() => {
+  const m = (kind: keyof typeof KIND_META, title: string, badge: string, desc: string) => ({
+    path: KIND_META[kind].route,
+    icon: KIND_META[kind].icon,
+    color: KIND_META[kind].color,
+    soft: KIND_META[kind].soft,
+    title,
+    badge,
+    desc
+  });
+  return [
+    m('world', tr('世界观设定', 'Worlds'), `${worldCount.value}`, tr('法则、地理、力量体系与纪元。', 'Rules, geography, power systems and eras.')),
+    m('org', tr('组织与势力', 'Organizations'), `${orgCount.value}`, tr('权力架构、信条与成员名录。', 'Hierarchy, beliefs and members.')),
+    m('char', tr('角色档案', 'Characters'), `${charCount.value}`, tr('外貌、性格、能力与人物关系。', 'Looks, personality, powers and ties.')),
+    m('article', tr('文章创作', 'Articles'), `${articleCount.value}`, tr('结合设定的沉浸式写作与 AI 续写。', 'Lore-aware writing with AI assistance.')),
+    m('timeline', tr('时间线', 'Timeline'), `${collectAllEvents(docStore.doc).length}`, tr('自动汇总全库事件与年龄推算。', 'All events, auto-collected, with age math.')),
+    m('graph', tr('关系网', 'Graph'), '', tr('角色、组织、世界三层关系图。', 'Three-layer relationship map.')),
+    m('template', tr('角色模板', 'Templates'), `${Object.keys(docStore.doc.templates || {}).length}`, tr('小说、跑团、同人与自定义字段集。', 'Field sets for novels, TTRPG and fan works.')),
+    m('plot', tr('剧情线', 'Plots'), `${(docStore.doc.plots || []).filter((p) => !p.isReference).length}`, tr('卷 → 幕 → 章大纲，时间自动汇入。', 'Volume / act / chapter outline synced to the timeline.')),
+    m('scene', tr('场景卡', 'Scenes'), `${(docStore.doc.scenes || []).filter((x) => !x.isReference).length}`, tr('每场戏的地点、角色与冲突。', 'Location, cast and conflict per scene.')),
+    m('glossary', tr('术语表', 'Glossary'), `${(docStore.doc.glossary || []).filter((g) => !g.isReference).length}`, tr('统一名词写法，全库一键替换。', 'Consistent terms, batch replace.')),
+    m('stats', tr('写作看板', 'Stats'), `${streak.value}d`, tr('近 14 天字数与完成度趋势。', '14-day words & completion trend.')),
+    m('lobby', tr('创作大厅', 'Lobby'), '', tr('浏览与分享公开设定与故事。', 'Browse and share public lore and stories.'))
+  ];
+});
 </script>
 
 <style scoped>
-.tab-btn {
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink2);
-  cursor: pointer;
-  transition: all 0.15s ease;
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 22px 24px;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--li);
+  background:
+    radial-gradient(520px 200px at 0% 0%, rgba(var(--ac-rgb), 0.12), transparent 70%),
+    radial-gradient(420px 200px at 100% 100%, rgba(236, 72, 153, 0.08), transparent 70%),
+    var(--card);
+  box-shadow: var(--el-1);
+  margin-bottom: 18px;
 }
-.tab-btn:hover {
+.hero-main { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.hero-title { font-size: var(--fs-24); margin: 2px 0 4px; }
+.hero-sub { margin: 0; color: var(--mu); font-size: var(--fs-13); }
+.hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mu);
+  border: 1px solid var(--li);
+  border-radius: 5px;
+  padding: 0 4px;
   background: var(--soft);
-  color: var(--ink);
 }
-.tab-btn.active {
-  background: var(--card);
-  color: var(--ac);
-  border-color: var(--li2);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
 }
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.recent-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.recent-icon,
+.module-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.recent-icon svg, .module-icon svg { width: 18px; height: 18px; }
+.recent-name { font-weight: 700; font-size: var(--fs-13); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-meta { font-size: var(--fs-11); color: var(--mu); margin-top: 2px; }
+.recent-chevron { width: 16px; height: 16px; color: var(--mu2); flex-shrink: 0; }
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+.module-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.module-title { font-weight: 700; font-size: var(--fs-14); display: flex; align-items: center; gap: 6px; }
+.module-desc { margin: 4px 0 0; font-size: var(--fs-12); color: var(--mu); line-height: 1.5; }
+.kind-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 18px; }
 .dashboard-community-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 18px;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
   align-items: start;
 }
-@media (max-width: 768px) {
-  .dashboard-community-grid {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
+.creator-list { display: flex; flex-direction: column; gap: 4px; }
+.creator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.creator-row:hover { background: var(--li2); }
+.rank { width: 18px; text-align: center; font-size: var(--fs-12); font-weight: 800; color: var(--mu); font-variant-numeric: tabular-nums; }
+.rank.r1 { color: #f59e0b; }
+.rank.r2 { color: #94a3b8; }
+.rank.r3 { color: #b45309; }
+.creator-name { font-weight: 700; font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creator-bio { font-size: var(--fs-11); color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--li); flex-shrink: 0; }
+.online-dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--oks); }
+.feed-list { display: flex; flex-direction: column; gap: 6px; }
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--li2);
+  background: var(--soft);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  min-width: 0;
+  transition: border-color var(--dur-2), background var(--dur-2);
+}
+.feed-row:hover { border-color: var(--ac); background: var(--acs); }
+.feed-title { font-size: var(--fs-13); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-author { font-size: var(--fs-11); color: var(--ac); white-space: nowrap; }
+.feed-summary { flex: 1; font-size: var(--fs-12); color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.share-body {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 16px;
+  background: var(--soft);
+  border-radius: 10px;
+  font-size: var(--fs-13);
+  line-height: var(--lh-loose);
+  white-space: pre-wrap;
+  color: var(--ink2);
+}
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 900px) {
+  .dashboard-community-grid { grid-template-columns: 1fr; }
+  .hero { padding: 18px; }
+  .hero-title { font-size: var(--fs-20); }
 }
 </style>

@@ -1,59 +1,29 @@
 <template>
-  <div class="wrap" style="max-width: 860px">
-    <!-- Anonymous Guest Locked Gate -->
-    <div
+  <div class="page narrow" style="max-width: 880px">
+    <LockedGate
       v-if="!authStore.isLoggedIn"
-      class="card"
-      style="
-        padding: 44px 24px;
-        text-align: center;
-        max-width: 680px;
-        margin: 40px auto;
-        border: 2px dashed var(--ac);
-        background: var(--card);
-      "
-    >
-      <div style="font-size: 44px; margin-bottom: 12px">🔒</div>
-      <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 10px">
-        {{ tr('离线体验版 · 创作大厅已锁定', 'Offline Mode · Lobby Locked') }}
-      </h2>
-      <p style="color: var(--mu); font-size: 14px; line-height: 1.6; margin-bottom: 22px; max-width: 520px; margin-left: auto; margin-right: auto">
-        {{ tr('您当前处于未登录的离线体验版本。在大厅中您可以浏览海量公开设定、查看活跃创作者主页与精华设定、参与共创企划并留言互动。请登录或注册后进入。', 'You are currently in offline guest mode. Sign in or register to browse community lore, author profiles, and join co-creation projects.') }}
-      </p>
-      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap">
-        <button type="button" class="btn primary" style="padding: 10px 24px; font-size: 15px; font-weight: 700" @click="uiStore.openModal('auth')">
-          ☁️ {{ tr('立即登录 / 注册 进入大厅', 'Sign In / Register') }}
-        </button>
-        <button type="button" class="btn" style="padding: 10px 20px; font-size: 14px" @click="router.push('/char')">
-          ✍️ {{ tr('前往基础设定器构思', 'Open Character Studio') }}
-        </button>
-      </div>
-    </div>
+      :icon="Users"
+      :title="tr('创作大厅需要登录', 'The lobby is for signed-in creators')"
+      :description="tr('在大厅中可以浏览公开设定、查看创作者主页、参与共创企划并留言互动。登录或注册后即可进入。', 'Browse public lore, visit creator profiles, join co-creation projects and discuss. Sign in or register to enter.')"
+    />
 
     <!-- Logged-in: Creator Lobby View -->
     <template v-else>
       <!-- Header & Controls -->
-      <div class="row" style="margin: 0 0 14px; align-items: center; gap: 10px; flex-wrap: wrap">
-        <div>
-          <h2 style="margin: 0; font-size: 20px">🌐 {{ tr('公共创作大厅', 'Community Creator Lobby') }}</h2>
-          <p class="hint" style="margin: 3px 0 0; font-size: 12px">
-            {{ tr('探索创作者们公开的世界构筑与小说篇章，支持一键导入灵感与社区共创', 'Explore worlds and stories shared by creators, with one-click import') }}
-          </p>
-        </div>
-        <span class="spacer" />
-        <div style="display: flex; gap: 8px">
+      <PageHeader
+        :title="tr('公共创作大厅', 'Community lobby')"
+        :subtitle="tr('探索创作者们公开的世界构筑与小说篇章，一键导入灵感或参与共创。', 'Worlds and stories shared by creators — import for inspiration or co-create.')"
+        :icon="Users"
+      >
+        <template #actions>
           <button type="button" class="btn sm" :disabled="loadingShares || loadingUsers" @click="refreshLobby">
-            🔄 {{ tr('刷新大厅', 'Refresh') }}
+            <RefreshCw :class="{ spin: loadingShares || loadingUsers }" /> {{ tr('刷新', 'Refresh') }}
           </button>
-          <button
-            type="button"
-            class="btn sm primary"
-            @click="router.push('/me')"
-          >
-            📤 {{ tr('管理我的分享', 'My Studio') }}
+          <button type="button" class="btn sm primary" @click="router.push('/me')">
+            <Upload /> {{ tr('管理我的分享', 'My shares') }}
           </button>
-        </div>
-      </div>
+        </template>
+      </PageHeader>
 
     <!-- Active Creators Row -->
     <div class="card open" style="padding: 16px; margin-bottom: 16px">
@@ -66,9 +36,7 @@
         </span>
       </div>
 
-      <p v-if="loadingUsers && !users.length" class="hint" style="display: block">
-        {{ tr('正在探测在线创作者…', 'Loading creators…') }}
-      </p>
+      <Skeleton v-if="loadingUsers && !users.length" variant="row" :count="2" />
       <p v-else-if="!users.length" class="hint" style="display: block">
         {{ tr('还没有创作者留下足迹，成为第一个吧！', 'No creators yet — be the first!') }}
       </p>
@@ -141,7 +109,7 @@
             :class="{ active: selectedKind === cat.kind }"
             @click="setCategory(cat.kind)"
           >
-            {{ cat.icon }} {{ cat.label }}
+            <component :is="cat.icon" style="width: 13px; height: 13px" /> {{ cat.label }}
           </button>
         </div>
 
@@ -172,12 +140,15 @@
         </span>
       </div>
 
-      <p v-if="loadingShares && !shares.length" class="hint" style="display: block; padding: 20px 0; text-align: center">
-        {{ tr('正在载入全站公开创作…', 'Loading creations…') }}
-      </p>
-      <p v-else-if="!filteredShares.length" class="hint" style="display: block; padding: 20px 0; text-align: center">
-        {{ tr('该分类下暂无公开作品，快来发布第一篇吧！', 'No creations in this category yet.') }}
-      </p>
+      <Skeleton v-if="loadingShares && !shares.length" variant="card" :count="3" />
+      <EmptyState
+        v-else-if="!filteredShares.length"
+        :icon="Share2"
+        :title="tr('这里还很安静', 'Quiet here')"
+        :description="tr('该分类下暂无公开作品，发布第一篇吧！', 'No creations in this category yet — be the first.')"
+      >
+        <button type="button" class="btn primary sm" @click="router.push('/me')"><Upload /> {{ tr('去分享', 'Share something') }}</button>
+      </EmptyState>
       <div v-else style="display: flex; flex-direction: column; gap: 10px">
         <div
           v-for="s in filteredShares"
@@ -195,31 +166,23 @@
           "
         >
           <!-- Kind Icon / Badge -->
-          <div style="display: flex; flex-direction: column; align-items: center; min-width: 44px; text-align: center">
-            <span style="font-size: 22px">{{ getKindIcon(s.kind) }}</span>
-            <span class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700; margin-top: 2px">
-              {{ kindBadge(s.kind) }}
-            </span>
+          <div class="lobby-kind" :style="{ color: kindMeta(s.kind).color, background: kindMeta(s.kind).soft }">
+            <component :is="kindMeta(s.kind).icon" />
           </div>
 
           <!-- Main Info -->
           <div style="min-width: 0; flex: 1">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-              <span v-if="s.canonStatus === 'canon'" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #e0e7ff; color: #4338ca; font-weight: 700">
-                ⭐ 官方正典
-              </span>
-              <span v-else-if="s.canonStatus === 'doujin'" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #fdf2f8; color: #be185d; font-weight: 700">
-                🎨 同人衍生
-              </span>
+              <span class="pill sm" :class="kindMeta(s.kind).pill">{{ kindLabel(s.kind, uiStore.lang) }}</span>
+              <span v-if="s.cocreationId && s.canonStatus === 'canon'" class="pill sm accent"><Star /> {{ tr('官方正典', 'Canon') }}</span>
+              <span v-else-if="s.canonStatus === 'doujin'" class="pill sm warn"><Palette /> {{ tr('同人衍生', 'Doujin') }}</span>
               <strong style="font-size: 15px; cursor: pointer" @click="openShare(s)">
                 {{ s.title }}
               </strong>
               <span style="font-size: 12px; color: var(--ac); font-weight: 600">
                 @{{ s.ownerName || tr('创作者', 'Creator') }}
               </span>
-              <span v-if="s.wordCount" class="pill" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--soft)">
-                {{ s.wordCount }} {{ tr('字', 'w') }}
-              </span>
+              <span v-if="s.wordCount" class="pill sm outline">{{ s.wordCount }} {{ tr('字', 'w') }}</span>
               <span class="hint" style="font-size: 11px">
                 {{ relTime(s.createdAt) }}
               </span>
@@ -236,16 +199,17 @@
           <!-- Action Buttons -->
           <div class="lobby-card-actions" style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
             <button type="button" class="btn sm primary" @click="openShare(s)">
-              📖 {{ s.kind === 'article' ? tr('阅读全文', 'Read') : tr('查阅设定', 'View') }}
+              <BookOpen /> {{ s.kind === 'article' ? tr('阅读全文', 'Read') : tr('查阅设定', 'View') }}
             </button>
             <button
               v-if="authStore.user && s.userId === authStore.user.id"
               type="button"
               class="btn sm icon danger"
               :title="tr('删除我的这条分享', 'Delete')"
+              :aria-label="tr('删除', 'Delete')"
               @click="onDeleteShare(s.id)"
             >
-              ✕
+              <Trash2 />
             </button>
           </div>
         </div>
@@ -274,9 +238,7 @@
         <!-- Header Info in Modal -->
         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--li2)">
           <div style="display: flex; align-items: center; gap: 8px">
-            <span class="pill" style="font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700">
-              {{ kindBadge(viewingShare.kind) }}
-            </span>
+            <span class="pill" :class="kindMeta(viewingShare.kind).pill">{{ kindLabel(viewingShare.kind, uiStore.lang) }}</span>
             <span v-if="viewingShare.wordCount" style="font-size: 12px; color: var(--mu)">
               {{ viewingShare.wordCount }} {{ tr('字', 'words') }}
             </span>
@@ -288,7 +250,7 @@
 
         <div
           v-if="viewingShare.summary"
-          style="padding: 10px 14px; background: rgba(var(--ac-rgb, 100, 110, 240), 0.08); border-radius: 6px; font-size: 13px; color: var(--ink2)"
+          style="padding: 10px 14px; background: var(--acs); border-radius: 8px; font-size: 13px; color: var(--ink2)"
         >
           <strong>{{ tr('作品提要 / 设定纲要：', 'Synopsis / Summary:') }}</strong> {{ viewingShare.summary }}
         </div>
@@ -301,7 +263,8 @@
             padding: 16px 18px;
             background: var(--soft);
             border-radius: 10px;
-            font: 14px/1.85 inherit;
+            font-size: var(--fs-14);
+            line-height: var(--lh-loose);
             white-space: pre-wrap;
             color: var(--ink);
           "
@@ -364,11 +327,17 @@
 </template>
 
 <script setup lang="ts">
+import { BookOpen, Palette, RefreshCw, Share2, Sparkles, Star, Trash2, Upload, Users } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import Avatar from '../components/base/Avatar.vue';
-import Modal from '../components/base/Modal.vue';
 import DiscussionSection from '../components/app/DiscussionSection.vue';
+import Avatar from '../components/base/Avatar.vue';
+import EmptyState from '../components/base/EmptyState.vue';
+import LockedGate from '../components/base/LockedGate.vue';
+import Modal from '../components/base/Modal.vue';
+import PageHeader from '../components/base/PageHeader.vue';
+import Skeleton from '../components/base/Skeleton.vue';
+import { KIND_META, kindLabel, kindMeta } from '../core/entityMeta';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
@@ -397,11 +366,11 @@ const selectedKind = ref<'all' | 'world' | 'org' | 'char' | 'article'>('all');
 const searchQuery = ref('');
 
 const categories = computed(() => [
-  { kind: 'all', label: tr('全部作品', 'All Works'), icon: '✨' },
-  { kind: 'world', label: tr('世界观', 'Worlds'), icon: '🌍' },
-  { kind: 'org', label: tr('组织势力', 'Orgs'), icon: '🏛️' },
-  { kind: 'char', label: tr('角色档案', 'Chars'), icon: '👤' },
-  { kind: 'article', label: tr('文章作品', 'Articles'), icon: '🖋️' }
+  { kind: 'all', label: tr('全部作品', 'All'), icon: Sparkles },
+  { kind: 'world', label: tr('世界观', 'Worlds'), icon: KIND_META.world.icon },
+  { kind: 'org', label: tr('组织势力', 'Orgs'), icon: KIND_META.org.icon },
+  { kind: 'char', label: tr('角色档案', 'Chars'), icon: KIND_META.char.icon },
+  { kind: 'article', label: tr('文章作品', 'Articles'), icon: KIND_META.article.icon }
 ]);
 
 const onlineCount = computed(() => users.value.filter((u) => u.isOnline).length);
@@ -419,20 +388,6 @@ const filteredShares = computed(() => {
     return true;
   });
 });
-
-function getKindIcon(kind: string): string {
-  if (kind === 'article') return '🖋️';
-  if (kind === 'org') return '🏛️';
-  if (kind === 'char') return '👤';
-  return '🌍';
-}
-
-function kindBadge(kind: string): string {
-  if (kind === 'article') return tr('文章', 'Article');
-  if (kind === 'org') return tr('组织', 'Org');
-  if (kind === 'char') return tr('角色', 'Char');
-  return tr('世界观', 'World');
-}
 
 function relTime(ts: number): string {
   if (!ts) return '';
@@ -607,7 +562,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.lobby-kind {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lobby-kind svg { width: 20px; height: 20px; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 5px 12px;
   font-size: 12.5px;
   font-weight: 600;

@@ -92,10 +92,9 @@
             <button
               type="button"
               class="btn sm"
-              style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%); border-color: #ec4899; color: #db2777; font-weight: 700"
               @click="uiStore.openModal('animeArt')"
             >
-              🎨 {{ tr('二次元 AI 立绘生成', 'Anime AI Art') }}
+              🎨 {{ tr('AI 立绘', 'AI Art') }}
             </button>
             <button type="button" class="btn sm" @click="allOpenState = true">
               {{ t.expand }}

@@ -40,7 +40,13 @@ function writeLS(key: string, val: unknown): void {
 
 export const useUIStore = defineStore('ui', () => {
   const lang = ref<'zh' | 'en'>(readLS<'zh' | 'en'>('cc_lang', 'zh') === 'en' ? 'en' : 'zh');
-  const dark = ref<boolean>(Boolean(readLS<boolean>('cc_dark', false)));
+  // null in storage = follow the system; the pre-paint script in index.html mirrors this logic.
+  const storedDark = readLS<boolean | null>('cc_dark', null);
+  const systemDark =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false;
+  const dark = ref<boolean>(storedDark === null ? systemDark : Boolean(storedDark));
   const sidebarCollapsed = ref<boolean>(Boolean(readLS<boolean>('cc_sidebar_collapsed', false)));
 
   const modals = reactive<Record<ModalName, boolean>>({
@@ -73,8 +79,19 @@ export const useUIStore = defineStore('ui', () => {
 
   function applyDarkClass(isDark: boolean) {
     if (typeof document !== 'undefined') {
-      document.documentElement.classList.toggle('dark', isDark);
+      const root = document.documentElement;
+      root.classList.toggle('dark', isDark);
+      root.classList.toggle('light', !isDark);
     }
+  }
+
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    // Follow the OS only while the user has not chosen explicitly.
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', (e) => {
+      if (readLS<boolean | null>('cc_dark', null) === null) {
+        dark.value = e.matches;
+      }
+    });
   }
 
   applyDarkClass(dark.value);

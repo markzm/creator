@@ -1,17 +1,19 @@
 <template>
-  <div class="tl-empty">
-    <p v-if="icon" style="font-size: 40px; margin: 0 0 8px">{{ icon }}</p>
-    <h4 v-if="title" style="margin: 0 0 6px; color: var(--ink)">{{ title }}</h4>
-    <p style="margin: 0">{{ description }}</p>
-    <div v-if="$slots.default" style="margin-top: 14px">
+  <div class="empty-state">
+    <span v-if="icon" class="empty-icon"><component :is="icon" /></span>
+    <h4 v-if="title">{{ title }}</h4>
+    <p v-if="description">{{ description }}</p>
+    <div v-if="$slots.default" class="empty-actions">
       <slot />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue';
+
 defineProps<{
-  icon?: string;
+  icon?: Component;
   title?: string;
   description?: string;
 }>();

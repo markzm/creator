@@ -95,61 +95,53 @@
       </div>
     </div>
 
-    <!-- Volume Modal -->
-    <div v-if="volModal.show" class="tut-mask show" @click.self="volModal.show = false">
-      <div class="tut-box" style="max-width: 440px">
-        <h3 style="margin: 0 0 12px">{{ volModal.target ? tr('编辑卷', 'Edit Volume') : tr('新建卷', 'New Volume') }}</h3>
-        <label class="f-label">{{ tr('卷标题', 'Volume Title') }}</label>
-        <input v-model="volModal.title" type="text" :placeholder="tr('例：第一卷 · 雾谷之影', 'Volume 1')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('卷备注（可选）', 'Note (Optional)') }}</label>
-        <textarea v-model="volModal.note" rows="3" style="margin-bottom: 14px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="volModal.show = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="saveVol">{{ tr('保存', 'Save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Volume -->
+    <Modal v-model="volModal.show" :title="volModal.target ? tr('编辑卷', 'Edit volume') : tr('新建卷', 'New volume')" max-width="440px">
+      <label class="f-label">{{ tr('卷标题', 'Volume title') }}</label>
+      <input v-model="volModal.title" type="text" :placeholder="tr('例：第一卷 · 雾谷之影', 'Volume 1')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('卷备注（可选）', 'Note (optional)') }}</label>
+      <textarea v-model="volModal.note" rows="3"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="volModal.show = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="saveVol">{{ tr('保存', 'Save') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Act Modal -->
-    <div v-if="actModal.show" class="tut-mask show" @click.self="actModal.show = false">
-      <div class="tut-box" style="max-width: 420px">
-        <h3 style="margin: 0 0 12px">{{ actModal.target ? tr('重命名幕', 'Rename Act') : tr('添加幕', 'New Act') }}</h3>
-        <label class="f-label">{{ tr('幕标题', 'Act Title') }}</label>
-        <input v-model="actModal.title" type="text" :placeholder="tr('例：第一幕 · 风暴前夜', 'Act 1')" style="margin-bottom: 14px" />
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="actModal.show = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="saveAct">{{ tr('保存', 'Save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Act -->
+    <Modal v-model="actModal.show" :title="actModal.target ? tr('重命名幕', 'Rename act') : tr('添加幕', 'New act')" max-width="420px">
+      <label class="f-label">{{ tr('幕标题', 'Act title') }}</label>
+      <input v-model="actModal.title" type="text" :placeholder="tr('例：第一幕 · 风暴前夜', 'Act 1')" />
+      <template #footer>
+        <button class="btn sm" @click="actModal.show = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="saveAct">{{ tr('保存', 'Save') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Chapter Modal -->
-    <div v-if="chModal.show" class="tut-mask show" @click.self="chModal.show = false">
-      <div class="tut-box" style="max-width: 480px">
-        <h3 style="margin: 0 0 12px">{{ chModal.target ? tr('编辑章节', 'Edit Chapter') : tr('添加章节', 'New Chapter') }}</h3>
-        <label class="f-label">{{ tr('章标题', 'Chapter Title') }}</label>
-        <input v-model="chModal.title" type="text" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('时间（可选，填写后自动同步至时间线）', 'Time (syncs to Timeline)') }}</label>
-        <input v-model="chModal.year" type="text" :placeholder="tr('例：304年', 'e.g. Year 304')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('状态', 'Status') }}</label>
-        <select v-model="chModal.status" style="margin-bottom: 10px">
-          <option value="未写">未写</option>
-          <option value="写作中">写作中</option>
-          <option value="已完成">已完成</option>
-        </select>
-        <label class="f-label">{{ tr('内容概要', 'Summary') }}</label>
-        <textarea v-model="chModal.summary" rows="4" style="margin-bottom: 14px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="chModal.show = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="saveChapter">{{ tr('保存', 'Save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Chapter -->
+    <Modal v-model="chModal.show" :title="chModal.target ? tr('编辑章节', 'Edit chapter') : tr('添加章节', 'New chapter')" max-width="480px">
+      <label class="f-label">{{ tr('章标题', 'Chapter title') }}</label>
+      <input v-model="chModal.title" type="text" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('时间（可选，填写后自动同步至时间线）', 'Time (syncs to timeline)') }}</label>
+      <input v-model="chModal.year" type="text" :placeholder="tr('例：304年', 'e.g. Year 304')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('状态', 'Status') }}</label>
+      <select v-model="chModal.status" style="margin-bottom: 10px">
+        <option value="未写">{{ tr('未写', 'Not started') }}</option>
+        <option value="写作中">{{ tr('写作中', 'Writing') }}</option>
+        <option value="已完成">{{ tr('已完成', 'Done') }}</option>
+      </select>
+      <label class="f-label">{{ tr('内容概要', 'Summary') }}</label>
+      <textarea v-model="chModal.summary" rows="4"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="chModal.show = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="saveChapter">{{ tr('保存', 'Save') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive } from 'vue';
+import Modal from '../components/base/Modal.vue';
 import WikiText from '../components/base/WikiText.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';

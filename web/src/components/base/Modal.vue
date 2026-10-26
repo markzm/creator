@@ -1,35 +1,147 @@
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="tut-mask show" @click.self="close">
-      <div class="tut-box" :style="{ maxWidth: maxWidth || '540px' }">
-        <div v-if="stepLabel" class="tut-step">{{ stepLabel }}</div>
-        <h3 v-if="title" style="margin: 0 0 14px">{{ title }}</h3>
-        <slot />
-        <div v-if="$slots.footer" class="tut-actions" style="margin-top: 16px">
-          <slot name="footer" />
+    <Transition name="modal">
+      <div
+        v-if="modelValue"
+        class="tut-mask show"
+        :style="{ zIndex: zIndex }"
+        @mousedown.self="onBackdrop"
+      >
+        <div
+          ref="boxRef"
+          class="tut-box"
+          :class="{ 'no-foot': !$slots.footer }"
+          :style="{ maxWidth: maxWidth || '540px' }"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="title ? titleId : undefined"
+          tabindex="-1"
+          @keydown="onKeydown"
+        >
+          <div v-if="title || stepLabel || !persistent" class="modal-head">
+            <div style="flex: 1; min-width: 0">
+              <div v-if="stepLabel" class="tut-step">{{ stepLabel }}</div>
+              <h3 v-if="title" :id="titleId">{{ title }}</h3>
+            </div>
+            <button
+              v-if="!persistent"
+              type="button"
+              class="icon-btn"
+              :aria-label="closeLabel"
+              @click="close"
+            >
+              <X />
+            </button>
+          </div>
+          <div class="modal-body">
+            <slot />
+          </div>
+          <div v-if="$slots.footer" class="modal-foot">
+            <slot name="footer" />
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
-  modelValue: boolean;
-  title?: string;
-  stepLabel?: string;
-  maxWidth?: string;
-  persistent?: boolean;
-}>();
+import { X } from 'lucide-vue-next';
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  focusableIn,
+  isTopLayer,
+  lockScroll,
+  popLayer,
+  pushLayer,
+  trapTab,
+  unlockScroll
+} from '../../composables/useModalStack';
+import { useUIStore } from '../../stores/ui';
+
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean;
+    title?: string;
+    stepLabel?: string;
+    maxWidth?: string;
+    persistent?: boolean;
+    /** Use a higher layer (confirm dialogs stack above normal modals). */
+    level?: 'modal' | 'confirm';
+  }>(),
+  { level: 'modal' }
+);
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void;
   (e: 'close'): void;
 }>();
 
+const uiStore = useUIStore();
+const boxRef = ref<HTMLElement | null>(null);
+const titleId = `modal-title-${Math.random().toString(36).slice(2, 9)}`;
+const zIndex = props.level === 'confirm' ? 'var(--z-confirm)' : 'var(--z-modal)';
+const closeLabel = uiStore.lang === 'zh' ? '关闭' : 'Close';
+
+let layerId: number | null = null;
+let restoreFocusTo: HTMLElement | null = null;
+
 function close() {
   if (props.persistent) return;
   emit('update:modelValue', false);
   emit('close');
 }
+
+function onBackdrop() {
+  close();
+}
+
+function onKeydown(ev: KeyboardEvent) {
+  if (ev.key === 'Escape') {
+    if (layerId !== null && isTopLayer(layerId)) {
+      ev.stopPropagation();
+      close();
+    }
+    return;
+  }
+  if (boxRef.value) trapTab(boxRef.value, ev);
+}
+
+function onOpen() {
+  restoreFocusTo = (document.activeElement as HTMLElement | null) || null;
+  layerId = pushLayer(close, Boolean(props.persistent));
+  lockScroll();
+  void nextTick(() => {
+    const box = boxRef.value;
+    if (!box) return;
+    const first = focusableIn(box).find((el) => !el.classList.contains('icon-btn')) || focusableIn(box)[0];
+    (first || box).focus({ preventScroll: true });
+  });
+}
+
+function onClose() {
+  if (layerId !== null) {
+    popLayer(layerId);
+    layerId = null;
+    unlockScroll();
+  }
+  const target = restoreFocusTo;
+  restoreFocusTo = null;
+  if (target && typeof target.focus === 'function' && document.contains(target)) {
+    target.focus({ preventScroll: true });
+  }
+}
+
+watch(
+  () => props.modelValue,
+  (open, was) => {
+    if (open && !was) onOpen();
+    else if (!open && was) onClose();
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  if (props.modelValue) onClose();
+});
 </script>

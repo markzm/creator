@@ -168,3 +168,18 @@ export function exportAllMd(doc: DocV6, lang: 'zh' | 'en' = 'zh'): string {
   if (!any) return '';
   return out.join('\n');
 }
+
+
+/**
+ * Human relative time ("3 分钟前" / "3m ago"). Accepts unix seconds or milliseconds.
+ */
+export function formatRelative(ts: number | null | undefined, lang: 'zh' | 'en' = 'zh', now: number = Date.now()): string {
+  if (!ts) return '';
+  const ms = ts < 1e12 ? ts * 1000 : ts;
+  const s = Math.max(0, (now - ms) / 1000);
+  if (s < 60) return lang === 'zh' ? '刚刚' : 'just now';
+  if (s < 3600) return lang === 'zh' ? `${Math.floor(s / 60)} 分钟前` : `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return lang === 'zh' ? `${Math.floor(s / 3600)} 小时前` : `${Math.floor(s / 3600)}h ago`;
+  if (s < 86400 * 30) return lang === 'zh' ? `${Math.floor(s / 86400)} 天前` : `${Math.floor(s / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US');
+}

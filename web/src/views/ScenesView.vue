@@ -83,37 +83,35 @@
       <option v-for="loc in worldLocations" :key="loc" :value="loc" />
     </datalist>
 
-    <!-- Scene Modal -->
-    <div v-if="modal.show" class="tut-mask show" @click.self="modal.show = false">
-      <div class="tut-box" style="max-width: 480px">
-        <h3 style="margin: 0 0 12px">{{ modal.target ? tr('编辑场景', 'Edit Scene') : tr('新建场景', 'New Scene') }}</h3>
-        <label class="f-label">{{ tr('场景名', 'Scene Title') }}</label>
-        <input v-model="modal.title" type="text" :placeholder="tr('例：雨夜酒馆对峙', 'e.g. Tavern Standoff')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('地点（可从世界观地点表选）', 'Location') }}</label>
-        <input v-model="modal.location" type="text" list="worldLocationsList" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('出场角色（、分隔）', 'Appearing Characters') }}</label>
-        <input v-model="modal.chars" type="text" :placeholder="tr('例：凯恩、玛尔塔', 'e.g. Kane, Martha')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('核心冲突目标', 'Core Conflict') }}</label>
-        <textarea v-model="modal.conflict" rows="3" style="margin-bottom: 10px"></textarea>
-        <label class="f-label">{{ tr('备注', 'Notes') }}</label>
-        <textarea v-model="modal.note" rows="2" style="margin-bottom: 10px"></textarea>
-        <label class="f-label">{{ tr('状态', 'Status') }}</label>
-        <select v-model="modal.status" style="margin-bottom: 14px">
-          <option value="未写">未写</option>
-          <option value="写作中">写作中</option>
-          <option value="已完成">已完成</option>
-        </select>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="modal.show = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="saveScene">{{ tr('保存', 'Save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Scene -->
+    <Modal v-model="modal.show" :title="modal.target ? tr('编辑场景', 'Edit scene') : tr('新建场景', 'New scene')" max-width="480px">
+      <label class="f-label">{{ tr('场景名', 'Scene title') }}</label>
+      <input v-model="modal.title" type="text" :placeholder="tr('例：雨夜酒馆对峙', 'e.g. Tavern Standoff')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('地点（可从世界观地点表选）', 'Location') }}</label>
+      <input v-model="modal.location" type="text" list="worldLocationsList" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('出场角色（、分隔）', 'Appearing characters') }}</label>
+      <input v-model="modal.chars" type="text" :placeholder="tr('例：凯恩、玛尔塔', 'e.g. Kane, Martha')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('核心冲突目标', 'Core conflict') }}</label>
+      <textarea v-model="modal.conflict" rows="3" style="margin-bottom: 10px"></textarea>
+      <label class="f-label">{{ tr('备注', 'Notes') }}</label>
+      <textarea v-model="modal.note" rows="2" style="margin-bottom: 10px"></textarea>
+      <label class="f-label">{{ tr('状态', 'Status') }}</label>
+      <select v-model="modal.status">
+        <option value="未写">{{ tr('未写', 'Not started') }}</option>
+        <option value="写作中">{{ tr('写作中', 'Writing') }}</option>
+        <option value="已完成">{{ tr('已完成', 'Done') }}</option>
+      </select>
+      <template #footer>
+        <button class="btn sm" @click="modal.show = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="saveScene">{{ tr('保存', 'Save') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import Modal from '../components/base/Modal.vue';
 import WikiText from '../components/base/WikiText.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';

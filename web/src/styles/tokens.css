@@ -1,43 +1,197 @@
+/* =====================================================================
+   Design tokens · 设定创作器
+   One source of truth for colour, type, spacing, radius, elevation,
+   z-index and motion. Views must not hardcode these values.
+   ===================================================================== */
+
 :root {
-  --bg: #f7f8fc;
-  --card: #fff;
-  --soft: #fbfcff;
-  --ink: #181c2e;
+  /* ---- Surfaces & ink ---- */
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --soft: #f9faff;
+  --ink: #171a2b;
   --ink2: #3b3f56;
-  --mu: #8890a6;
-  --mu2: #a4abbe;
-  --li: #e8eaf3;
-  --li2: #f0f2f9;
+  --mu: #6b7390;   /* ≥ 4.5:1 on --card */
+  --mu2: #8f96ad;
+  --li: #e6e8f1;
+  --li2: #eff1f8;
+
+  /* ---- Accent ---- */
   --ac: #6366f1;
   --ac2: #4f46e5;
   --acs: #eef0ff;
-  --glow: rgba(99, 102, 241, 0.14);
-  --dg: #e5484d;
-  --dgs: rgba(229, 72, 77, 0.08);
-  --wn: #d97706;
-  --wns: rgba(217, 119, 6, 0.09);
+  --ac-rgb: 99, 102, 241;
+  --glow: rgba(99, 102, 241, 0.16);
+
+  /* ---- Status ---- */
   --ok: #059669;
-  --oks: rgba(5, 150, 105, 0.09);
+  --oks: rgba(5, 150, 105, 0.1);
+  --wn: #d97706;
+  --wns: rgba(217, 119, 6, 0.1);
+  --dg: #e5484d;
+  --dgs: rgba(229, 72, 77, 0.09);
+  --dn: #e5484d;   /* legacy alias used by AI modal */
+  --dns: rgba(229, 72, 77, 0.09);
+  --er: #e5484d;
+  --info: #2563eb;
+  --infos: rgba(37, 99, 235, 0.1);
+
+  /* ---- Entity kind colours ---- */
+  --k-world: #7c3aed;
+  --k-world-s: rgba(124, 58, 237, 0.12);
+  --k-org: #d97706;
+  --k-org-s: rgba(217, 119, 6, 0.12);
+  --k-char: #6366f1;
+  --k-char-s: rgba(99, 102, 241, 0.12);
+  --k-article: #0f8f83;
+  --k-article-s: rgba(15, 143, 131, 0.12);
+  --k-glossary: #be185d;
+  --k-glossary-s: rgba(190, 24, 93, 0.12);
+
+  /* ---- Relationship colours (graph) ---- */
+  --rel-ally: #059669;
+  --rel-enemy: #e5484d;
+  --rel-family: #d97706;
+  --rel-love: #ec4899;
+  --rel-member: #6366f1;
+  --rel-world: #7c3aed;
+  --rel-other: #8f96ad;
+
+  /* ---- Code block ---- */
   --code: #191c2b;
   --cf: #e6e8f5;
-  --sh: 0 2px 6px rgba(24, 28, 46, 0.05);
-  --shm: 0 4px 16px rgba(24, 28, 46, 0.07);
-  --shl: 0 12px 32px rgba(24, 28, 46, 0.1);
+
+  /* ---- Typography ---- */
+  --font-ui: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-17: 17px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.6;
+  --lh-loose: 1.85;
+
+  /* ---- Spacing (4px grid) ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* ---- Radius ---- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ---- Elevation ---- */
+  --el-1: 0 1px 2px rgba(23, 26, 43, 0.04), 0 1px 3px rgba(23, 26, 43, 0.04);
+  --el-2: 0 2px 6px rgba(23, 26, 43, 0.05), 0 6px 16px rgba(23, 26, 43, 0.06);
+  --el-3: 0 8px 24px rgba(23, 26, 43, 0.1), 0 2px 6px rgba(23, 26, 43, 0.05);
+  --el-4: 0 20px 48px rgba(23, 26, 43, 0.18);
+  /* legacy aliases */
+  --sh: var(--el-1);
+  --shm: var(--el-2);
+  --shl: var(--el-3);
+
+  /* ---- Z-index ---- */
+  --z-sticky: 30;
+  --z-topbar: 50;
+  --z-sidebar: 55;
+  --z-mobile-nav: 60;
+  --z-dropdown: 100;
+  --z-drawer: 900;
+  --z-modal: 1000;
+  --z-confirm: 1020;
+  --z-toast: 1100;
+
+  /* ---- Motion ---- */
   --e: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+
+  /* ---- Layout ---- */
+  --w-narrow: 760px;
+  --w-reg: 1040px;
+  --w-wide: 1160px;
+  /* Tablet breakpoint is 900px (CSS cannot use a var in @media; keep in sync). */
+
+  color-scheme: light;
 }
 
-html.dark {
-  --bg: #0f111a;
-  --card: #1a1d2b;
-  --soft: #1e2130;
+/* ---------------------------------------------------------------------
+   Dark theme. Applied by html.dark (explicit) or by system preference
+   unless the user explicitly chose light (html.light).
+   --------------------------------------------------------------------- */
+html.dark,
+html:not(.light)[data-prefers-dark="true"] {
+  --bg: #0e1018;
+  --card: #171a27;
+  --soft: #1c1f2e;
   --ink: #e8eaf6;
-  --ink2: #c8cce0;
-  --mu: #8a91a8;
-  --mu2: #6b7288;
-  --li: #252838;
-  --li2: #1f2333;
+  --ink2: #c3c7dc;
+  --mu: #9aa2b8;
+  --mu2: #717a93;
+  --li: #272b3c;
+  --li2: #212536;
+
   --ac: #8b8ef5;
-  --acs: rgba(139, 142, 245, 0.13);
-  --glow: rgba(139, 142, 245, 0.2);
+  --ac2: #6f73e8;
+  --acs: rgba(139, 142, 245, 0.14);
+  --ac-rgb: 139, 142, 245;
+  --glow: rgba(139, 142, 245, 0.22);
+
+  --ok: #34d399;
+  --oks: rgba(52, 211, 153, 0.14);
+  --wn: #fbbf24;
+  --wns: rgba(251, 191, 36, 0.14);
+  --dg: #f87171;
+  --dgs: rgba(248, 113, 113, 0.14);
+  --dn: #f87171;
+  --dns: rgba(248, 113, 113, 0.14);
+  --er: #f87171;
+  --info: #60a5fa;
+  --infos: rgba(96, 165, 250, 0.14);
+
+  --k-world: #a78bfa;
+  --k-world-s: rgba(167, 139, 250, 0.16);
+  --k-org: #fbbf24;
+  --k-org-s: rgba(251, 191, 36, 0.16);
+  --k-char: #8b8ef5;
+  --k-char-s: rgba(139, 142, 245, 0.16);
+  --k-article: #2dd4bf;
+  --k-article-s: rgba(45, 212, 191, 0.16);
+  --k-glossary: #f472b6;
+  --k-glossary-s: rgba(244, 114, 182, 0.16);
+
+  --rel-ally: #34d399;
+  --rel-enemy: #f87171;
+  --rel-family: #fbbf24;
+  --rel-love: #f472b6;
+  --rel-member: #8b8ef5;
+  --rel-world: #a78bfa;
+  --rel-other: #717a93;
+
   --code: #0a0c14;
+  --cf: #dfe3f3;
+
+  --el-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --el-2: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+  --el-3: 0 10px 28px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --el-4: 0 24px 56px rgba(0, 0, 0, 0.65);
+
+  color-scheme: dark;
 }

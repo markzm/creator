@@ -45,61 +45,50 @@
       </div>
     </div>
 
-    <!-- View Template Modal -->
-    <div v-if="viewingTpl" class="tut-mask show" @click.self="viewingTpl = null">
-      <div class="tut-box" style="max-width: 440px">
-        <h3 style="margin: 0 0 12px">{{ viewingTpl.name }}</h3>
-        <pre style="background: var(--soft); padding: 12px; border-radius: 8px; max-height: 300px; overflow: auto; font-size: 13px; margin: 0 0 14px">{{ viewingTpl.fields.map((f, i) => `${i + 1}. ${f}`).join('\n') }}</pre>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end">
-          <button class="btn sm primary" @click="viewingTpl = null">{{ tr('关闭', 'Close') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- View Template -->
+    <Modal :model-value="Boolean(viewingTpl)" :title="viewingTpl?.name || ''" max-width="440px" @update:model-value="(v) => !v && (viewingTpl = null)">
+      <pre v-if="viewingTpl" class="tpl-pre">{{ viewingTpl.fields.map((f, i) => `${i + 1}. ${f}`).join('\n') }}</pre>
+      <template #footer>
+        <button class="btn sm primary" @click="viewingTpl = null">{{ tr('关闭', 'Close') }}</button>
+      </template>
+    </Modal>
 
-    <!-- New Template Modal -->
-    <div v-if="showNewModal" class="tut-mask show" @click.self="showNewModal = false">
-      <div class="tut-box" style="max-width: 460px">
-        <h3 style="margin: 0 0 14px">{{ t.tmplNew }}</h3>
-        <label class="f-label">{{ t.tmplName }}</label>
-        <input v-model="newForm.name" type="text" :placeholder="tr('例：我的修仙模板', 'e.g. Cultivation Template')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ t.tmplFields }}</label>
-        <textarea v-model="newForm.fields" rows="6" style="margin-bottom: 14px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="showNewModal = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="createTemplate">{{ tr('创建', 'Create') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- New Template -->
+    <Modal v-model="showNewModal" :title="t.tmplNew" max-width="460px">
+      <label class="f-label">{{ t.tmplName }}</label>
+      <input v-model="newForm.name" type="text" :placeholder="tr('例：我的修仙模板', 'e.g. Cultivation Template')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ t.tmplFields }}</label>
+      <textarea v-model="newForm.fields" rows="6"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="showNewModal = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="createTemplate">{{ tr('创建', 'Create') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Exported Code Modal -->
-    <div v-if="exportedCode" class="tut-mask show" @click.self="exportedCode = ''">
-      <div class="tut-box" style="max-width: 520px">
-        <h3 style="margin: 0 0 10px">⌘ {{ tr('模板草稿码 · CC3P', 'Template Code · CC3P') }}</h3>
-        <textarea :value="exportedCode" readonly rows="4" style="font-family: monospace; margin-bottom: 12px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="copyCode">{{ tr('复制', 'Copy') }}</button>
-          <button class="btn sm primary" @click="exportedCode = ''">{{ tr('关闭', 'Close') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Exported Code -->
+    <Modal :model-value="Boolean(exportedCode)" :title="tr('模板草稿码 · CC3P', 'Template code · CC3P')" max-width="520px" @update:model-value="(v) => !v && (exportedCode = '')">
+      <textarea :value="exportedCode" readonly rows="4" class="mono"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="copyCode">{{ tr('复制', 'Copy') }}</button>
+        <button class="btn sm primary" @click="exportedCode = ''">{{ tr('关闭', 'Close') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Import Code Modal -->
-    <div v-if="showImportModal" class="tut-mask show" @click.self="showImportModal = false">
-      <div class="tut-box" style="max-width: 520px">
-        <h3 style="margin: 0 0 10px">📥 {{ tr('导入模板集码 (CC3P)', 'Import Template Code (CC3P)') }}</h3>
-        <textarea v-model="importCodeStr" rows="4" placeholder="CC3Pr-..." style="font-family: monospace; margin-bottom: 12px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="showImportModal = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="doImportCode">{{ tr('导入', 'Import') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Import Code -->
+    <Modal v-model="showImportModal" :title="tr('导入模板集码 (CC3P)', 'Import template code (CC3P)')" max-width="520px">
+      <textarea v-model="importCodeStr" rows="4" placeholder="CC3Pr-..." class="mono"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="showImportModal = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="doImportCode">{{ tr('导入', 'Import') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import Modal from '../components/base/Modal.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
@@ -227,3 +216,7 @@ function doImportCode() {
   }
 }
 </script>
+
+<style scoped>
+.tpl-pre { background: var(--soft); padding: 12px; border-radius: 8px; max-height: 300px; overflow: auto; font-size: 13px; margin: 0; }
+</style>

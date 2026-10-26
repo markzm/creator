@@ -13,9 +13,13 @@ body {
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
   -webkit-font-smoothing: antialiased;
-  transition: background 0.3s, color 0.3s;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01", "tnum";
+  transition: background var(--dur-3), color var(--dur-3);
 }
 
 body::before {
@@ -25,7 +29,7 @@ body::before {
   pointer-events: none;
   z-index: -1;
   background:
-    radial-gradient(ellipse 800px 500px at 15% -10%, rgba(99, 102, 241, 0.06), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 15% -10%, rgba(var(--ac-rgb), 0.07), transparent 60%),
     radial-gradient(ellipse 700px 500px at 85% 0%, rgba(236, 72, 153, 0.05), transparent 60%);
 }
 
@@ -38,52 +42,118 @@ textarea {
   font-family: inherit;
 }
 
+/* ---- Type hierarchy ---- */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--ink);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h1 { font-size: var(--fs-24); font-weight: 800; }
+h2 { font-size: var(--fs-20); font-weight: 800; }
+h3 { font-size: var(--fs-15); font-weight: 700; }
+h4 { font-size: var(--fs-14); font-weight: 700; }
+
+/* Display headings (page hero, greetings): serif, slightly tighter */
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+code,
+kbd,
+pre,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+a {
+  color: var(--ac);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background: rgba(var(--ac-rgb), 0.22);
+}
+
+/* ---- Focus: keyboard only ---- */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none; /* fields use the glow ring below */
+}
+
+/* ---- Buttons ---- */
 .btn {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--fs-13);
   cursor: pointer;
   border-radius: 10px;
   border: 1px solid var(--li);
   background: var(--card);
   color: var(--ink);
   padding: 8px 14px;
-  transition: all 0.2s var(--e);
+  transition:
+    border-color var(--dur-2) var(--e),
+    color var(--dur-2) var(--e),
+    background var(--dur-2) var(--e),
+    box-shadow var(--dur-2) var(--e),
+    transform var(--dur-1) var(--e);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  box-shadow: 0 1px 2px rgba(24, 28, 46, 0.04);
+  box-shadow: var(--el-1);
   white-space: nowrap;
   line-height: 1.4;
   text-decoration: none;
+}
+.btn svg {
+  width: 1.05em;
+  height: 1.05em;
+  flex-shrink: 0;
 }
 
 .btn:hover {
   border-color: var(--ac);
   color: var(--ac);
-  transform: translateY(-1px);
-  box-shadow: var(--sh);
+  box-shadow: var(--el-2);
 }
 
 .btn:active {
-  transform: translateY(0) scale(0.96);
+  transform: scale(0.97);
 }
 
 .btn.primary {
   background: linear-gradient(180deg, var(--ac), var(--ac2));
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.32);
+  box-shadow: 0 4px 14px rgba(var(--ac-rgb), 0.32);
 }
-
 .btn.primary:hover {
   color: #fff;
+  filter: brightness(1.05);
 }
 
 .btn.danger {
   color: var(--dg);
 }
-
 .btn.danger:hover {
   border-color: var(--dg);
   background: var(--dgs);
@@ -95,24 +165,24 @@ textarea {
   border-color: transparent;
   box-shadow: none;
 }
-
 .btn.ghost:hover {
   background: var(--acs);
   color: var(--ac);
   border-color: transparent;
+  box-shadow: none;
 }
 
 .btn.sm {
   padding: 6px 11px;
-  font-size: 12px;
-  border-radius: 8px;
+  font-size: var(--fs-12);
+  border-radius: var(--r-sm);
   gap: 4px;
 }
 
 .btn.lg {
   padding: 12px 26px;
-  font-size: 14px;
-  border-radius: 12px;
+  font-size: var(--fs-14);
+  border-radius: var(--r-md);
   gap: 8px;
 }
 
@@ -121,6 +191,11 @@ textarea {
   width: 34px;
   height: 34px;
 }
+.btn.sm.icon {
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+}
 
 .btn[disabled] {
   opacity: 0.45;
@@ -128,11 +203,13 @@ textarea {
   transform: none !important;
 }
 
+/* ---- Fields ---- */
 select,
 input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="number"],
+input[type="search"],
 textarea {
   background: var(--soft);
   border: 1px solid var(--li);
@@ -140,8 +217,8 @@ textarea {
   padding: 9px 12px;
   width: 100%;
   color: var(--ink);
-  transition: border-color 0.2s, box-shadow 0.2s;
-  box-shadow: 0 1px 2px rgba(24, 28, 46, 0.04);
+  transition: border-color var(--dur-2), box-shadow var(--dur-2), background var(--dur-2);
+  box-shadow: var(--el-1);
 }
 
 input:focus,
@@ -155,7 +232,7 @@ select:focus {
 
 textarea {
   resize: none;
-  line-height: 1.6;
+  line-height: var(--lh-normal);
   max-height: 220px;
   overflow-y: auto;
   min-height: 70px;
@@ -170,17 +247,7 @@ textarea::placeholder {
   color: var(--mu2);
 }
 
-@keyframes vi {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
+/* ---- Keyframes ---- */
 @keyframes cardIn {
   from {
     opacity: 0;
@@ -211,5 +278,39 @@ textarea::placeholder {
   }
   100% {
     box-shadow: 0 0 0 0 var(--glow);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+
+/* ---- Route transition ---- */
+.route-enter-active,
+.route-leave-active {
+  transition: opacity var(--dur-2) var(--e), transform var(--dur-2) var(--e);
+}
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.route-leave-to {
+  opacity: 0;
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

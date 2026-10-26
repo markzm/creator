@@ -2,12 +2,28 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>设定集构建器 · Worldbuilder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1018" media="(prefers-color-scheme: dark)" />
+    <title>设定创作器 · Worldbuilding Studio</title>
+    <script>
+      // Apply the colour scheme before first paint to avoid a light flash in dark mode.
+      (function () {
+        try {
+          var raw = localStorage.getItem('cc_dark');
+          var root = document.documentElement;
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          root.setAttribute('data-prefers-dark', prefersDark ? 'true' : 'false');
+          if (raw === 'true') root.classList.add('dark');
+          else if (raw === 'false') root.classList.add('light');
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap"
       rel="stylesheet"
     />
   </head>

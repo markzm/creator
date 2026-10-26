@@ -1,27 +1,24 @@
 <template>
-  <div class="page-container" style="max-width: 960px; margin: 0 auto; padding: 20px">
-    <div class="row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px">
-      <div>
-        <h2 style="margin: 0; font-size: 20px">📊 {{ tr('写作看板', 'Writing Stats & Analytics') }}</h2>
-        <p class="hint" style="margin: 4px 0 0">
-          {{ tr('实时统计设定总字数、角色完成度、连续创作天数与近 14 天趋势。', 'Track total character counts, completion rate, streak days, and 14-day progress.') }}
-        </p>
-      </div>
-      <button class="btn sm" @click="refreshStats">↺ {{ tr('刷新统计', 'Refresh') }}</button>
-    </div>
+  <div class="page">
+    <PageHeader
+      :title="tr('写作看板', 'Writing stats')"
+      :subtitle="tr('实时统计设定总字数、角色完成度、连续创作天数与近 14 天趋势。', 'Total words, completion rate, streak and the last 14 days.')"
+      :icon="BarChart3"
+      tone="var(--ok)"
+    >
+      <template #actions>
+        <button class="btn sm" @click="refreshStats"><RefreshCw /> {{ tr('刷新统计', 'Refresh') }}</button>
+      </template>
+    </PageHeader>
 
-    <!-- Metric Cards -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px">
-      <div v-for="(m, idx) in metrics" :key="idx" class="card" style="padding: 16px; text-align: center">
-        <div style="font-size: 24px; font-weight: 800; color: var(--ac)">{{ m.value }}</div>
-        <div class="hint" style="font-size: 12.5px; margin-top: 4px">{{ m.label }}</div>
-      </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px">
+      <StatTile v-for="(m, idx) in metrics" :key="idx" :value="m.value" :label="m.label" :icon="m.icon" :tone="m.tone" />
     </div>
 
     <!-- 14-Day SVG Trend Chart -->
     <div class="card open" style="margin-bottom: 20px">
       <div class="card-h" style="cursor: default">
-        <span class="idx">📈</span>
+        <span class="idx"><TrendingUp style="width: 13px; height: 13px; vertical-align: -2px" /></span>
         <h3>{{ tr('近 14 天总字数与角色完成度趋势', '14-Day Total Characters & Completion Trend') }}</h3>
       </div>
       <div class="card-b" style="display: block; overflow-x: auto">
@@ -55,7 +52,7 @@
               :width="CW * 0.6"
               :height="item.barH"
               rx="3"
-              :fill="item.stat ? '#6366f1' : 'var(--li2)'"
+              :fill="item.stat ? 'var(--ac)' : 'var(--li2)'"
             >
               <title>{{ item.day }}{{ item.stat ? ` · ${item.stat.chars} 字 · 完成度 ${item.stat.done ?? 0}%` : ' · 无记录' }}</title>
             </rect>
@@ -75,7 +72,7 @@
           <polyline
             :points="polylinePoints"
             fill="none"
-            stroke="#059669"
+            stroke="var(--ok)"
             stroke-width="2"
             stroke-linejoin="round"
           />
@@ -86,16 +83,16 @@
               :cx="PL + i * CW + CW / 2"
               :cy="item.lineY"
               r="3"
-              fill="#059669"
+              fill="var(--ok)"
             >
               <title>{{ item.day }} · {{ item.stat.done ?? 0 }}%</title>
             </circle>
           </template>
 
-          <text :x="W - 10" :y="PT + 10" text-anchor="end" font-size="10.5" fill="#059669">
+          <text :x="W - 10" :y="PT + 10" text-anchor="end" font-size="10.5" fill="var(--ok)">
             {{ tr('— 完成度 %', '— Done %') }}
           </text>
-          <text :x="W - 10" :y="PT + 24" text-anchor="end" font-size="10.5" fill="#6366f1">
+          <text :x="W - 10" :y="PT + 24" text-anchor="end" font-size="10.5" fill="var(--ac)">
             {{ tr('▮ 总字数', '▮ Total Chars') }}
           </text>
         </svg>
@@ -107,7 +104,10 @@
 </template>
 
 <script setup lang="ts">
+import { BarChart3, CircleGauge, Flame, Layers, RefreshCw, TrendingUp, Type } from 'lucide-vue-next';
 import { computed, onMounted } from 'vue';
+import PageHeader from '../components/base/PageHeader.vue';
+import StatTile from '../components/base/StatTile.vue';
 import AgeCalculator from '../components/editor/AgeCalculator.vue';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
@@ -165,11 +165,11 @@ const entryCount = computed(
 );
 
 const metrics = computed(() => [
-  { value: fmtNum(totalCount.value), label: tr('总字数', 'Total Chars') },
-  { value: `${doneRate.value}%`, label: tr('角色完成度', 'Char Completion') },
-  { value: String(entryCount.value), label: tr('核心条目总数', 'Total Entities') },
-  { value: `${streak.value} ${tr('天', 'd')}`, label: tr('连续创作', 'Day Streak') },
-  { value: fmtNum(todayCount.value), label: tr('今日字数', 'Today') }
+  { value: fmtNum(totalCount.value), label: tr('总字数', 'Total words'), icon: Type, tone: '' as const },
+  { value: `${doneRate.value}%`, label: tr('角色完成度', 'Char completion'), icon: CircleGauge, tone: 'ok' as const },
+  { value: String(entryCount.value), label: tr('核心条目总数', 'Entities'), icon: Layers, tone: 'world' as const },
+  { value: `${streak.value} ${tr('天', 'd')}`, label: tr('连续创作', 'Day streak'), icon: Flame, tone: 'warn' as const },
+  { value: fmtNum(todayCount.value), label: tr('今日字数', 'Today'), icon: TrendingUp, tone: 'article' as const }
 ]);
 
 const days14 = computed(() => {

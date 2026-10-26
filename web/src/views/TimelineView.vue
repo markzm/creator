@@ -1,130 +1,110 @@
 <template>
-  <div class="page-container" style="max-width: 960px; margin: 0 auto; padding: 20px">
-    <div class="row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px">
-      <div>
-        <h2 style="margin: 0; font-size: 20px">📜 {{ tr('时间线', 'Timeline') }}</h2>
-        <p class="hint" style="margin: 4px 0 0">
-          {{ tr('自动汇总世界观、组织、角色、剧情章节中的时间节点，也可手动添加独立历史事件。', 'Auto-aggregates events across worlds, orgs, chars, and plots.') }}
-        </p>
-      </div>
-      <div class="row" style="display: flex; gap: 8px; flex-wrap: wrap">
-        <select v-model="sourceFilter" style="width: auto; min-width: 120px">
-          <option value="all">{{ tr('全部来源', 'All Sources') }} ({{ allEvents.length }})</option>
+  <div class="page">
+    <PageHeader
+      :title="tr('时间线', 'Timeline')"
+      :subtitle="tr('自动汇总世界观、组织、角色、剧情章节中的时间节点，也可手动添加独立历史事件。', 'Auto-aggregates events across worlds, orgs, chars and plots; add standalone events too.')"
+      :icon="Scroll"
+    >
+      <template #actions>
+        <select v-model="sourceFilter" style="width: auto; min-width: 130px">
+          <option value="all">{{ tr('全部来源', 'All sources') }} ({{ allEvents.length }})</option>
           <option value="独立">{{ tr('独立事件', 'Manual') }}</option>
           <option value="世界观">{{ tr('世界观', 'World') }}</option>
           <option value="组织">{{ tr('组织', 'Organization') }}</option>
           <option value="角色">{{ tr('角色', 'Character') }}</option>
           <option value="剧情">{{ tr('剧情章节', 'Plot') }}</option>
         </select>
-        <button class="btn sm" @click="exportTimelineCode">⌘ {{ tr('导出时间线码', 'Export CC3T') }}</button>
-        <button class="btn sm" @click="showImportModal = true">📥 {{ tr('导入时间线码', 'Import CC3T') }}</button>
-        <button class="btn sm primary" @click="handleNewEvent">＋ {{ tr('添加事件', 'Add Event') }}</button>
-      </div>
-    </div>
+        <button class="btn sm" @click="exportTimelineCode"><Code2 /> {{ tr('导出时间线码', 'Export CC3T') }}</button>
+        <button class="btn sm" @click="showImportModal = true"><Download /> {{ tr('导入', 'Import') }}</button>
+        <button class="btn sm primary" @click="handleNewEvent"><Plus /> {{ tr('添加事件', 'Add event') }}</button>
+      </template>
+    </PageHeader>
 
-    <AgeCalculator />
+    <details class="card flat age-calc">
+      <summary><Calculator /> {{ tr('年龄推算器', 'Age calculator') }}</summary>
+      <div style="padding: 0 4px 4px"><AgeCalculator /></div>
+    </details>
 
-    <div v-if="filteredEvents.length === 0" class="card" style="padding: 40px; text-align: center">
-      <p style="font-size: 36px; margin: 0 0 8px">📜</p>
-      <p class="hint">{{ t.noEvents }}</p>
-    </div>
+    <EmptyState
+      v-if="filteredEvents.length === 0"
+      :icon="Scroll"
+      :title="tr('还没有事件', 'No events yet')"
+      :description="t.noEvents"
+    >
+      <button class="btn primary sm" @click="handleNewEvent"><Plus /> {{ tr('添加第一个事件', 'Add the first event') }}</button>
+    </EmptyState>
 
-    <div v-else class="tl-list" style="display: flex; flex-direction: column; gap: 12px">
-      <div
+    <div v-else class="tl-rail">
+      <article
         v-for="(ev, idx) in filteredEvents"
         :key="ev.id || idx"
-        class="card"
-        style="padding: 14px 18px; display: flex; align-items: flex-start; gap: 14px"
+        class="tl-item"
+        :class="sourceClass(ev.source)"
       >
-        <div
-          style="min-width: 88px; padding: 4px 10px; border-radius: 8px; background: var(--acs); color: var(--ac); font-weight: 700; font-size: 12.5px; text-align: center"
-        >
-          {{ ev.year || t.unknownTime }}
-        </div>
-        <div style="flex: 1; min-width: 0">
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-            <strong style="font-size: 14.5px">
-              <WikiText :text="ev.name" />
-            </strong>
-            <span
-              v-if="ev.isReference"
-              class="pill"
-              style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--acs); color: var(--ac); font-weight: 700"
-            >
-              📚 {{ tr('官方', 'Official') }}
-            </span>
-            <span class="pill" style="font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--li2); color: var(--mu)">
-              {{ ev.source }}
-            </span>
-            <span v-if="ev.link" style="font-size: 12px; color: var(--ac)">
-              <WikiText :text="ev.link" />
-            </span>
+        <span class="tl-dot" />
+        <div class="card flat tl-card">
+          <div class="tl-card-head">
+            <span class="tl-year">{{ ev.year || t.unknownTime }}</span>
+            <strong class="tl-name"><WikiText :text="ev.name" /></strong>
+            <span v-if="ev.isReference" class="pill sm accent"><BookMarked /> {{ tr('官方', 'Official') }}</span>
+            <span class="pill sm" :class="sourcePill(ev.source)">{{ ev.source }}</span>
+            <span v-if="ev.link" class="tl-link"><WikiText :text="ev.link" /></span>
+            <span class="spacer" />
+            <div v-if="ev.source === '独立' && ev.id" class="tl-actions">
+              <button v-if="ev.isReference && !authStore.isAdmin" class="btn sm" @click="handleForkTimeline(ev.id)"><Copy /> {{ tr('复制', 'Fork') }}</button>
+              <template v-else>
+                <button class="icon-btn" :aria-label="tr('编辑', 'Edit')" @click="openEventModal(ev.id)"><Pencil /></button>
+                <button class="icon-btn danger" :aria-label="tr('删除', 'Delete')" @click="deleteManualEvent(ev.id)"><Trash2 /></button>
+              </template>
+            </div>
           </div>
-          <p v-if="ev.desc" style="margin: 6px 0 0; color: var(--ink2); font-size: 13.5px; white-space: pre-wrap">
-            <WikiText :text="ev.desc" />
-          </p>
+          <p v-if="ev.desc" class="tl-desc"><WikiText :text="ev.desc" /></p>
         </div>
-        <div v-if="ev.source === '独立' && ev.id" style="display: flex; gap: 6px">
-          <button
-            v-if="ev.isReference && !authStore.isAdmin"
-            class="btn sm primary"
-            @click="handleForkTimeline(ev.id)"
-          >
-            📑 {{ tr('复制衍生事件', 'Fork Event') }}
-          </button>
-          <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm" @click="openEventModal(ev.id)">{{ tr('编辑', 'Edit') }}</button>
-          <button v-if="!ev.isReference || authStore.isAdmin" class="btn sm icon danger" @click="deleteManualEvent(ev.id)">✕</button>
-        </div>
-      </div>
+      </article>
     </div>
 
-    <!-- Add/Edit Manual Event Modal -->
-    <div v-if="editingModal" class="tut-mask show" @click.self="editingModal = false">
-      <div class="tut-box" style="max-width: 480px">
-        <h3 style="margin: 0 0 14px">{{ editingId ? tr('编辑事件', 'Edit Event') : tr('添加独立事件', 'New Event') }}</h3>
-        <label class="f-label">{{ tr('事件名称', 'Event Title') }}</label>
-        <input v-model="form.name" type="text" :placeholder="tr('例：雾谷之战', 'e.g. Battle of Mist Valley')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('年份 / 时间', 'Year / Time') }}</label>
-        <input v-model="form.year" type="text" :placeholder="tr('例：302年 / 三百年前', 'e.g. Year 302')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('关联世界观 / 角色 / 组织', 'Related Entity') }}</label>
-        <input v-model="form.link" type="text" :placeholder="tr('例：艾瑟兰、暮光议会', 'e.g. Aetherlan')" style="margin-bottom: 10px" />
-        <label class="f-label">{{ tr('详情描述', 'Description') }}</label>
-        <textarea v-model="form.desc" rows="3" style="margin-bottom: 14px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="editingModal = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="saveManualEvent">{{ tr('保存', 'Save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Add / edit manual event -->
+    <Modal v-model="editingModal" :title="editingId ? tr('编辑事件', 'Edit event') : tr('添加独立事件', 'New event')" max-width="480px">
+      <label class="f-label">{{ tr('事件名称', 'Event title') }}</label>
+      <input v-model="form.name" type="text" :placeholder="tr('例：雾谷之战', 'e.g. Battle of Mist Valley')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('年份 / 时间', 'Year / time') }}</label>
+      <input v-model="form.year" type="text" :placeholder="tr('例：302年 / 三百年前', 'e.g. Year 302')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('关联世界观 / 角色 / 组织', 'Related entity') }}</label>
+      <input v-model="form.link" type="text" :placeholder="tr('例：艾瑟兰、暮光议会', 'e.g. Aetherlan')" style="margin-bottom: 10px" />
+      <label class="f-label">{{ tr('详情描述', 'Description') }}</label>
+      <textarea v-model="form.desc" rows="3"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="editingModal = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="saveManualEvent">{{ tr('保存', 'Save') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Exported Code Modal -->
-    <div v-if="exportedCode" class="tut-mask show" @click.self="exportedCode = ''">
-      <div class="tut-box" style="max-width: 520px">
-        <h3 style="margin: 0 0 10px">⌘ {{ tr('时间线草稿码 · CC3T', 'Timeline Code · CC3T') }}</h3>
-        <textarea :value="exportedCode" readonly rows="4" style="font-family: monospace; margin-bottom: 12px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="copyExportedCode">{{ tr('复制', 'Copy') }}</button>
-          <button class="btn sm primary" @click="exportedCode = ''">{{ tr('关闭', 'Close') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Exported code -->
+    <Modal :model-value="Boolean(exportedCode)" :title="tr('时间线草稿码 · CC3T', 'Timeline code · CC3T')" max-width="520px" @update:model-value="(v) => !v && (exportedCode = '')">
+      <textarea :value="exportedCode" readonly rows="4" class="mono"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="copyExportedCode"><Copy /> {{ tr('复制', 'Copy') }}</button>
+        <button class="btn sm primary" @click="exportedCode = ''">{{ tr('关闭', 'Close') }}</button>
+      </template>
+    </Modal>
 
-    <!-- Import Code Modal -->
-    <div v-if="showImportModal" class="tut-mask show" @click.self="showImportModal = false">
-      <div class="tut-box" style="max-width: 520px">
-        <h3 style="margin: 0 0 10px">📥 {{ tr('导入时间线草稿码 (CC3T)', 'Import Timeline Code (CC3T)') }}</h3>
-        <textarea v-model="importCodeStr" rows="4" placeholder="CC3Tr-..." style="font-family: monospace; margin-bottom: 12px"></textarea>
-        <div class="tut-actions" style="display: flex; justify-content: flex-end; gap: 8px">
-          <button class="btn sm" @click="showImportModal = false">{{ tr('取消', 'Cancel') }}</button>
-          <button class="btn sm primary" @click="doImportTimelineCode">{{ tr('导入', 'Import') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Import code -->
+    <Modal v-model="showImportModal" :title="tr('导入时间线草稿码 (CC3T)', 'Import timeline code (CC3T)')" max-width="520px">
+      <textarea v-model="importCodeStr" rows="4" placeholder="CC3Tr-..." class="mono"></textarea>
+      <template #footer>
+        <button class="btn sm" @click="showImportModal = false">{{ tr('取消', 'Cancel') }}</button>
+        <button class="btn sm primary" @click="doImportTimelineCode">{{ tr('导入', 'Import') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { BookMarked, Calculator, Code2, Copy, Download, Pencil, Plus, Scroll, Trash2 } from 'lucide-vue-next';
 import { computed, reactive, ref } from 'vue';
+import EmptyState from '../components/base/EmptyState.vue';
+import Modal from '../components/base/Modal.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import WikiText from '../components/base/WikiText.vue';
 import AgeCalculator from '../components/editor/AgeCalculator.vue';
 import { useConfirm } from '../composables/useConfirm';
@@ -163,6 +143,21 @@ function handleForkTimeline(id: string) {
 }
 
 const sourceFilter = ref<string>('all');
+
+function sourceClass(src: string): string {
+  if (src === '世界观') return 'src-world';
+  if (src === '组织') return 'src-org';
+  if (src === '角色') return 'src-char';
+  if (src === '剧情') return 'src-plot';
+  return 'src-manual';
+}
+function sourcePill(src: string): string {
+  if (src === '世界观') return 'k-world';
+  if (src === '组织') return 'k-org';
+  if (src === '角色') return 'k-char';
+  if (src === '剧情') return 'k-article';
+  return '';
+}
 const editingModal = ref(false);
 const editingId = ref<string | null>(null);
 const form = reactive({
@@ -316,3 +311,28 @@ function doImportTimelineCode() {
   }
 }
 </script>
+
+<style scoped>
+.age-calc { padding: 10px 14px; margin-bottom: 18px; }
+.age-calc summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: var(--fs-13);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+.age-calc summary::-webkit-details-marker { display: none; }
+.age-calc summary svg { width: 15px; height: 15px; color: var(--ac); }
+.tl-card { padding: 12px 16px; }
+.tl-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-name { font-size: var(--fs-14); }
+.tl-link { font-size: var(--fs-12); color: var(--ac); }
+.tl-actions { display: flex; gap: 2px; align-items: center; }
+.tl-actions .icon-btn { width: 30px; height: 30px; }
+.tl-actions .icon-btn svg { width: 15px; height: 15px; }
+.tl-actions .icon-btn.danger:hover { background: var(--dgs); color: var(--dg); }
+.tl-desc { margin: 6px 0 0; color: var(--ink2); font-size: var(--fs-13); white-space: pre-wrap; line-height: var(--lh-normal); }
+.spacer { flex: 1; }
+</style>

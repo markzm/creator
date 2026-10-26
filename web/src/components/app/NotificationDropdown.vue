@@ -15,7 +15,7 @@
           position: absolute;
           top: -4px;
           right: -4px;
-          background: #ef4444;
+          background: var(--dg);
           color: #fff;
           font-size: 10px;
           padding: 1px 5px;
