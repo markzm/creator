@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { StudioPreferences } from '../core/schema/types';
 import {
   api,
@@ -45,6 +45,9 @@ export const useAIStore = defineStore('ai', () => {
   });
 
   const syncCloud = ref(true);
+  /** The server holds an encrypted key for this account (the key itself never comes back). */
+  const cloudHasKey = ref(false);
+  const cloudKeyMasked = ref('');
 
   const preferences = ref<StudioPreferences>({
     preferredGenre: '奇幻架空',
@@ -83,31 +86,53 @@ export const useAIStore = defineStore('ai', () => {
       // Ignore
     }
 
-    // If logged in, optionally load cloud config
     if (authStore.isLoggedIn) {
-      try {
-        const cloud = await api.getUserAIConfig();
-        if (cloud.customAi && cloud.customAi.apiKey) {
-          customAi.value = { ...customAi.value, ...cloud.customAi };
-          syncCloud.value = true;
-        }
-        if (cloud.preferences && cloud.preferences.preferredGenre) {
-          preferences.value = { ...preferences.value, ...cloud.preferences };
-        }
-      } catch {
-        // Ignore
-      }
+      await loadCloudConfig();
     }
   }
 
+  /** Pulls provider/model/preferences from the account. Safe to call after an interactive login. */
+  async function loadCloudConfig() {
+    if (!authStore.isLoggedIn) return;
+    try {
+      const cloud = await api.getUserAIConfig();
+      if (cloud.customAi && cloud.customAi.hasKey) {
+        cloudHasKey.value = true;
+        cloudKeyMasked.value = cloud.customAi.apiKeyMasked || '';
+        customAi.value = {
+          ...customAi.value,
+          provider: cloud.customAi.provider || customAi.value.provider,
+          baseUrl: cloud.customAi.baseUrl || customAi.value.baseUrl,
+          model: cloud.customAi.model || customAi.value.model
+        };
+        syncCloud.value = true;
+      } else {
+        cloudHasKey.value = false;
+        cloudKeyMasked.value = '';
+      }
+      if (cloud.preferences && cloud.preferences.preferredGenre) {
+        preferences.value = { ...preferences.value, ...cloud.preferences };
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  /** True when generation will actually go through the user's own provider. */
+  const effectiveProvider = computed<'public' | 'custom'>(() =>
+    activeProvider.value === 'custom' && (Boolean(customAi.value.apiKey) || cloudHasKey.value) ? 'custom' : 'public'
+  );
+
   function saveLocal() {
     try {
+      // When the key lives in the account we keep it out of localStorage entirely.
+      const persistKey = !(authStore.isLoggedIn && syncCloud.value);
       localStorage.setItem(
         LS_AI_CONFIG_KEY,
         JSON.stringify({
           activeProvider: activeProvider.value,
           selectedFreeModel: selectedFreeModel.value,
-          customAi: customAi.value
+          customAi: persistKey ? customAi.value : { ...customAi.value, apiKey: '' }
         })
       );
       localStorage.setItem(LS_AI_PREFS_KEY, JSON.stringify(preferences.value));
@@ -125,6 +150,8 @@ export const useAIStore = defineStore('ai', () => {
       // Ignore
     }
     activeProvider.value = 'public';
+    cloudHasKey.value = false;
+    cloudKeyMasked.value = '';
     customAi.value = {
       provider: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
@@ -136,11 +163,30 @@ export const useAIStore = defineStore('ai', () => {
   async function saveConfig() {
     saveLocal();
     if (authStore.isLoggedIn && syncCloud.value) {
+      const typedKey = (customAi.value.apiKey || '').trim();
+      // Partial update: only send the key when the user typed a new one this session.
       await api.updateUserAIConfig({
-        customAi: customAi.value,
+        ...(typedKey ? { customAi: { ...customAi.value, apiKey: typedKey } } : {}),
         preferences: preferences.value
       });
+      if (typedKey) {
+        cloudHasKey.value = true;
+        cloudKeyMasked.value = typedKey.length > 8 ? typedKey.slice(0, 3) + '…' + typedKey.slice(-4) : '****';
+        customAi.value.apiKey = '';
+        saveLocal();
+      }
     }
+  }
+
+  /** Removes the key stored in the account (local copy too). */
+  async function clearCloudKey() {
+    if (authStore.isLoggedIn) {
+      await api.updateUserAIConfig({ clearKey: true });
+    }
+    cloudHasKey.value = false;
+    cloudKeyMasked.value = '';
+    customAi.value.apiKey = '';
+    saveLocal();
   }
 
   async function generate(req: Omit<AIGenerateRequest, 'customAi' | 'preferences'>): Promise<AIGenerateResponse> {
@@ -151,8 +197,11 @@ export const useAIStore = defineStore('ai', () => {
         ...req,
         preferences: preferences.value
       };
-      if (activeProvider.value === 'custom' && customAi.value.apiKey) {
-        fullReq.customAi = customAi.value;
+      if (activeProvider.value === 'custom') {
+        if (customAi.value.apiKey) {
+          fullReq.customAi = customAi.value;
+        }
+        // With a cloud-stored key the server resolves it from the account.
       }
       return await api.generateAI(fullReq);
     } finally {
@@ -178,6 +227,11 @@ export const useAIStore = defineStore('ai', () => {
     syncCloud,
     preferences,
     init,
+    cloudHasKey,
+    cloudKeyMasked,
+    effectiveProvider,
+    loadCloudConfig,
+    clearCloudKey,
     saveConfig,
     clearLocal,
     generate,

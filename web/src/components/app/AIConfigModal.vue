@@ -95,9 +95,15 @@
             <input
               v-model="aiStore.customAi.apiKey"
               type="password"
-              placeholder="sk-••••••••••••••••"
+              :placeholder="aiStore.cloudHasKey ? tr('已保存于账号：', 'Saved in account: ') + (aiStore.cloudKeyMasked || '****') + tr('（留空保持不变）', ' (leave blank to keep)') : 'sk-••••••••••••••••'"
               autocomplete="off"
             />
+            <div v-if="aiStore.cloudHasKey" style="display: flex; align-items: center; gap: 8px; margin-top: 4px">
+              <span class="hint" style="margin: 0">🔐 {{ tr('密钥已加密保存在云端，不会再回传到浏览器。', 'Key is encrypted server-side and never sent back to the browser.') }}</span>
+              <button type="button" class="btn sm ghost danger" style="margin-left: auto" @click="onClearCloudKey">
+                {{ tr('清除云端密钥', 'Remove saved key') }}
+              </button>
+            </div>
           </div>
 
           <div>
@@ -115,7 +121,7 @@
             <button
               type="button"
               class="btn sm"
-              :disabled="testing || !aiStore.customAi.apiKey"
+              :disabled="testing || (!aiStore.customAi.apiKey && !aiStore.cloudHasKey)"
               @click="onTest"
             >
               {{ testing ? tr('测试中…', 'Testing…') : '⚡ ' + tr('测试连接', 'Test Connection') }}
@@ -213,6 +219,15 @@ function applyPreset(p: AIPreset) {
   aiStore.customAi.baseUrl = p.baseUrl;
   aiStore.customAi.model = p.model;
   testResult.value = '';
+}
+
+async function onClearCloudKey() {
+  try {
+    await aiStore.clearCloudKey();
+    toast(tr('云端密钥已清除', 'Saved key removed'), 'ok');
+  } catch (err: any) {
+    toast(err?.message || tr('操作失败', 'Failed'), 'err');
+  }
 }
 
 async function onTest() {

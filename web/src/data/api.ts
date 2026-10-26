@@ -106,8 +106,20 @@ export interface WorldShareItem {
   cocreationId?: string;
   canonRequested?: boolean;
   tachiEUrl?: string;
+  canonReview?: 'none' | 'pending' | 'approved' | 'rejected';
+  reviewedBy?: number;
+  reviewedAt?: number;
   createdAt: number;
   updatedAt?: number;
+}
+
+/** What the server tells us about a stored custom AI config: never the key itself. */
+export interface CloudAIConfigMeta {
+  provider: UserAIConfig['provider'];
+  baseUrl?: string;
+  model?: string;
+  hasKey: boolean;
+  apiKeyMasked?: string;
 }
 
 export interface GlobalDashboardStats {
@@ -302,8 +314,13 @@ export const api = {
     visibility?: 'all' | 'public' | 'private';
     kind?: string;
     q?: string;
-    before?: number | string;
+    /** Keyset cursor: `createdAt` (unix seconds) of the last item ... */
+    before?: number;
+    /** ... and its id, so rows sharing a second are neither skipped nor repeated. */
+    beforeId?: string;
     limit?: number;
+    /** Feed rows omit `content` by default; pass true to include it. */
+    full?: boolean;
   }): Promise<{
     shares: WorldShareItem[];
   }> {
@@ -313,7 +330,9 @@ export const api = {
     if (params?.kind) qs.set('kind', params.kind);
     if (params?.q) qs.set('q', params.q);
     if (params?.before) qs.set('before', String(params.before));
+    if (params?.beforeId) qs.set('beforeId', params.beforeId);
     if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.full) qs.set('full', '1');
     const qStr = qs.toString();
     return requestJson<{ shares: WorldShareItem[] }>(`/api/shares${qStr ? '?' + qStr : ''}`);
   },
@@ -381,11 +400,16 @@ export const api = {
     });
   },
 
-  getUserAIConfig(): Promise<{ customAi?: UserAIConfig; preferences?: StudioPreferences }> {
-    return requestJson<{ customAi?: UserAIConfig; preferences?: StudioPreferences }>('/api/me/ai-config');
+  getUserAIConfig(): Promise<{ customAi?: CloudAIConfigMeta | null; preferences?: StudioPreferences }> {
+    return requestJson<{ customAi?: CloudAIConfigMeta | null; preferences?: StudioPreferences }>('/api/me/ai-config');
   },
 
-  updateUserAIConfig(payload: { customAi?: UserAIConfig; preferences?: StudioPreferences }): Promise<{ ok: boolean }> {
+  /** Partial update: only the parts present are written server-side. */
+  updateUserAIConfig(payload: {
+    customAi?: UserAIConfig;
+    preferences?: StudioPreferences;
+    clearKey?: boolean;
+  }): Promise<{ ok: boolean }> {
     return requestJson<{ ok: boolean }>('/api/me/ai-config', {
       method: 'PUT',
       body: JSON.stringify(payload)
@@ -453,9 +477,23 @@ export const api = {
     });
   },
 
+  markNotificationRead(id: number): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/notifications/${id}/read`, {
+      method: 'POST'
+    });
+  },
+
   // Co-creation
-  getCocreationProjects(): Promise<{ projects: CocreationProject[] }> {
-    return requestJson<{ projects: CocreationProject[] }>('/api/cocreation/projects');
+  getCocreationProjects(opts?: { mine?: boolean; limit?: number }): Promise<{ projects: CocreationProject[] }> {
+    const qs = new URLSearchParams();
+    if (opts?.mine) qs.set('mine', '1');
+    if (opts?.limit) qs.set('limit', String(opts.limit));
+    const q = qs.toString();
+    return requestJson<{ projects: CocreationProject[] }>(`/api/cocreation/projects${q ? '?' + q : ''}`);
+  },
+
+  getCocreationProject(projectId: string): Promise<{ project: CocreationProject }> {
+    return requestJson<{ project: CocreationProject }>(`/api/cocreation/projects/${encodeURIComponent(projectId)}`);
   },
 
   createCocreationProject(payload: {
@@ -463,18 +501,44 @@ export const api = {
     worldTitle: string;
     summary: string;
     admins: string[];
-  }): Promise<{ project: CocreationProject }> {
-    return requestJson<{ project: CocreationProject }>('/api/cocreation/projects', {
+  }): Promise<{ project: CocreationProject; unresolved: string[] }> {
+    return requestJson<{ project: CocreationProject; unresolved: string[] }>('/api/cocreation/projects', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
   },
 
-  updateCocreationAdmins(projectId: string, admins: string[]): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/cocreation/projects/${projectId}/admins`, {
-      method: 'PUT',
-      body: JSON.stringify({ admins })
+  updateCocreationProject(
+    projectId: string,
+    patch: { summary?: string; isOpenDoujin?: boolean }
+  ): Promise<{ ok: boolean; project: CocreationProject }> {
+    return requestJson<{ ok: boolean; project: CocreationProject }>(`/api/cocreation/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
     });
+  },
+
+  /** Replace project admins. Emails are resolved server-side; unknown ones come back in `unresolved`. */
+  updateCocreationAdmins(
+    projectId: string,
+    payload: { emails?: string[]; userIds?: number[] }
+  ): Promise<{ ok: boolean; unresolved: string[]; project: CocreationProject }> {
+    return requestJson<{ ok: boolean; unresolved: string[]; project: CocreationProject }>(
+      `/api/cocreation/projects/${encodeURIComponent(projectId)}/admins`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      }
+    );
+  },
+
+  getCanonQueue(
+    projectId: string,
+    status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending'
+  ): Promise<{ shares: WorldShareItem[] }> {
+    return requestJson<{ shares: WorldShareItem[] }>(
+      `/api/cocreation/projects/${encodeURIComponent(projectId)}/queue?status=${status}`
+    );
   },
 
   requestCanon(shareId: string): Promise<{ ok: boolean }> {
@@ -485,6 +549,12 @@ export const api = {
 
   approveCanon(shareId: string): Promise<{ ok: boolean }> {
     return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/approve-canon`, {
+      method: 'POST'
+    });
+  },
+
+  rejectCanon(shareId: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/reject-canon`, {
       method: 'POST'
     });
   },
@@ -534,8 +604,11 @@ export const api = {
   },
 
   deleteReferenceExample(kind: string, id: string): Promise<{ ok: boolean; message: string }> {
-    return requestJson<{ ok: boolean; message: string }>(`/api/admin/reference-materials/item?kind=${kind}&id=${id}`, {
-      method: 'DELETE'
-    });
+    return requestJson<{ ok: boolean; message: string }>(
+      `/api/admin/reference-materials/item?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE'
+      }
+    );
   }
 };

@@ -211,7 +211,7 @@
               <span v-else-if="s.canonStatus === 'doujin'" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #fdf2f8; color: #be185d; font-weight: 700">
                 🎨 同人衍生
               </span>
-              <strong style="font-size: 15px; cursor: pointer" @click="viewingShare = s">
+              <strong style="font-size: 15px; cursor: pointer" @click="openShare(s)">
                 {{ s.title }}
               </strong>
               <span style="font-size: 12px; color: var(--ac); font-weight: 600">
@@ -235,7 +235,7 @@
 
           <!-- Action Buttons -->
           <div class="lobby-card-actions" style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
-            <button type="button" class="btn sm primary" @click="viewingShare = s">
+            <button type="button" class="btn sm primary" @click="openShare(s)">
               📖 {{ s.kind === 'article' ? tr('阅读全文', 'Read') : tr('查阅设定', 'View') }}
             </button>
             <button
@@ -467,14 +467,28 @@ async function refreshLobby() {
   }
 }
 
+async function openShare(sh: WorldShareItem) {
+  // Feed rows are lightweight (no content / draft code); load the full share for the detail modal.
+  viewingShare.value = sh;
+  try {
+    const res = await api.getShareDetail(sh.id);
+    if (viewingShare.value && String(viewingShare.value.id) === String(sh.id)) {
+      viewingShare.value = res.share;
+    }
+  } catch {
+    // keep the summary if the detail request fails
+  }
+}
+
 async function loadMoreShares() {
   if (!shares.value.length || loadingShares.value) return;
-  const lastId = shares.value[shares.value.length - 1].id;
+  const last = shares.value[shares.value.length - 1];
   loadingShares.value = true;
   try {
-    const res = await api.getShares({ before: lastId, limit: 30 });
+    const res = await api.getShares({ before: last.createdAt, beforeId: String(last.id), limit: 30 });
     const more = res.shares || [];
-    shares.value.push(...more);
+    const known = new Set(shares.value.map((s) => String(s.id)));
+    shares.value.push(...more.filter((s) => !known.has(String(s.id))));
     hasMoreShares.value = more.length >= 30;
   } catch (err: any) {
     toast((tr('加载更多失败：', 'Failed: ')) + (err?.message || ''), 'err');

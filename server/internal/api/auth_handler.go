@@ -42,7 +42,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := ClientIP(r)
+	ip := s.clientIP(r)
 	if !s.guard.AllowRegister(ip) {
 		writeErr(w, http.StatusTooManyRequests, "注册过于频繁，请稍后再试")
 		return
@@ -61,8 +61,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify challenge when provided or required in open mode
-	if req.ChallengeToken != "" || req.ChallengeAnswer != "" {
+	// In open registration the arithmetic challenge is mandatory (bots cannot just omit it);
+	// invite mode already has a shared secret, so the challenge is only checked when supplied.
+	if s.cfg.RegisterMode == config.RegisterModeOpen || req.ChallengeToken != "" || req.ChallengeAnswer != "" {
+		if strings.TrimSpace(req.ChallengeToken) == "" || strings.TrimSpace(req.ChallengeAnswer) == "" {
+			writeErr(w, http.StatusBadRequest, "请先完成验证题")
+			return
+		}
 		if err := s.challenge.Verify(req.ChallengeToken, req.ChallengeAnswer); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -123,7 +128,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := strings.ToLower(strings.TrimSpace(req.Email))
-	ip := ClientIP(r)
+	ip := s.clientIP(r)
 	if !s.guard.AllowLogin(ip, email) {
 		writeErr(w, http.StatusTooManyRequests, "登录尝试过多，账号已暂时保护锁定，请 15 分钟后再试")
 		return
@@ -229,7 +234,7 @@ func (s *Server) issueSessionCookie(w http.ResponseWriter, r *http.Request, user
 		return err
 	}
 	ttl := time.Duration(auth.SessionTTLHours) * time.Hour
-	if err := s.store.CreateSession(r.Context(), tokenHash, userID, r.UserAgent(), ClientIP(r), ttl); err != nil {
+	if err := s.store.CreateSession(r.Context(), tokenHash, userID, r.UserAgent(), s.clientIP(r), ttl); err != nil {
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{

@@ -3,10 +3,10 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"creator/server/internal/store"
 )
@@ -38,9 +38,17 @@ func (s *Server) handleComments(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusUnauthorized, "请先登录")
 				return
 			}
+			if !s.guard.Allow("like", strconv.FormatInt(user.ID, 10), 60, time.Minute) {
+				writeErr(w, http.StatusTooManyRequests, "操作过于频繁，请稍后再试")
+				return
+			}
 			liked, count, err := s.store.ToggleCommentLike(r.Context(), cid, user.ID)
 			if err != nil {
-				writeErr(w, http.StatusInternalServerError, "操作点赞失败: "+err.Error())
+				if errors.Is(err, store.ErrCommentNotFound) {
+					writeErr(w, http.StatusNotFound, "评论不存在")
+					return
+				}
+				writeErrLog(w, r, http.StatusInternalServerError, "操作点赞失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -90,6 +98,21 @@ func (s *Server) handleShareComments(w http.ResponseWriter, r *http.Request) {
 	}
 	shareID := parts[0]
 
+	// Discussions follow the visibility of the share they belong to.
+	sh, err := s.store.GetShare(r.Context(), shareID)
+	if err != nil {
+		if errors.Is(err, store.ErrShareNotFound) {
+			writeErr(w, http.StatusNotFound, "作品不存在")
+			return
+		}
+		writeErrLog(w, r, http.StatusInternalServerError, "读取作品失败", err)
+		return
+	}
+	if !canViewShare(user, sh) {
+		writeErr(w, http.StatusForbidden, "该作品为作者私有，暂不公开")
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		var currentUID int64
@@ -98,7 +121,7 @@ func (s *Server) handleShareComments(w http.ResponseWriter, r *http.Request) {
 		}
 		comments, err := s.store.ListComments(r.Context(), shareID, currentUID)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "获取讨论列表失败: "+err.Error())
+			writeErrLog(w, r, http.StatusInternalServerError, "获取讨论列表失败", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -123,14 +146,23 @@ func (s *Server) handleShareComments(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "评论内容不能为空")
 			return
 		}
+		if !s.guard.Allow("comment", strconv.FormatInt(user.ID, 10), 10, time.Minute) {
+			writeErr(w, http.StatusTooManyRequests, "评论过于频繁，请稍后再试")
+			return
+		}
 
 		c, err := s.store.AddComment(r.Context(), shareID, user.ID, user.Nickname, user.AvatarURL, req.Content, req.ParentID)
 		if err != nil {
-			if errors.Is(err, store.ErrUserMuted) {
+			switch {
+			case errors.Is(err, store.ErrUserMuted):
 				writeErr(w, http.StatusForbidden, "您已被管理员禁言，无法发表评论")
-				return
+			case errors.Is(err, store.ErrInvalidParent):
+				writeErr(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, store.ErrShareNotFound):
+				writeErr(w, http.StatusNotFound, "作品不存在")
+			default:
+				writeErrLog(w, r, http.StatusInternalServerError, "发表评论失败", err)
 			}
-			writeErr(w, http.StatusInternalServerError, "发表评论失败: "+err.Error())
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]interface{}{
@@ -158,7 +190,21 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 
 	if path == "read-all" && r.Method == http.MethodPost {
 		if err := s.store.MarkNotificationsRead(r.Context(), user.ID); err != nil {
-			writeErr(w, http.StatusInternalServerError, "标记已读失败")
+			writeErrLog(w, r, http.StatusInternalServerError, "标记已读失败", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	// POST /api/notifications/:id/read
+	if strings.HasSuffix(path, "/read") && r.Method == http.MethodPost {
+		nid, err := strconv.ParseInt(strings.TrimSuffix(path, "/read"), 10, 64)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "通知 ID 无效")
+			return
+		}
+		if err := s.store.MarkNotificationRead(r.Context(), user.ID, nid); err != nil {
+			writeErrLog(w, r, http.StatusInternalServerError, "标记已读失败", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -172,7 +218,7 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 		}
 		list, unread, err := s.store.ListNotifications(r.Context(), user.ID, limit)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "获取通知列表失败: "+err.Error())
+			writeErrLog(w, r, http.StatusInternalServerError, "获取通知列表失败", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -199,9 +245,19 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			projs, err := s.store.ListCocreationProjects(r.Context(), limit)
+			var projs []store.CocreationProject
+			var err error
+			if r.URL.Query().Get("mine") == "1" {
+				if user == nil {
+					writeErr(w, http.StatusUnauthorized, "请先登录")
+					return
+				}
+				projs, err = s.store.ListProjectsForUser(r.Context(), user.ID, limit)
+			} else {
+				projs, err = s.store.ListCocreationProjects(r.Context(), limit)
+			}
 			if err != nil {
-				writeErr(w, http.StatusInternalServerError, "获取共创企划失败: "+err.Error())
+				writeErrLog(w, r, http.StatusInternalServerError, "获取共创企划失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"projects": projs})
@@ -218,6 +274,7 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 				Summary    string   `json:"summary"`
 				Admins     []string `json:"admins"`
 			}
+			r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeErr(w, http.StatusBadRequest, "请求格式错误")
 				return
@@ -226,12 +283,23 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusBadRequest, "世界观标题不能为空")
 				return
 			}
-			proj, err := s.store.CreateCocreationProject(r.Context(), req.WorldID, req.WorldTitle, user.ID, user.Nickname, req.Summary, req.Admins)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, "发起共创企划失败: "+err.Error())
+			if len(req.Admins) > 20 {
+				writeErr(w, http.StatusBadRequest, "管理员最多 20 位")
 				return
 			}
-			writeJSON(w, http.StatusCreated, map[string]interface{}{"project": proj})
+			if !s.guard.Allow("project", strconv.FormatInt(user.ID, 10), 5, time.Hour) {
+				writeErr(w, http.StatusTooManyRequests, "创建企划过于频繁，请稍后再试")
+				return
+			}
+			proj, unresolved, err := s.store.CreateCocreationProject(r.Context(), req.WorldID, req.WorldTitle, user.ID, user.Nickname, req.Summary, req.Admins)
+			if err != nil {
+				writeErrLog(w, r, http.StatusInternalServerError, "发起共创企划失败", err)
+				return
+			}
+			if unresolved == nil {
+				unresolved = []string{}
+			}
+			writeJSON(w, http.StatusCreated, map[string]interface{}{"project": proj, "unresolved": unresolved})
 			return
 
 		default:
@@ -255,17 +323,89 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var req struct {
-				Admins []string `json:"admins"`
+				Admins  []string `json:"admins"`  // legacy: emails
+				Emails  []string `json:"emails"`  // preferred
+				UserIDs []int64  `json:"userIds"` // explicit ids
 			}
+			r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeErr(w, http.StatusBadRequest, "请求格式错误")
 				return
 			}
-			if err := s.store.UpdateCocreationAdmins(r.Context(), projectID, user.ID, req.Admins); err != nil {
-				writeErr(w, http.StatusForbidden, err.Error())
+			emails := append(req.Emails, req.Admins...)
+			if len(emails)+len(req.UserIDs) > 20 {
+				writeErr(w, http.StatusBadRequest, "管理员最多 20 位")
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			var unresolved []string
+			var err error
+			if len(req.UserIDs) > 0 && len(emails) == 0 {
+				err = s.store.SetProjectAdmins(r.Context(), projectID, user.ID, req.UserIDs, nil)
+			} else {
+				unresolved, err = s.store.UpdateCocreationAdmins(r.Context(), projectID, user.ID, emails)
+			}
+			if err != nil {
+				writeProjectErr(w, r, err)
+				return
+			}
+			if unresolved == nil {
+				unresolved = []string{}
+			}
+			proj, _ := s.store.GetCocreationProject(r.Context(), projectID)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "unresolved": unresolved, "project": proj})
+			return
+		}
+
+		// GET /api/cocreation/projects/:id/queue?status=pending|approved|rejected|all (members only)
+		if len(parts) == 2 && parts[1] == "queue" {
+			if r.Method != http.MethodGet {
+				writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
+				return
+			}
+			if user == nil {
+				writeErr(w, http.StatusUnauthorized, "请先登录")
+				return
+			}
+			ok, err := s.store.IsProjectReviewer(r.Context(), projectID, user.ID)
+			if err != nil {
+				writeProjectErr(w, r, err)
+				return
+			}
+			if !ok && !user.IsAdmin {
+				writeErr(w, http.StatusForbidden, "只有企划成员可以查看审核队列")
+				return
+			}
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			items, err := s.store.ListCanonQueue(r.Context(), projectID, r.URL.Query().Get("status"), limit)
+			if err != nil {
+				writeErrLog(w, r, http.StatusInternalServerError, "获取审核队列失败", err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"shares": items})
+			return
+		}
+
+		// PATCH /api/cocreation/projects/:id {summary?, isOpenDoujin?} (owner only)
+		if len(parts) == 1 && r.Method == http.MethodPatch {
+			if user == nil {
+				writeErr(w, http.StatusUnauthorized, "请先登录")
+				return
+			}
+			var req struct {
+				Summary      *string `json:"summary"`
+				IsOpenDoujin *bool   `json:"isOpenDoujin"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeErr(w, http.StatusBadRequest, "请求格式错误")
+				return
+			}
+			if err := s.store.UpdateProject(r.Context(), projectID, user.ID, req.Summary, req.IsOpenDoujin); err != nil {
+				writeProjectErr(w, r, err)
+				return
+			}
+			proj, _ := s.store.GetCocreationProject(r.Context(), projectID)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "project": proj})
 			return
 		}
 
@@ -287,41 +427,41 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 			shareID := parts[0]
 			action := parts[1]
 
-			if action == "request-canon" && r.Method == http.MethodPost {
-				if user == nil {
-					writeErr(w, http.StatusUnauthorized, "请先登录")
-					return
-				}
-				if err := s.store.RequestCanon(r.Context(), shareID, user.ID); err != nil {
+			if r.Method != http.MethodPost {
+				writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
+				return
+			}
+			if user == nil {
+				writeErr(w, http.StatusUnauthorized, "请先登录")
+				return
+			}
+			var err error
+			switch action {
+			case "request-canon":
+				err = s.store.RequestCanon(r.Context(), shareID, user.ID)
+			case "approve-canon":
+				err = s.store.ReviewCanon(r.Context(), shareID, user.ID, user.Nickname, true, user.IsAdmin)
+			case "reject-canon":
+				err = s.store.ReviewCanon(r.Context(), shareID, user.ID, user.Nickname, false, user.IsAdmin)
+			default:
+				writeErr(w, http.StatusNotFound, "Endpoint not found")
+				return
+			}
+			if err != nil {
+				switch {
+				case errors.Is(err, store.ErrCanonForbidden), errors.Is(err, store.ErrShareForbidden):
+					writeErr(w, http.StatusForbidden, store.ErrCanonForbidden.Error())
+				case errors.Is(err, store.ErrCanonNotEligible), errors.Is(err, store.ErrProjectClosed):
 					writeErr(w, http.StatusBadRequest, err.Error())
-					return
+				case errors.Is(err, store.ErrShareNotFound), errors.Is(err, store.ErrProjectNotFound):
+					writeErr(w, http.StatusNotFound, "作品或企划不存在")
+				default:
+					writeErrLog(w, r, http.StatusInternalServerError, "转正流程操作失败", err)
 				}
-				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 				return
 			}
-
-			if action == "approve-canon" && r.Method == http.MethodPost {
-				if user == nil {
-					writeErr(w, http.StatusUnauthorized, "请先登录")
-					return
-				}
-				if err := s.store.ApproveCanon(r.Context(), shareID, user.ID, user.Nickname, user.Email, user.IsAdmin); err != nil {
-					switch {
-					case errors.Is(err, store.ErrCanonForbidden):
-						writeErr(w, http.StatusForbidden, err.Error())
-					case errors.Is(err, store.ErrCanonNotEligible):
-						writeErr(w, http.StatusBadRequest, err.Error())
-					case errors.Is(err, store.ErrShareNotFound), errors.Is(err, store.ErrProjectNotFound):
-						writeErr(w, http.StatusNotFound, "作品或企划不存在")
-					default:
-						log.Printf("[approve-canon] %v", err)
-						writeErr(w, http.StatusInternalServerError, "转正审批失败")
-					}
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-				return
-			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			return
 		}
 	}
 
@@ -380,7 +520,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		users, err := s.store.ListUsers(r.Context())
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "获取用户列表失败: "+err.Error())
+			writeErrLog(w, r, http.StatusInternalServerError, "获取用户列表失败", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"users": users})
@@ -397,6 +537,31 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		action := parts[1]
 
+		// Hierarchy: nobody moderates themselves; super admins are untouchable; only a super
+		// admin may act on another admin.
+		target, err := s.store.GetUserByID(r.Context(), targetUID)
+		if err != nil {
+			if errors.Is(err, store.ErrUserNotFound) {
+				writeErr(w, http.StatusNotFound, "用户不存在")
+				return
+			}
+			writeErrLog(w, r, http.StatusInternalServerError, "读取用户失败", err)
+			return
+		}
+		if target.ID == user.ID {
+			writeErr(w, http.StatusBadRequest, "不能对自己执行管理操作")
+			return
+		}
+		if target.IsSuperAdmin {
+			writeErr(w, http.StatusForbidden, "不能对超级管理员执行管理操作")
+			return
+		}
+		if target.IsAdmin && !user.IsSuperAdmin {
+			writeErr(w, http.StatusForbidden, "只有超级管理员可以处置其他管理员")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+
 		// 2. Grant/Revoke Admin: PUT /api/admin/users/:id/role (super admin only)
 		if action == "role" && r.Method == http.MethodPut {
 			if !user.IsSuperAdmin {
@@ -411,7 +576,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := s.store.SetUserAdminByID(r.Context(), targetUID, req.IsAdmin); err != nil {
-				writeErr(w, http.StatusInternalServerError, "更新管理员权限失败: "+err.Error())
+				writeErrLog(w, r, http.StatusInternalServerError, "更新管理员权限失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -428,8 +593,11 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusBadRequest, "请求格式错误")
 				return
 			}
+			if len([]rune(req.Reason)) > 200 {
+				req.Reason = string([]rune(req.Reason)[:200])
+			}
 			if err := s.store.SetUserMuteByID(r.Context(), targetUID, req.IsMuted, req.Reason); err != nil {
-				writeErr(w, http.StatusInternalServerError, "禁言操作失败: "+err.Error())
+				writeErrLog(w, r, http.StatusInternalServerError, "禁言操作失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -446,7 +614,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := s.store.SetUserDisabledByID(r.Context(), targetUID, req.IsDisabled); err != nil {
-				writeErr(w, http.StatusInternalServerError, "账号状态操作失败: "+err.Error())
+				writeErrLog(w, r, http.StatusInternalServerError, "账号状态操作失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -456,7 +624,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		// 5. Lift Penalties: POST /api/admin/users/:id/lift
 		if action == "lift" && r.Method == http.MethodPost {
 			if err := s.store.LiftAllPenalties(r.Context(), targetUID); err != nil {
-				writeErr(w, http.StatusInternalServerError, "解除惩罚失败: "+err.Error())
+				writeErrLog(w, r, http.StatusInternalServerError, "解除惩罚失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -465,4 +633,15 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeErr(w, http.StatusNotFound, "Endpoint not found")
+}
+
+func writeProjectErr(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, store.ErrProjectNotFound):
+		writeErr(w, http.StatusNotFound, "企划不存在")
+	case errors.Is(err, store.ErrProjectForbidden):
+		writeErr(w, http.StatusForbidden, err.Error())
+	default:
+		writeErrLog(w, r, http.StatusInternalServerError, "企划操作失败", err)
+	}
 }

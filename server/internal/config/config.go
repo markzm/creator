@@ -3,6 +3,9 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,6 +38,9 @@ type Config struct {
 	// AllowedAIHosts (ALLOWED_AI_HOSTS, comma separated) extends the allow-list of hosts that
 	// user-supplied AI base URLs may point to.
 	AllowedAIHosts []string
+	// TrustedProxies (TRUSTED_PROXIES, comma separated CIDRs) are the only peers whose
+	// X-Forwarded-For / X-Real-IP headers are honoured. Defaults to loopback.
+	TrustedProxies []*net.IPNet
 
 	// AI settings
 	OpenRouterAPIKey string
@@ -59,12 +65,12 @@ func Load() *Config {
 		regMode = RegisterModeOpen
 	}
 
-	secret := os.Getenv("SECRET_KEY")
+	secret := strings.TrimSpace(os.Getenv("SECRET_KEY"))
 	if secret == "" {
-		b := make([]byte, 32)
-		_, _ = rand.Read(b)
-		secret = hex.EncodeToString(b)
+		secret = loadOrCreateSecret(filepath.Join(dataDir, "secret.key"))
 	}
+
+	proxies := parseCIDRList(envOr("TRUSTED_PROXIES", "127.0.0.0/8,::1/128"))
 
 	smtpPort, _ := strconv.Atoi(envOr("SMTP_PORT", "587"))
 
@@ -91,6 +97,7 @@ func Load() *Config {
 	return &Config{
 		SuperAdminEmail:  strings.ToLower(strings.TrimSpace(os.Getenv("SUPER_ADMIN_EMAIL"))),
 		AllowedAIHosts:   aiHosts,
+		TrustedProxies:   proxies,
 		ListenAddr:       envOr("LISTEN_ADDR", "0.0.0.0:8080"),
 		DataDir:          dataDir,
 		DBPath:           dbPath,
@@ -132,4 +139,62 @@ func envBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+// loadOrCreateSecret persists a random secret under DATA_DIR so that encrypted AI keys survive
+// restarts when SECRET_KEY is not configured explicitly. Falls back to an in-memory secret
+// (with a loud warning) when the file cannot be written.
+func loadOrCreateSecret(path string) string {
+	if b, err := os.ReadFile(path); err == nil {
+		if v := strings.TrimSpace(string(b)); len(v) >= 32 {
+			return v
+		}
+	}
+	buf := make([]byte, 32)
+	_, _ = rand.Read(buf)
+	secret := hex.EncodeToString(buf)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err == nil {
+		if err := os.WriteFile(path, []byte(secret+"\n"), 0o600); err == nil {
+			log.Printf("[config] SECRET_KEY not set; generated and stored a persistent secret at %s", path)
+			return secret
+		}
+	}
+	log.Printf("[config] WARNING: SECRET_KEY not set and %s is not writable; using an ephemeral secret (stored AI keys will not survive restarts)", path)
+	return secret
+}
+
+func parseCIDRList(raw string) []*net.IPNet {
+	var out []*net.IPNet
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			if ip := net.ParseIP(part); ip != nil {
+				bits := 32
+				if ip.To4() == nil {
+					bits = 128
+				}
+				part = fmt.Sprintf("%s/%d", ip.String(), bits)
+			}
+		}
+		if _, n, err := net.ParseCIDR(part); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// IsTrustedProxy reports whether the direct peer may set forwarding headers.
+func (c *Config) IsTrustedProxy(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	for _, n := range c.TrustedProxies {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

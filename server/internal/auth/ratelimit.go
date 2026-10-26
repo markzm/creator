@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -120,4 +121,42 @@ func allowBucket(m map[string]*bucket, key string, limit int, window time.Durati
 	}
 	b.count++
 	return true
+}
+
+// StartJanitor periodically evicts expired buckets and lifted locks so memory stays bounded.
+func (g *Guard) StartJanitor(ctx context.Context, every time.Duration) {
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				g.sweep(now)
+			}
+		}
+	}()
+}
+
+func (g *Guard) sweep(now time.Time) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	prune := func(m map[string]*bucket) {
+		for k, b := range m {
+			if now.After(b.resetAt) {
+				delete(m, k)
+			}
+		}
+	}
+	prune(g.ipLogin)
+	prune(g.ipRegister)
+	for _, m := range g.scopes {
+		prune(m)
+	}
+	for k, l := range g.emailLocks {
+		if now.After(l.lockedUntil) && now.Sub(l.firstFailAt) > 10*time.Minute {
+			delete(g.emailLocks, k)
+		}
+	}
 }

@@ -8,7 +8,9 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -94,19 +96,13 @@ func TestAuthOpenInviteClosedAndSecurity(t *testing.T) {
 	client := srv.Client()
 
 	// Weak password (< 8 or no digits)
-	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "alice@example.com",
-		"password": "short",
-	}, nil, "")
+	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "alice@example.com", "password": "short"}), nil, "")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400 for weak password, got %d", resp.StatusCode)
 	}
 
 	// Valid registration
-	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "alice@example.com",
-		"password": "AlicePass123",
-	}, nil, "")
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "alice@example.com", "password": "AlicePass123"}), nil, "")
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201 for valid registration, got %d", resp.StatusCode)
 	}
@@ -149,19 +145,16 @@ func TestAuthOpenInviteClosedAndSecurity(t *testing.T) {
 		t.Fatalf("create invite: %v", err)
 	}
 	// Without invite -> 400
-	resp, _ = doJSONRequest(t, srvInv.Client(), http.MethodPost, srvInv.URL+"/api/auth/register", map[string]string{
-		"email":    "bob@example.com",
-		"password": "BobPassword123",
-	}, nil, "")
+	resp, _ = doJSONRequest(t, srvInv.Client(), http.MethodPost, srvInv.URL+"/api/auth/register", withChallenge(t, srvInv.Client(), srvInv.URL, map[string]string{"email": "bob@example.com", "password": "BobPassword123"}), nil, "")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400 without invite, got %d", resp.StatusCode)
 	}
 	// With invite -> 201
-	resp, _ = doJSONRequest(t, srvInv.Client(), http.MethodPost, srvInv.URL+"/api/auth/register", map[string]string{
+	resp, _ = doJSONRequest(t, srvInv.Client(), http.MethodPost, srvInv.URL+"/api/auth/register", withChallenge(t, srvInv.Client(), srvInv.URL, map[string]string{
 		"email":      "bob@example.com",
 		"password":   "BobPassword123",
 		"inviteCode": codes[0],
-	}, nil, "")
+	}), nil, "")
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201 with valid invite, got %d", resp.StatusCode)
 	}
@@ -171,10 +164,7 @@ func TestSyncOptimisticLockAndRevisions(t *testing.T) {
 	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
 	client := srv.Client()
 
-	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "sync@example.com",
-		"password": "SyncPassword123",
-	}, nil, "")
+	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "sync@example.com", "password": "SyncPassword123"}), nil, "")
 	cookie := findSessionCookie(resp)
 
 	// 1. Initial GET /api/sync -> 204 No Content
@@ -247,16 +237,10 @@ func TestAvatarUploadSharesAndBackup(t *testing.T) {
 	srv, st, cfg := setupTestServer(t, config.RegisterModeOpen)
 	client := srv.Client()
 
-	respA, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "authorA@example.com",
-		"password": "PasswordA123",
-	}, nil, "")
+	respA, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "authorA@example.com", "password": "PasswordA123"}), nil, "")
 	cookieA := findSessionCookie(respA)
 
-	respB, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "authorB@example.com",
-		"password": "PasswordB123",
-	}, nil, "")
+	respB, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "authorB@example.com", "password": "PasswordB123"}), nil, "")
 	cookieB := findSessionCookie(respB)
 
 	// 1. Upload invalid non-image bytes -> 400
@@ -372,10 +356,7 @@ func TestAIStatusAndAnonymousLobbyAndVisibility(t *testing.T) {
 	}
 
 	// 3. Register a user and publish a private article and a public world share
-	respReg, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "author_ai@example.com",
-		"password": "Password123",
-	}, nil, "")
+	respReg, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "author_ai@example.com", "password": "Password123"}), nil, "")
 	if respReg.StatusCode != http.StatusCreated {
 		t.Fatalf("register failed: %d", respReg.StatusCode)
 	}
@@ -406,8 +387,8 @@ func TestAIStatusAndAnonymousLobbyAndVisibility(t *testing.T) {
 		t.Fatalf("get ai config failed: %d", respCfgGet.StatusCode)
 	}
 	customAI := getCfgBody["customAi"].(map[string]interface{})
-	if customAI["apiKey"] != "sk-deepseek-secret-123" {
-		t.Fatalf("unexpected decrypted apiKey: %v", customAI["apiKey"])
+	if customAI["hasKey"] != true || customAI["apiKey"] != nil {
+		t.Fatalf("expected hasKey=true and no raw apiKey in response, got %v", customAI)
 	}
 
 	// 3b. Publish a private article
@@ -471,10 +452,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 	client := srv.Client()
 
 	// 1. Register the site owner and promote via the store (what SUPER_ADMIN_EMAIL / CLI do), plus a regular creator
-	respAdmin, bodyAdmin := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "owner@creator.local",
-		"password": "Password123",
-	}, nil, "")
+	respAdmin, bodyAdmin := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "owner@creator.local", "password": "Password123"}), nil, "")
 	if respAdmin.StatusCode != http.StatusCreated {
 		t.Fatalf("register owner failed: %d %v", respAdmin.StatusCode, bodyAdmin)
 	}
@@ -486,10 +464,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 		cookieAdmin = respAdmin.Cookies()[0]
 	}
 
-	respCreator, bodyCreator := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "creator1@example.com",
-		"password": "Password123",
-	}, nil, "")
+	respCreator, bodyCreator := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "creator1@example.com", "password": "Password123"}), nil, "")
 	if respCreator.StatusCode != http.StatusCreated {
 		t.Fatalf("register creator1 failed: %d %v", respCreator.StatusCode, bodyCreator)
 	}
@@ -596,10 +571,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 	}
 
 	// 8. Test Canonization workflow with a third user (a fan who is NOT part of the project)
-	respFan, bodyFan := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "fan@example.com",
-		"password": "Password123",
-	}, nil, "")
+	respFan, bodyFan := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{"email": "fan@example.com", "password": "Password123"}), nil, "")
 	if respFan.StatusCode != http.StatusCreated {
 		t.Fatalf("register fan failed: %d %v", respFan.StatusCode, bodyFan)
 	}
@@ -668,10 +640,10 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 
 func registerUser(t *testing.T, srv *httptest.Server, email string) (*http.Cookie, int64) {
 	t.Helper()
-	resp, body := doJSONRequest(t, srv.Client(), http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
+	resp, body := doJSONRequest(t, srv.Client(), http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, srv.Client(), srv.URL, map[string]string{
 		"email":    email,
 		"password": "Password123",
-	}, nil, "")
+	}), nil, "")
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("register %s failed: %d %v", email, resp.StatusCode, body)
 	}
@@ -785,5 +757,471 @@ func TestCreatorProfileListsPublicShares(t *testing.T) {
 	}
 	if shares[0].(map[string]interface{})["title"] != "公开角色" {
 		t.Fatalf("unexpected share in profile: %v", shares[0])
+	}
+}
+
+// withChallenge fetches the arithmetic registration challenge, solves it and adds the answer to a
+// registration payload (open registration requires it).
+func withChallenge(t *testing.T, client *http.Client, baseURL string, payload map[string]string) map[string]string {
+	t.Helper()
+	_, ch := doJSONRequest(t, client, http.MethodGet, baseURL+"/api/auth/challenge", nil, nil, "")
+	q, _ := ch["question"].(string)
+	tok, _ := ch["token"].(string)
+	var a, b int
+	if _, err := fmt.Sscanf(q, "%d + %d = ?", &a, &b); err != nil {
+		t.Fatalf("unexpected challenge question %q", q)
+	}
+	out := map[string]string{"challengeToken": tok, "challengeAnswer": strconv.Itoa(a + b)}
+	for k, v := range payload {
+		out[k] = v
+	}
+	return out
+}
+
+func TestRegisterRequiresChallengeInOpenMode(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	resp, body := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
+		"email": "nochallenge@example.com", "password": "Password123",
+	}, nil, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 without challenge, got %d %v", resp.StatusCode, body)
+	}
+	resp2, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", withChallenge(t, client, srv.URL, map[string]string{
+		"email": "withchallenge@example.com", "password": "Password123",
+	}), nil, "")
+	if resp2.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 with challenge, got %d", resp2.StatusCode)
+	}
+}
+
+func TestClientIPIgnoresSpoofedXFF(t *testing.T) {
+	cfg := &config.Config{}
+	mk := func(remote, xff string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.RemoteAddr = remote
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		return r
+	}
+	// No trusted proxies: headers are ignored.
+	if ip := ClientIP(cfg, mk("203.0.113.9:1234", "127.0.0.1")); ip != "203.0.113.9" {
+		t.Fatalf("untrusted peer must not spoof, got %s", ip)
+	}
+	// Loopback proxy trusted: take right-most non-trusted hop.
+	_, lo, _ := net.ParseCIDR("127.0.0.0/8")
+	cfg.TrustedProxies = append(cfg.TrustedProxies, lo)
+	if ip := ClientIP(cfg, mk("127.0.0.1:80", "1.1.1.1, 198.51.100.7")); ip != "198.51.100.7" {
+		t.Fatalf("expected right-most client hop, got %s", ip)
+	}
+	if ip := ClientIP(cfg, mk("127.0.0.1:80", "198.51.100.7, 127.0.0.1")); ip != "198.51.100.7" {
+		t.Fatalf("trusted hops must be skipped, got %s", ip)
+	}
+	if ip := ClientIP(cfg, mk("127.0.0.1:80", "")); ip != "127.0.0.1" {
+		t.Fatalf("fallback to remote, got %s", ip)
+	}
+}
+
+func TestMigrationsIdempotentOnReopen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "reopen.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	_ = st.Close()
+	st2, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("open 2 (migrations must be idempotent): %v", err)
+	}
+	defer st2.Close()
+	var n int
+	if err := st2.ReadDB.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n < 4 {
+		t.Fatalf("expected >=4 recorded migrations, got %d (%v)", n, err)
+	}
+}
+
+func TestAdminHierarchyAndAvatarValidation(t *testing.T) {
+	srv, st, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookieSuper, superID := registerUser(t, srv, "super@example.com")
+	_ = st.SetUserSuperAdmin(context.Background(), "super@example.com", true)
+	cookieAdmin, adminID := registerUser(t, srv, "admin@example.com")
+	_ = st.SetUserAdmin(context.Background(), "admin@example.com", true)
+	cookieUser, userID := registerUser(t, srv, "user@example.com")
+
+	// A regular admin cannot disable the super admin or another admin
+	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/admin/users/"+strconv.FormatInt(superID, 10)+"/status", map[string]bool{"isDisabled": true}, cookieAdmin, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("admin disabling super admin: expected 403, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/admin/users/"+strconv.FormatInt(adminID, 10)+"/mute", map[string]interface{}{"isMuted": true}, cookieAdmin, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("admin acting on self: expected 400, got %d", resp.StatusCode)
+	}
+	// Super admin can act on an admin; admin can act on a user
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/admin/users/"+strconv.FormatInt(adminID, 10)+"/mute", map[string]interface{}{"isMuted": true, "reason": "test"}, cookieSuper, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("super admin muting admin: expected 200, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/admin/users/"+strconv.FormatInt(userID, 10)+"/mute", map[string]interface{}{"isMuted": true}, cookieAdmin, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin muting user: expected 200, got %d", resp.StatusCode)
+	}
+	// Muted user cannot publish publicly nor flip to public, but may keep a private draft
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "char", "title": "x", "content": "y", "visibility": "public"}, cookieUser, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("muted public publish: expected 403, got %d", resp.StatusCode)
+	}
+	respPriv, bodyPriv := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "char", "title": "x", "content": "y", "visibility": "private"}, cookieUser, "")
+	if respPriv.StatusCode != http.StatusCreated {
+		t.Fatalf("muted private draft: expected 201, got %d", respPriv.StatusCode)
+	}
+	privID := bodyPriv["share"].(map[string]interface{})["id"].(string)
+	resp, _ = doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/shares/"+privID, map[string]string{"visibility": "public"}, cookieUser, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("muted flip to public: expected 403, got %d", resp.StatusCode)
+	}
+	// Unknown user -> 404
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/admin/users/99999/lift", nil, cookieSuper, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown user: expected 404, got %d", resp.StatusCode)
+	}
+
+	// Avatar: arbitrary paths rejected, emoji and own upload path accepted
+	for _, bad := range []string{"/avatars/u_7_1.jpg", "https://evil.example/x.png", "javascript:alert(1)"} {
+		resp, _ = doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/me", map[string]string{"avatar": bad}, cookieSuper, "")
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("avatar %q: expected 400, got %d", bad, resp.StatusCode)
+		}
+	}
+	for _, ok := range []string{"🧙", "", fmt.Sprintf("/avatars/u_%d_12345.jpg", superID)} {
+		resp, _ = doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/me", map[string]string{"avatar": ok}, cookieSuper, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("avatar %q: expected 200, got %d", ok, resp.StatusCode)
+		}
+	}
+}
+
+func TestCommentsVisibilityParentAndCascade(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookieA, _ := registerUser(t, srv, "ca@example.com")
+	cookieB, _ := registerUser(t, srv, "cb@example.com")
+
+	_, bodyPriv := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "world", "title": "私有", "content": "x", "visibility": "private"}, cookieA, "")
+	privID := bodyPriv["share"].(map[string]interface{})["id"].(string)
+	_, bodyPub := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "world", "title": "公开", "content": "x", "visibility": "public"}, cookieA, "")
+	pubID := bodyPub["share"].(map[string]interface{})["id"].(string)
+
+	// Private share: anonymous and other users cannot read or post comments
+	resp, _ := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/"+privID+"/comments", nil, nil, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("anon comments on private: expected 403, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+privID+"/comments", map[string]string{"content": "hi"}, cookieB, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("B comments on private: expected 403, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/nope/comments", nil, nil, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("comments on missing share: expected 404, got %d", resp.StatusCode)
+	}
+
+	// Empty comment list serialises as [] not null
+	rawResp, err := client.Get(srv.URL + "/api/shares/" + pubID + "/comments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(rawResp.Body)
+	rawResp.Body.Close()
+	if !strings.Contains(string(raw), `"comments":[]`) {
+		t.Fatalf("expected empty array, got %s", raw)
+	}
+
+	// Reply parent must belong to the same share and be a root comment
+	_, bodyC := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+pubID+"/comments", map[string]interface{}{"content": "root"}, cookieB, "")
+	rootID := int64(bodyC["comment"].(map[string]interface{})["id"].(float64))
+	_, bodyR := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+pubID+"/comments", map[string]interface{}{"content": "reply", "parentId": rootID}, cookieA, "")
+	replyID := int64(bodyR["comment"].(map[string]interface{})["id"].(float64))
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+pubID+"/comments", map[string]interface{}{"content": "nested", "parentId": replyID}, cookieB, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("reply to a reply: expected 400, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+privID+"/comments", map[string]interface{}{"content": "cross", "parentId": rootID}, cookieA, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("parent from another share: expected 400, got %d", resp.StatusCode)
+	}
+
+	// Like toggling is idempotent on the counter and notifies once
+	for i := 0; i < 3; i++ {
+		doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/comments/"+strconv.FormatInt(rootID, 10)+"/like", nil, cookieA, "")
+	}
+	_, bodyLike := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/comments/"+strconv.FormatInt(rootID, 10)+"/like", nil, cookieA, "")
+	if bodyLike["liked"] != false || bodyLike["likeCount"].(float64) != 0 {
+		t.Fatalf("after 4 toggles expected unliked/0, got %v", bodyLike)
+	}
+	_, bodyN := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/notifications", nil, cookieB, "")
+	likeNotifs := 0
+	for _, n := range bodyN["notifications"].([]interface{}) {
+		if n.(map[string]interface{})["type"] == "comment_liked" {
+			likeNotifs++
+		}
+	}
+	if likeNotifs != 1 {
+		t.Fatalf("expected exactly 1 deduped like notification, got %d", likeNotifs)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/comments/999999/like", nil, cookieA, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("like missing comment: expected 404, got %d", resp.StatusCode)
+	}
+
+	// Single mark-read
+	nid := int64(bodyN["notifications"].([]interface{})[0].(map[string]interface{})["id"].(float64))
+	doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/notifications/"+strconv.FormatInt(nid, 10)+"/read", nil, cookieB, "")
+	_, bodyN2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/notifications", nil, cookieB, "")
+	if bodyN2["unreadCount"].(float64) != float64(len(bodyN2["notifications"].([]interface{}))-1) {
+		t.Fatalf("expected exactly one notification marked read, got %v", bodyN2["unreadCount"])
+	}
+
+	// Deleting the share cascades comments and notifications
+	resp, _ = doJSONRequest(t, client, http.MethodDelete, srv.URL+"/api/shares/"+pubID, nil, cookieA, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete share: %d", resp.StatusCode)
+	}
+	_, bodyN3 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/notifications", nil, cookieB, "")
+	for _, n := range bodyN3["notifications"].([]interface{}) {
+		if n.(map[string]interface{})["targetId"] == pubID {
+			t.Fatalf("notification for deleted share still present: %v", n)
+		}
+	}
+}
+
+func TestFeedCursorNoDuplicatesAndPatchFields(t *testing.T) {
+	srv, st, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookie, uid := registerUser(t, srv, "feed@example.com")
+	// 45 shares, several sharing the same created_at second
+	for i := 0; i < 45; i++ {
+		createdAt := int64(1_700_000_000 + i/3)
+		if _, err := st.UpsertShareMeta(context.Background(), "", uid, "feed", "world", fmt.Sprintf("S%02d", i), "", "content", "", "public", "", "", 0, "canon", "", false, "", createdAt); err != nil {
+			t.Fatalf("seed share %d: %v", i, err)
+		}
+	}
+	seen := map[string]bool{}
+	var before int64
+	beforeID := ""
+	pages := 0
+	for {
+		url := fmt.Sprintf("%s/api/shares?limit=20", srv.URL)
+		if before > 0 {
+			url += fmt.Sprintf("&before=%d&beforeId=%s", before, beforeID)
+		}
+		_, body := doJSONRequest(t, client, http.MethodGet, url, nil, nil, "")
+		shares := body["shares"].([]interface{})
+		if len(shares) == 0 {
+			break
+		}
+		pages++
+		for _, raw := range shares {
+			sh := raw.(map[string]interface{})
+			id := sh["id"].(string)
+			if seen[id] {
+				t.Fatalf("duplicate share %s across pages", id)
+			}
+			seen[id] = true
+			if c, _ := sh["content"].(string); c != "" {
+				t.Fatalf("feed must omit content, got %q", c)
+			}
+			before = int64(sh["createdAt"].(float64))
+			beforeID = id
+		}
+		if pages > 10 {
+			t.Fatalf("pagination never terminated")
+		}
+	}
+	if len(seen) != 45 {
+		t.Fatalf("expected 45 unique shares across pages, got %d", len(seen))
+	}
+
+	// PATCH title/summary/tags/content applies; keyword search escapes wildcards
+	var anyID string
+	for id := range seen {
+		anyID = id
+		break
+	}
+	resp, _ := doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/shares/"+anyID, map[string]string{"title": "Renamed_%", "summary": "sum", "tags": "t1", "content": "new body"}, cookie, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch fields: %d", resp.StatusCode)
+	}
+	_, detail := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/"+anyID, nil, nil, "")
+	sh := detail["share"].(map[string]interface{})
+	if sh["title"] != "Renamed_%" || sh["content"] != "new body" || sh["wordCount"].(float64) != 8 {
+		t.Fatalf("patch not applied: %v", sh)
+	}
+	_, found := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares?q=%25", nil, nil, "")
+	if n := len(found["shares"].([]interface{})); n != 1 {
+		t.Fatalf("LIKE wildcard must be escaped: expected 1 match for %%, got %d", n)
+	}
+}
+
+func TestAIConfigPartialUpdateAndMask(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookie, _ := registerUser(t, srv, "cfg@example.com")
+	resp, _ := doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/me/ai-config", map[string]interface{}{
+		"customAi": map[string]string{"provider": "deepseek", "baseUrl": "https://api.deepseek.com/v1", "apiKey": "sk-secret-1234567890", "model": "deepseek-chat"},
+	}, cookie, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save key: %d", resp.StatusCode)
+	}
+	// Saving only preferences must keep the key
+	resp, _ = doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/me/ai-config", map[string]interface{}{
+		"preferences": map[string]string{"preferredGenre": "科幻"},
+	}, cookie, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save prefs: %d", resp.StatusCode)
+	}
+	_, body := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/me/ai-config", nil, cookie, "")
+	custom, _ := body["customAi"].(map[string]interface{})
+	if custom == nil || custom["hasKey"] != true {
+		t.Fatalf("key was wiped by a preferences-only save: %v", body)
+	}
+	if _, leaked := custom["apiKey"]; leaked {
+		t.Fatalf("raw apiKey must never be returned: %v", custom)
+	}
+	if masked, _ := custom["apiKeyMasked"].(string); strings.Contains(masked, "secret") {
+		t.Fatalf("mask too weak: %s", masked)
+	}
+	if body["preferences"].(map[string]interface{})["preferredGenre"] != "科幻" {
+		t.Fatalf("preferences not saved: %v", body)
+	}
+	// Private base URL rejected on save
+	resp, _ = doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/me/ai-config", map[string]interface{}{
+		"customAi": map[string]string{"provider": "custom", "baseUrl": "https://10.0.0.1/v1", "apiKey": "sk-x", "model": "m"},
+	}, cookie, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("private baseUrl on save: expected 400, got %d", resp.StatusCode)
+	}
+	// clearKey removes it
+	doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/me/ai-config", map[string]interface{}{"clearKey": true}, cookie, "")
+	_, body2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/me/ai-config", nil, cookie, "")
+	if body2["customAi"] != nil {
+		t.Fatalf("expected key cleared, got %v", body2["customAi"])
+	}
+}
+
+func TestCocreationProjectLifecycle(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookieOwner, _ := registerUser(t, srv, "owner2@example.com")
+	cookieMember, memberID := registerUser(t, srv, "member@example.com")
+	cookieFan, _ := registerUser(t, srv, "fan2@example.com")
+
+	_, bodyProj := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/projects", map[string]interface{}{
+		"worldId": "wd_1", "worldTitle": "星海", "summary": "s", "admins": []string{"member@example.com", "ghost@example.com"},
+	}, cookieOwner, "")
+	proj := bodyProj["project"].(map[string]interface{})
+	projID := proj["id"].(string)
+	if len(bodyProj["unresolved"].([]interface{})) != 1 {
+		t.Fatalf("expected 1 unresolved email, got %v", bodyProj["unresolved"])
+	}
+	members := proj["members"].([]interface{})
+	if len(members) != 2 {
+		t.Fatalf("expected owner + 1 admin member, got %v", members)
+	}
+
+	// Member publishes canon directly; fan publishes doujin
+	_, bodyM := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "org", "title": "官方组织", "content": "x", "visibility": "public", "cocreationId": projID}, cookieMember, "")
+	if bodyM["share"].(map[string]interface{})["canonStatus"] != "canon" {
+		t.Fatalf("member should publish canon")
+	}
+	_, bodyF := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{"kind": "char", "title": "同人角色", "content": "x", "visibility": "public", "cocreationId": projID}, cookieFan, "")
+	fanShare := bodyF["share"].(map[string]interface{})
+	fanID := fanShare["id"].(string)
+	if fanShare["canonStatus"] != "doujin" || fanShare["canonReview"] != "none" {
+		t.Fatalf("fan share should be doujin/none, got %v", fanShare)
+	}
+
+	// Owner closes doujin requests -> request rejected with 400; reopen -> ok
+	doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/cocreation/projects/"+projID, map[string]interface{}{"isOpenDoujin": false}, cookieOwner, "")
+	resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/request-canon", nil, cookieFan, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("request on closed project: expected 400, got %d", resp.StatusCode)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/cocreation/projects/"+projID, map[string]interface{}{"isOpenDoujin": true}, cookieMember, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-owner project patch: expected 403, got %d", resp.StatusCode)
+	}
+	doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/cocreation/projects/"+projID, map[string]interface{}{"isOpenDoujin": true}, cookieOwner, "")
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/request-canon", nil, cookieFan, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("request canon: %d", resp.StatusCode)
+	}
+	// Second request while pending -> 400
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/request-canon", nil, cookieFan, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("double request: expected 400, got %d", resp.StatusCode)
+	}
+
+	// Queue visible to members only
+	resp, _ = doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/cocreation/projects/"+projID+"/queue", nil, cookieFan, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("fan queue: expected 403, got %d", resp.StatusCode)
+	}
+	_, bodyQ := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/cocreation/projects/"+projID+"/queue", nil, cookieMember, "")
+	if len(bodyQ["shares"].([]interface{})) != 1 {
+		t.Fatalf("expected 1 pending item, got %v", bodyQ)
+	}
+
+	// Member rejects, fan re-requests, owner approves
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/reject-canon", nil, cookieMember, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("member reject: %d", resp.StatusCode)
+	}
+	_, d1 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/"+fanID, nil, nil, "")
+	if d1["share"].(map[string]interface{})["canonReview"] != "rejected" {
+		t.Fatalf("expected rejected, got %v", d1["share"])
+	}
+	doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/request-canon", nil, cookieFan, "")
+	resp, _ = doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+fanID+"/approve-canon", nil, cookieOwner, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("owner approve: %d", resp.StatusCode)
+	}
+	_, d2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/"+fanID, nil, nil, "")
+	sh := d2["share"].(map[string]interface{})
+	if sh["canonStatus"] != "canon" || sh["canonReview"] != "approved" {
+		t.Fatalf("expected canon/approved, got %v", sh)
+	}
+	_, bodyQ2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/cocreation/projects/"+projID+"/queue", nil, cookieOwner, "")
+	if len(bodyQ2["shares"].([]interface{})) != 0 {
+		t.Fatalf("queue should be empty after approval")
+	}
+
+	// Owner removes the member; member can no longer review
+	resp, _ = doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/cocreation/projects/"+projID+"/admins", map[string]interface{}{"userIds": []int64{}}, cookieOwner, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("set admins: %d", resp.StatusCode)
+	}
+	_, projAfter := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/cocreation/projects/"+projID, nil, nil, "")
+	if len(projAfter["project"].(map[string]interface{})["members"].([]interface{})) != 1 {
+		t.Fatalf("expected only owner left, got %v", projAfter)
+	}
+	resp, _ = doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/cocreation/projects/"+projID+"/queue", nil, cookieMember, "")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("removed member queue: expected 403, got %d", resp.StatusCode)
+	}
+	_ = memberID
+	// Empty project list for a fresh user serialises as []
+	rawResp, _ := client.Get(srv.URL + "/api/cocreation/projects?mine=1")
+	rawResp.Body.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/cocreation/projects?mine=1", nil)
+	req.AddCookie(cookieFan)
+	r2, _ := client.Do(req)
+	raw, _ := io.ReadAll(r2.Body)
+	r2.Body.Close()
+	if !strings.Contains(string(raw), `"projects":[]`) {
+		t.Fatalf("expected empty array for projects, got %s", raw)
 	}
 }

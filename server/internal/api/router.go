@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"creator/server/internal/ai"
 	"creator/server/internal/auth"
@@ -31,6 +33,8 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 		mailer:    mail.NewSender(cfg),
 		aiService: ai.NewService(cfg),
 	}
+
+	srv.guard.StartJanitor(context.Background(), 5*time.Minute)
 
 	mux := http.NewServeMux()
 

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,19 +26,50 @@ func CurrentUser(r *http.Request) *store.User {
 	return nil
 }
 
-func ClientIP(r *http.Request) string {
+// ClientIP returns the client address. Forwarding headers are only honoured when the direct
+// peer is a trusted proxy; otherwise anyone could spoof X-Forwarded-For to dodge rate limits.
+// With a trusted peer, the right-most address that is NOT itself a trusted proxy is used.
+func ClientIP(cfg *config.Config, r *http.Request) string {
+	remote, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || remote == "" {
+		remote = r.RemoteAddr
+	}
+	remoteIP := net.ParseIP(remote)
+	if cfg == nil || !cfg.IsTrustedProxy(remoteIP) {
+		return remote
+	}
+	var hops []string
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
+		for _, p := range strings.Split(xff, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				hops = append(hops, p)
+			}
+		}
+	} else if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
+		hops = []string{xrip}
 	}
-	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
-		return strings.TrimSpace(xrip)
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := net.ParseIP(hops[i])
+		if ip == nil {
+			continue
+		}
+		if !cfg.IsTrustedProxy(ip) {
+			return ip.String()
+		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil && host != "" {
-		return host
+	return remote
+}
+
+func (s *Server) clientIP(r *http.Request) string {
+	return ClientIP(s.cfg, r)
+}
+
+// writeErrLog logs the underlying error server-side and sends only a generic message to the client.
+func writeErrLog(w http.ResponseWriter, r *http.Request, status int, public string, err error) {
+	if err != nil {
+		log.Printf("[%s %s] %d %s: %v", r.Method, r.URL.Path, status, public, err)
 	}
-	return r.RemoteAddr
+	writeErr(w, status, public)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

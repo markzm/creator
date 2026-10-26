@@ -45,6 +45,9 @@ type WorldShare struct {
 	CanonRequested bool   `json:"canonRequested,omitempty"`
 	TachiEURL      string `json:"tachiEUrl,omitempty"`
 	AuthorID       int64  `json:"authorId,omitempty"`
+	CanonReview    string `json:"canonReview,omitempty"` // 'none' | 'pending' | 'approved' | 'rejected'
+	ReviewedBy     int64  `json:"reviewedBy,omitempty"`
+	ReviewedAt     int64  `json:"reviewedAt,omitempty"`
 	CreatedAt      int64  `json:"createdAt"`
 	UpdatedAt      int64  `json:"updatedAt"`
 }
@@ -111,6 +114,17 @@ const shareSelectCols = `
 	COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
 	COALESCE(canon_status, 'canon'), COALESCE(cocreation_id, ''), COALESCE(canon_requested, 0),
 	COALESCE(tachi_e_url, ''), COALESCE(author_id, user_id),
+	COALESCE(canon_review, 'none'), COALESCE(reviewed_by, 0), COALESCE(reviewed_at, 0),
+	created_at, COALESCE(updated_at, created_at)
+`
+
+// shareSelectColsNoContent is the feed projection: content is replaced by ” so list pages stay light.
+const shareSelectColsNoContent = `
+	id, user_id, owner_name, kind, title, summary, '' AS content, '' AS draft_code,
+	COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
+	COALESCE(canon_status, 'canon'), COALESCE(cocreation_id, ''), COALESCE(canon_requested, 0),
+	COALESCE(tachi_e_url, ''), COALESCE(author_id, user_id),
+	COALESCE(canon_review, 'none'), COALESCE(reviewed_by, 0), COALESCE(reviewed_at, 0),
 	created_at, COALESCE(updated_at, created_at)
 `
 
@@ -121,6 +135,7 @@ func scanShareRow(scanner interface{ Scan(...interface{}) error }) (*WorldShare,
 		&sh.ID, &sh.UserID, &sh.OwnerName, &sh.Kind, &sh.Title, &sh.Summary, &sh.Content, &sh.DraftCode,
 		&sh.Visibility, &sh.EntityID, &sh.Tags, &sh.WordCount,
 		&sh.CanonStatus, &sh.CocreationID, &canonReq, &sh.TachiEURL, &sh.AuthorID,
+		&sh.CanonReview, &sh.ReviewedBy, &sh.ReviewedAt,
 		&sh.CreatedAt, &sh.UpdatedAt,
 	)
 	if err != nil {
@@ -142,14 +157,6 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 	}
 	if visibility != "private" {
 		visibility = "public"
-	}
-	// Check if user is muted when publishing publicly
-	if visibility == "public" {
-		var isMuted int
-		_ = s.ReadDB.QueryRowContext(ctx, `SELECT COALESCE(is_muted, 0) FROM users WHERE id = ?`, userID).Scan(&isMuted)
-		if isMuted != 0 {
-			return nil, ErrUserMuted
-		}
 	}
 	now := time.Now().Unix()
 	if createdAt <= 0 {
@@ -177,6 +184,11 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 	}
 	defer tx.Rollback()
 
+	// Muted users may keep private drafts but cannot publish publicly.
+	if visibility == "public" && s.isUserMuted(ctx, tx, userID) {
+		return nil, ErrUserMuted
+	}
+
 	// A client may supply its own id to update an existing share, but only its own.
 	if strings.TrimSpace(customID) != "" {
 		var ownerID int64
@@ -192,8 +204,8 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 	// canon_status / canon_requested are server-owned review state: an update only resets them
 	// when the share is moved to a different co-creation project.
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO world_shares (id, user_id, owner_name, kind, title, summary, content, draft_code, visibility, entity_id, tags, word_count, canon_status, cocreation_id, canon_requested, tachi_e_url, author_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO world_shares (id, user_id, owner_name, kind, title, summary, content, draft_code, visibility, entity_id, tags, word_count, canon_status, cocreation_id, canon_requested, tachi_e_url, author_id, canon_review, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			summary = excluded.summary,
@@ -204,6 +216,7 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 			word_count = excluded.word_count,
 			canon_status = CASE WHEN excluded.cocreation_id <> world_shares.cocreation_id THEN excluded.canon_status ELSE world_shares.canon_status END,
 			canon_requested = CASE WHEN excluded.cocreation_id <> world_shares.cocreation_id THEN 0 ELSE world_shares.canon_requested END,
+			canon_review = CASE WHEN excluded.cocreation_id <> world_shares.cocreation_id THEN 'none' ELSE world_shares.canon_review END,
 			cocreation_id = excluded.cocreation_id,
 			tachi_e_url = excluded.tachi_e_url,
 			updated_at = excluded.updated_at
@@ -215,11 +228,25 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 
 	// Read back the authoritative row (review state may have been preserved by the upsert).
 	var createdAtDB, updatedAtDB int64
-	var canonStatusDB string
+	var canonStatusDB, canonReviewDB string
 	var canonReqDB int
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(canon_status,'canon'), COALESCE(canon_requested,0), created_at, updated_at FROM world_shares WHERE id = ?`, id).
-		Scan(&canonStatusDB, &canonReqDB, &createdAtDB, &updatedAtDB); err != nil {
+	var isNew bool
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(canon_status,'canon'), COALESCE(canon_requested,0), COALESCE(canon_review,'none'), created_at, updated_at FROM world_shares WHERE id = ?`, id).
+		Scan(&canonStatusDB, &canonReqDB, &canonReviewDB, &createdAtDB, &updatedAtDB); err != nil {
 		return nil, err
+	}
+	isNew = createdAtDB == createdAt && updatedAtDB == now && createdAt == now
+
+	// A doujin published publicly inside a project notifies the project team (deduped per day).
+	if isNew && visibility == "public" && canonStatusDB == "doujin" && cocreationID != "" {
+		var worldTitle string
+		_ = tx.QueryRowContext(ctx, `SELECT world_title FROM cocreation_projects WHERE id = ?`, cocreationID).Scan(&worldTitle)
+		if err := s.notifyProjectMembersTx(ctx, tx, cocreationID, userID, userID, ownerName, "doujin_created",
+			fmt.Sprintf("新同人作品《%s》已发布", title),
+			fmt.Sprintf("创作者 %s 为共创企划《%s》创作了同人作品《%s》", ownerName, worldTitle, title),
+			id); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -228,34 +255,6 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 	canonRequested = canonReqDB != 0
 	createdAt = createdAtDB
 	now = updatedAtDB
-
-	// If a doujin setting is published publicly in a co-creation project, notify owner and admins
-	if visibility == "public" && canonStatus == "doujin" && cocreationID != "" {
-		go func() {
-			bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			proj, err := s.GetCocreationProject(bgCtx, cocreationID)
-			if err == nil {
-				if proj.OwnerID != userID {
-					_ = s.CreateNotification(bgCtx, proj.OwnerID, userID, ownerName, "doujin_created",
-						fmt.Sprintf("新同人作品《%s》已发布", title),
-						fmt.Sprintf("创作者 %s 为您的共创企划《%s》创作了同人作品《%s》", ownerName, proj.WorldTitle, title),
-						id, "share")
-				}
-				for _, adm := range proj.Admins {
-					var admUID int64
-					if err := s.ReadDB.QueryRowContext(bgCtx, `SELECT id FROM users WHERE email = ? OR nickname = ?`, adm, adm).Scan(&admUID); err == nil {
-						if admUID != proj.OwnerID && admUID != userID {
-							_ = s.CreateNotification(bgCtx, admUID, userID, ownerName, "doujin_created",
-								fmt.Sprintf("新同人作品《%s》已发布", title),
-								fmt.Sprintf("创作者 %s 为共创企划《%s》创作了同人作品《%s》", ownerName, proj.WorldTitle, title),
-								id, "share")
-						}
-					}
-				}
-			}
-		}()
-	}
 
 	return &WorldShare{
 		ID:             id,
@@ -275,6 +274,7 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 		CanonRequested: canonRequested,
 		TachiEURL:      tachiEURL,
 		AuthorID:       userID,
+		CanonReview:    canonReviewDB,
 		CreatedAt:      createdAt,
 		UpdatedAt:      now,
 	}, nil
@@ -298,19 +298,37 @@ func (s *Store) ListShares(ctx context.Context, ownerID *int64, beforeCreatedAt 
 	if ownerID != nil {
 		return s.ListUserItems(ctx, *ownerID, "all", "", limit)
 	}
-	return s.ListPublicShares(ctx, "all", "", beforeCreatedAt, limit)
+	return s.ListPublicShares(ctx, "all", "", beforeCreatedAt, "", limit, true)
 }
 
-func (s *Store) ListPublicShares(ctx context.Context, kind, keyword string, beforeCreatedAt int64, limit int) ([]WorldShare, error) {
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
+}
+
+// ListPublicShares pages the public feed with a (created_at, id) keyset cursor so no row is
+// repeated or skipped between pages. When withContent is false the heavy content column is omitted.
+func (s *Store) ListPublicShares(ctx context.Context, kind, keyword string, beforeCreatedAt int64, beforeID string, limit int, withContent bool) ([]WorldShare, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 30
 	}
-	if beforeCreatedAt <= 0 {
-		beforeCreatedAt = time.Now().Unix() + 3600
+	cols := shareSelectColsNoContent
+	if withContent {
+		cols = shareSelectCols
 	}
-
-	query := "SELECT " + shareSelectCols + " FROM world_shares WHERE visibility = 'public' AND created_at <= ?"
-	args := []interface{}{beforeCreatedAt}
+	query := "SELECT " + cols + " FROM world_shares WHERE visibility = 'public'"
+	args := []interface{}{}
+	if beforeCreatedAt > 0 {
+		if beforeID != "" {
+			query += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+			args = append(args, beforeCreatedAt, beforeCreatedAt, beforeID)
+		} else {
+			query += " AND created_at < ?"
+			args = append(args, beforeCreatedAt)
+		}
+	}
 
 	if kind != "" && kind != "all" {
 		if kind == "canon" || kind == "doujin" {
@@ -322,8 +340,8 @@ func (s *Store) ListPublicShares(ctx context.Context, kind, keyword string, befo
 		}
 	}
 	if keyword = strings.TrimSpace(keyword); keyword != "" {
-		query += " AND (title LIKE ? OR summary LIKE ? OR tags LIKE ?)"
-		like := "%" + keyword + "%"
+		query += ` AND (title LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\' OR tags LIKE ? ESCAPE '\')`
+		like := "%" + escapeLike(truncateRunes(keyword, 60)) + "%"
 		args = append(args, like, like, like)
 	}
 
@@ -384,12 +402,33 @@ func (s *Store) ListUserItems(ctx context.Context, userID int64, visibilityFilte
 	return list, nil
 }
 
+// ShareFieldPatch carries optional field updates for PATCH /api/shares/:id.
+type ShareFieldPatch struct {
+	Visibility *string
+	Title      *string
+	Summary    *string
+	Content    *string
+	Tags       *string
+}
+
 func (s *Store) UpdateShareVisibility(ctx context.Context, shareID string, userID int64, visibility string, isAdmin bool) error {
-	if visibility != "private" {
-		visibility = "public"
+	return s.UpdateShareFields(ctx, shareID, userID, isAdmin, ShareFieldPatch{Visibility: &visibility})
+}
+
+// UpdateShareFields applies a partial update inside one transaction (ownership check included).
+// Muted users cannot switch a share to public.
+func (s *Store) UpdateShareFields(ctx context.Context, shareID string, userID int64, isAdmin bool, patch ShareFieldPatch) error {
+	tx, err := s.WriteDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
+	defer tx.Rollback()
+
 	var ownerID int64
-	err := s.ReadDB.QueryRowContext(ctx, `SELECT user_id FROM world_shares WHERE id = ?`, shareID).Scan(&ownerID)
+	var title, summary, content, tags, visibility string
+	var wordCount int
+	err = tx.QueryRowContext(ctx, `SELECT user_id, title, summary, content, COALESCE(tags,''), COALESCE(visibility,'public'), COALESCE(word_count,0) FROM world_shares WHERE id = ?`, shareID).
+		Scan(&ownerID, &title, &summary, &content, &tags, &visibility, &wordCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrShareNotFound
 	}
@@ -399,14 +438,45 @@ func (s *Store) UpdateShareVisibility(ctx context.Context, shareID string, userI
 	if ownerID != userID && !isAdmin {
 		return ErrShareForbidden
 	}
-	now := time.Now().Unix()
-	_, err = s.WriteDB.ExecContext(ctx, `UPDATE world_shares SET visibility = ?, updated_at = ? WHERE id = ?`, visibility, now, shareID)
-	return err
+	if patch.Visibility != nil {
+		v := "public"
+		if *patch.Visibility == "private" {
+			v = "private"
+		}
+		if v == "public" && visibility != "public" && s.isUserMuted(ctx, tx, ownerID) {
+			return ErrUserMuted
+		}
+		visibility = v
+	}
+	if patch.Title != nil && strings.TrimSpace(*patch.Title) != "" {
+		title = truncateRunes(strings.TrimSpace(*patch.Title), 80)
+	}
+	if patch.Summary != nil {
+		summary = truncateRunes(*patch.Summary, 200)
+	}
+	if patch.Content != nil {
+		content = *patch.Content
+		wordCount = utf8.RuneCountInString(content)
+	}
+	if patch.Tags != nil {
+		tags = truncateRunes(*patch.Tags, 100)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE world_shares SET title = ?, summary = ?, content = ?, tags = ?, visibility = ?, word_count = ?, updated_at = ? WHERE id = ?`,
+		title, summary, content, tags, visibility, wordCount, time.Now().Unix(), shareID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
+// DeleteShare removes a share together with its comments (likes cascade) and notifications.
 func (s *Store) DeleteShare(ctx context.Context, shareID string, currentUserID int64, isAdmin bool) error {
+	tx, err := s.WriteDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var ownerID int64
-	err := s.ReadDB.QueryRowContext(ctx, `SELECT user_id FROM world_shares WHERE id = ?`, shareID).Scan(&ownerID)
+	err = tx.QueryRowContext(ctx, `SELECT user_id FROM world_shares WHERE id = ?`, shareID).Scan(&ownerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrShareNotFound
 	}
@@ -416,8 +486,17 @@ func (s *Store) DeleteShare(ctx context.Context, shareID string, currentUserID i
 	if ownerID != currentUserID && !isAdmin {
 		return ErrShareForbidden
 	}
-	_, err = s.WriteDB.ExecContext(ctx, `DELETE FROM world_shares WHERE id = ?`, shareID)
-	return err
+	for _, q := range []string{
+		`DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM setting_comments WHERE share_id = ?)`,
+		`DELETE FROM setting_comments WHERE share_id = ?`,
+		`DELETE FROM notifications WHERE target_kind = 'share' AND target_id = ?`,
+		`DELETE FROM world_shares WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, shareID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetGlobalDashboardStats(ctx context.Context) (*GlobalDashboardStats, error) {
@@ -460,7 +539,7 @@ func (s *Store) GetGlobalDashboardStats(ctx context.Context) (*GlobalDashboardSt
 	stats.TotalSyncedWords = totalBytes / 3 // approx UTF-8 characters
 
 	// 5. Recent public creations
-	recent, _ := s.ListPublicShares(ctx, "all", "", 0, 8)
+	recent, _ := s.ListPublicShares(ctx, "all", "", 0, "", 8, false)
 	stats.RecentCreations = recent
 
 	// 6. Active creators

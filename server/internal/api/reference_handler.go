@@ -76,12 +76,12 @@ func (s *Server) handleUpdateReferenceMaterials(w http.ResponseWriter, r *http.R
 	seedPath := filepath.Join(s.cfg.DataDir, "seed.json")
 	tmpPath := seedPath + ".tmp"
 	if err := os.WriteFile(tmpPath, bodyBytes, 0o644); err != nil {
-		writeErr(w, http.StatusInternalServerError, "写入临时素材文件失败: "+err.Error())
+		writeErrLog(w, r, http.StatusInternalServerError, "写入临时素材文件失败", err)
 		return
 	}
 
 	if err := os.Rename(tmpPath, seedPath); err != nil {
-		writeErr(w, http.StatusInternalServerError, "更新素材文件失败: "+err.Error())
+		writeErrLog(w, r, http.StatusInternalServerError, "更新素材文件失败", err)
 		return
 	}
 
@@ -183,7 +183,7 @@ func (s *Server) handleAddReferenceItem(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := os.WriteFile(seedPath, newBytes, 0o644); err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存范例设定失败: "+err.Error())
+		writeErrLog(w, r, http.StatusInternalServerError, "保存范例设定失败", err)
 		return
 	}
 
@@ -302,7 +302,7 @@ func (s *Server) handleDeleteReferenceItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := os.WriteFile(seedPath, newBytes, 0o644); err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存素材失败: "+err.Error())
+		writeErrLog(w, r, http.StatusInternalServerError, "保存素材失败", err)
 		return
 	}
 

@@ -126,26 +126,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-
-		// Split migration into individual statements to handle ALTER TABLE safely
-		statements := strings.Split(string(sqlBytes), ";")
-		for _, stmt := range statements {
-			trimmed := strings.TrimSpace(stmt)
-			if trimmed == "" {
-				continue
-			}
-			if _, err := s.WriteDB.ExecContext(ctx, trimmed); err != nil {
-				// If adding an existing column in SQLite, treat as benign
-				if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
-					continue
-				}
-				return fmt.Errorf("apply migration %s stmt: %w", name, err)
-			}
+		if err := s.applyMigration(ctx, name, string(sqlBytes)); err != nil {
+			return err
 		}
+	}
 
-		if _, err := s.WriteDB.ExecContext(ctx, "INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)", name, time.Now().Unix()); err != nil {
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
+	if err := s.BackfillProjectMembers(ctx); err != nil {
+		return fmt.Errorf("backfill cocreation members: %w", err)
 	}
 
 	return nil
@@ -159,4 +146,45 @@ func (s *Store) Close() error {
 		return s.WriteDB.Close()
 	}
 	return nil
+}
+
+// splitSQLStatements removes `--` line comments and splits on `;`. Migrations must not contain
+// semicolons inside string literals.
+func splitSQLStatements(src string) []string {
+	var cleaned []string
+	for _, line := range strings.Split(src, "\n") {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		cleaned = append(cleaned, line)
+	}
+	var out []string
+	for _, stmt := range strings.Split(strings.Join(cleaned, "\n"), ";") {
+		if t := strings.TrimSpace(stmt); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// applyMigration runs one migration file atomically and records it in schema_migrations.
+func (s *Store) applyMigration(ctx context.Context, name, src string) error {
+	tx, err := s.WriteDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration %s: %w", name, err)
+	}
+	defer tx.Rollback()
+	for _, stmt := range splitSQLStatements(src) {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			// Re-adding an existing column (older databases that were patched by hand) is benign.
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("apply migration %s stmt: %w", name, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)", name, time.Now().Unix()); err != nil {
+		return fmt.Errorf("record migration %s: %w", name, err)
+	}
+	return tx.Commit()
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -167,6 +168,21 @@ func (s *Server) handleAITest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "请求格式错误")
 		return
 	}
+	// The UI never holds the stored key once it is saved in the cloud; fall back to it here.
+	if user := CurrentUser(r); strings.TrimSpace(cfg.APIKey) == "" && user != nil && user.AIConfigEnc != "" {
+		if decJSON, err := ai.DecryptUserConfig(user.AIConfigEnc, s.cfg.SecretKey); err == nil && decJSON != "" {
+			var cloudCfg ai.UserAIConfig
+			if json.Unmarshal([]byte(decJSON), &cloudCfg) == nil && cloudCfg.APIKey != "" {
+				if strings.TrimSpace(cfg.BaseURL) == "" {
+					cfg.BaseURL = cloudCfg.BaseURL
+				}
+				if strings.TrimSpace(cfg.Model) == "" {
+					cfg.Model = cloudCfg.Model
+				}
+				cfg.APIKey = cloudCfg.APIKey
+			}
+		}
+	}
 
 	msg, err := s.aiService.TestConnection(r.Context(), cfg)
 	if err != nil {
@@ -189,15 +205,23 @@ func (s *Server) handleUserAIConfig(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		var customAI *ai.UserAIConfig
+		// Never return the raw key: the client only needs to know whether one is stored.
+		var customAI map[string]interface{}
 		if user.AIConfigEnc != "" {
 			decJSON, err := ai.DecryptUserConfig(user.AIConfigEnc, s.cfg.SecretKey)
 			if err == nil && decJSON != "" {
 				var cfg ai.UserAIConfig
 				if json.Unmarshal([]byte(decJSON), &cfg) == nil {
-					// Return masked key or full key for the owner
-					customAI = &cfg
+					customAI = map[string]interface{}{
+						"provider":     cfg.Provider,
+						"baseUrl":      cfg.BaseURL,
+						"model":        cfg.Model,
+						"hasKey":       strings.TrimSpace(cfg.APIKey) != "",
+						"apiKeyMasked": maskKey(cfg.APIKey),
+					}
 				}
+			} else if err != nil {
+				log.Printf("[ai-config] decrypt failed for user %d (secret changed?): %v", user.ID, err)
 			}
 		}
 		var prefs ai.StudioPreferences
@@ -211,9 +235,11 @@ func (s *Server) handleUserAIConfig(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case http.MethodPut:
+		// Partial update: only the parts present in the payload are written.
 		var payload struct {
 			CustomAI    *ai.UserAIConfig      `json:"customAi"`
 			Preferences *ai.StudioPreferences `json:"preferences"`
+			ClearKey    bool                  `json:"clearKey"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -221,27 +247,35 @@ func (s *Server) handleUserAIConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var encConfig string
-		if payload.CustomAI != nil && strings.TrimSpace(payload.CustomAI.APIKey) != "" {
+		var encPtr, prefsPtr *string
+		if payload.ClearKey {
+			empty := ""
+			encPtr = &empty
+		} else if payload.CustomAI != nil && strings.TrimSpace(payload.CustomAI.APIKey) != "" {
+			if _, err := s.aiService.ValidateBaseURL(payload.CustomAI.BaseURL); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			b, _ := json.Marshal(payload.CustomAI)
 			enc, err := ai.EncryptUserConfig(string(b), s.cfg.SecretKey)
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, "加密存储配置失败")
 				return
 			}
-			encConfig = enc
+			encPtr = &enc
 		}
-
-		var prefsJSON string
 		if payload.Preferences != nil {
 			b, _ := json.Marshal(payload.Preferences)
-			prefsJSON = string(b)
-		} else {
-			prefsJSON = "{}"
+			str := string(b)
+			prefsPtr = &str
+		}
+		if encPtr == nil && prefsPtr == nil {
+			writeErr(w, http.StatusBadRequest, "没有可保存的内容")
+			return
 		}
 
-		if err := s.store.UpdateUserAIConfigAndPrefs(r.Context(), user.ID, encConfig, prefsJSON); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存配置失败")
+		if err := s.store.UpdateUserAIConfigAndPrefs(r.Context(), user.ID, encPtr, prefsPtr); err != nil {
+			writeErrLog(w, r, http.StatusInternalServerError, "保存配置失败", err)
 			return
 		}
 
@@ -250,4 +284,15 @@ func (s *Server) handleUserAIConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
+}
+
+func maskKey(k string) string {
+	k = strings.TrimSpace(k)
+	if k == "" {
+		return ""
+	}
+	if len(k) <= 8 {
+		return "****"
+	}
+	return k[:3] + "…" + k[len(k)-4:]
 }

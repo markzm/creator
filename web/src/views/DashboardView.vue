@@ -516,8 +516,17 @@ function switchGlobalTab() {
   }
 }
 
-function openShareDetail(item: WorldShareItem) {
+async function openShareDetail(item: WorldShareItem) {
+  // Feed rows are lightweight (no content); fetch the full share for the detail view.
   viewingShare.value = item;
+  try {
+    const res = await api.getShareDetail(item.id);
+    if (viewingShare.value && String(viewingShare.value.id) === String(item.id)) {
+      viewingShare.value = res.share;
+    }
+  } catch {
+    // Keep the summary view if the detail request fails
+  }
 }
 
 async function copyShareContent() {

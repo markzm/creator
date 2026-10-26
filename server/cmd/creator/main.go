@@ -67,10 +67,12 @@ func runServe() {
 
 	handler := api.NewServer(cfg, st)
 	srv := &http.Server{
-		Addr:         cfg.ListenAddr,
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              cfg.ListenAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		// AI generations can legitimately take > 1 minute; the AI client itself caps at 90s.
+		WriteTimeout: 150 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 

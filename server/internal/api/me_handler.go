@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const MaxAvatarUploadBytes = 2 << 20 // 2 MB
@@ -39,6 +41,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 8192)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeErr(w, http.StatusBadRequest, "请求格式错误")
+			return
+		}
+		if req.Avatar != nil && !isAllowedAvatarValue(user.ID, *req.Avatar) {
+			writeErr(w, http.StatusBadRequest, "头像只能是表情符号或通过上传接口获得的头像地址")
 			return
 		}
 		updated, err := s.store.UpdateProfile(r.Context(), user.ID, req.Name, req.Avatar, req.Bio)
@@ -118,8 +124,8 @@ func (s *Server) handleMeAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Best-effort cleanup of old uploaded avatar file
-	if strings.HasPrefix(user.AvatarURL, "/avatars/u_") {
+	// Best-effort cleanup of the user's OWN previous upload only.
+	if ownAvatarPattern(user.ID).MatchString(user.AvatarURL) {
 		oldName := filepath.Base(user.AvatarURL)
 		if oldName != fileName {
 			_ = os.Remove(filepath.Join(s.cfg.AvatarDir, oldName))
@@ -137,4 +143,24 @@ func (s *Server) handleMeAvatar(w http.ResponseWriter, r *http.Request) {
 		"avatar": newURL,
 		"user":   updated,
 	})
+}
+
+func ownAvatarPattern(userID int64) *regexp.Regexp {
+	return regexp.MustCompile(fmt.Sprintf(`^/avatars/u_%d_\d+\.jpg$`, userID))
+}
+
+// isAllowedAvatarValue accepts an empty value, a short emoji-like string (no URL characters),
+// or an avatar URL that was produced by this user's own upload.
+func isAllowedAvatarValue(userID int64, v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return true
+	}
+	if ownAvatarPattern(userID).MatchString(v) {
+		return true
+	}
+	if strings.ContainsAny(v, "/:<>\"'`\\") {
+		return false
+	}
+	return utf8.RuneCountInString(v) <= 4
 }

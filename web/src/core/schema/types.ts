@@ -239,7 +239,7 @@ export interface SettingComment {
   likeCount: number;
   hasLiked?: boolean;
   createdAt: number;
-  replies?: SettingComment[];
+  replies: SettingComment[];
 }
 
 export interface NotificationItem {
@@ -256,15 +256,25 @@ export interface NotificationItem {
   createdAt: number;
 }
 
+export interface ProjectMember {
+  userId: number;
+  name: string;
+  avatar: string;
+  role: 'owner' | 'admin';
+}
+
 export interface CocreationProject {
   id: string;
   worldId: string;
   worldTitle: string;
   ownerId: number;
   ownerName: string;
+  /** Legacy display list (emails). Authority lives in `members`. */
   admins: string[];
+  members: ProjectMember[];
   summary: string;
   isOpenDoujin: boolean;
+  pendingCount?: number;
   createdAt: number;
   updatedAt: number;
 }

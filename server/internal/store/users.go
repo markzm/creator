@@ -179,11 +179,20 @@ func scanUser(row *sql.Row) (*User, error) {
 	return &u, nil
 }
 
-func (s *Store) UpdateUserAIConfigAndPrefs(ctx context.Context, userID int64, aiConfigEnc, customPrefsJSON string) error {
+// UpdateUserAIConfigAndPrefs updates only the columns whose pointer is non-nil, so saving
+// preferences never wipes the stored API key and vice versa.
+func (s *Store) UpdateUserAIConfigAndPrefs(ctx context.Context, userID int64, aiConfigEnc, customPrefsJSON *string) error {
 	now := time.Now().Unix()
+	var encArg, prefsArg interface{}
+	if aiConfigEnc != nil {
+		encArg = *aiConfigEnc
+	}
+	if customPrefsJSON != nil {
+		prefsArg = *customPrefsJSON
+	}
 	_, err := s.WriteDB.ExecContext(ctx, `
-		UPDATE users SET ai_config_enc = ?, custom_prefs_json = ?, updated_at = ? WHERE id = ?
-	`, aiConfigEnc, customPrefsJSON, now, userID)
+		UPDATE users SET ai_config_enc = COALESCE(?, ai_config_enc), custom_prefs_json = COALESCE(?, custom_prefs_json), updated_at = ? WHERE id = ?
+	`, encArg, prefsArg, now, userID)
 	return err
 }
 
@@ -193,16 +202,16 @@ func (s *Store) UpdateProfile(ctx context.Context, userID int64, name, avatar, b
 		return nil, err
 	}
 	if name != nil {
-		n := truncateRunes(*name, 16)
+		n := truncateRunes(strings.TrimSpace(*name), 16)
 		if n != "" {
 			u.Nickname = n
 		}
 	}
 	if avatar != nil {
-		u.AvatarURL = truncateRunes(*avatar, 128)
+		u.AvatarURL = truncateRunes(strings.TrimSpace(*avatar), 128)
 	}
 	if bio != nil {
-		u.Bio = truncateRunes(*bio, 5000)
+		u.Bio = truncateRunes(*bio, 2000)
 	}
 	u.UpdatedAt = time.Now().Unix()
 

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -92,11 +91,9 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusInternalServerError, "读取分享失败")
 				return
 			}
-			if sh.Visibility == "private" {
-				if user == nil || (user.ID != sh.UserID && !user.IsAdmin) {
-					writeErr(w, http.StatusForbidden, "该条目为作者私有，暂不公开")
-					return
-				}
+			if !canViewShare(user, sh) {
+				writeErr(w, http.StatusForbidden, "该条目为作者私有，暂不公开")
+				return
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"share": sh})
 			return
@@ -108,30 +105,33 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var req struct {
-				Visibility string `json:"visibility"`
-				Title      string `json:"title,omitempty"`
-				Summary    string `json:"summary,omitempty"`
-				Content    string `json:"content,omitempty"`
-				Tags       string `json:"tags,omitempty"`
+				Visibility *string `json:"visibility"`
+				Title      *string `json:"title"`
+				Summary    *string `json:"summary"`
+				Content    *string `json:"content"`
+				Tags       *string `json:"tags"`
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
+			r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeErr(w, http.StatusBadRequest, "请求格式错误")
 				return
 			}
-			if req.Visibility != "" {
-				if err := s.store.UpdateShareVisibility(r.Context(), path, user.ID, req.Visibility, user.IsAdmin); err != nil {
-					if errors.Is(err, store.ErrShareNotFound) {
-						writeErr(w, http.StatusNotFound, "分享条目不存在")
-						return
-					}
-					if errors.Is(err, store.ErrShareForbidden) {
-						writeErr(w, http.StatusForbidden, "仅作者本人可修改该分享")
-						return
-					}
-					writeErr(w, http.StatusInternalServerError, "修改失败")
-					return
+			if req.Visibility != nil && *req.Visibility == "" {
+				req.Visibility = nil
+			}
+			patch := store.ShareFieldPatch{Visibility: req.Visibility, Title: req.Title, Summary: req.Summary, Content: req.Content, Tags: req.Tags}
+			if err := s.store.UpdateShareFields(r.Context(), path, user.ID, user.IsAdmin, patch); err != nil {
+				switch {
+				case errors.Is(err, store.ErrShareNotFound):
+					writeErr(w, http.StatusNotFound, "分享条目不存在")
+				case errors.Is(err, store.ErrShareForbidden):
+					writeErr(w, http.StatusForbidden, "仅作者本人可修改该分享")
+				case errors.Is(err, store.ErrUserMuted):
+					writeErr(w, http.StatusForbidden, "您已被管理员禁言，无法公开作品")
+				default:
+					writeErrLog(w, r, http.StatusInternalServerError, "修改失败", err)
 				}
+				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 			return
@@ -151,7 +151,7 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 					writeErr(w, http.StatusForbidden, "仅作者本人可删除该分享")
 					return
 				}
-				writeErr(w, http.StatusInternalServerError, "删除失败")
+				writeErrLog(w, r, http.StatusInternalServerError, "删除失败", err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -191,12 +191,14 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 		kind := r.URL.Query().Get("kind")
 		keyword := r.URL.Query().Get("q")
 		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+		beforeID := strings.TrimSpace(r.URL.Query().Get("beforeId"))
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		if limit <= 0 {
 			limit = 30
 		}
+		withContent := r.URL.Query().Get("full") == "1"
 
-		shares, err := s.store.ListPublicShares(r.Context(), kind, keyword, before, limit)
+		shares, err := s.store.ListPublicShares(r.Context(), kind, keyword, before, beforeID, limit, withContent)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "获取公共大厅列表失败")
 			return
@@ -244,13 +246,13 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 		req.CocreationID = strings.TrimSpace(req.CocreationID)
 		canonStatus := "canon"
 		if req.CocreationID != "" {
-			reviewer, err := s.store.IsProjectReviewer(r.Context(), req.CocreationID, user.ID, user.Email)
+			reviewer, err := s.store.IsProjectReviewer(r.Context(), req.CocreationID, user.ID)
 			if err != nil {
 				if errors.Is(err, store.ErrProjectNotFound) {
 					writeErr(w, http.StatusBadRequest, "共创企划不存在")
 					return
 				}
-				writeErr(w, http.StatusInternalServerError, "校验共创企划失败")
+				writeErrLog(w, r, http.StatusInternalServerError, "校验共创企划失败", err)
 				return
 			}
 			if !reviewer && !user.IsAdmin {
@@ -287,8 +289,7 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusForbidden, "无权修改他人的分享")
 				return
 			}
-			log.Printf("[shares] upsert failed: %v", err)
-			writeErr(w, http.StatusInternalServerError, "发布或保存失败")
+			writeErrLog(w, r, http.StatusInternalServerError, "发布或保存失败", err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]interface{}{
@@ -298,4 +299,12 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
+}
+
+// canViewShare: public shares are visible to everyone; private ones only to the owner or admins.
+func canViewShare(u *store.User, sh *store.WorldShare) bool {
+	if sh.Visibility != "private" {
+		return true
+	}
+	return u != nil && (u.ID == sh.UserID || u.IsAdmin)
 }
