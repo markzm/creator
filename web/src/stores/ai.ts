@@ -9,6 +9,18 @@ import {
   type UserAIConfig
 } from '../data/api';
 import { useAuthStore } from './auth';
+import { useUIStore } from './ui';
+
+/** AI generation is a logged-in feature (the server enforces it too); guests are sent to sign in. */
+function requireLogin(authStore: ReturnType<typeof useAuthStore>): void {
+  if (authStore.isLoggedIn) return;
+  try {
+    useUIStore().openModal('auth');
+  } catch {
+    // UI store may be unavailable in tests
+  }
+  throw new Error('AI 功能需要登录后使用，请先登录或注册账号');
+}
 
 const LS_AI_CONFIG_KEY = 'cc_user_ai_cfg';
 const LS_AI_PREFS_KEY = 'cc_user_ai_prefs';
@@ -104,6 +116,23 @@ export const useAIStore = defineStore('ai', () => {
     }
   }
 
+  /** Forgets device-local AI settings (including any API key) so they never leak to the next user. */
+  function clearLocal() {
+    try {
+      localStorage.removeItem(LS_AI_CONFIG_KEY);
+      localStorage.removeItem(LS_AI_PREFS_KEY);
+    } catch {
+      // Ignore
+    }
+    activeProvider.value = 'public';
+    customAi.value = {
+      provider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: '',
+      model: 'deepseek-chat'
+    };
+  }
+
   async function saveConfig() {
     saveLocal();
     if (authStore.isLoggedIn && syncCloud.value) {
@@ -115,6 +144,7 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   async function generate(req: Omit<AIGenerateRequest, 'customAi' | 'preferences'>): Promise<AIGenerateResponse> {
+    requireLogin(authStore);
     loading.value = true;
     try {
       const fullReq: AIGenerateRequest = {
@@ -131,6 +161,7 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   async function testConnection(cfg?: UserAIConfig): Promise<string> {
+    requireLogin(authStore);
     const target = cfg || customAi.value;
     const res = await api.testAIConnection(target);
     return res.message;
@@ -148,6 +179,7 @@ export const useAIStore = defineStore('ai', () => {
     preferences,
     init,
     saveConfig,
+    clearLocal,
     generate,
     testConnection
   };

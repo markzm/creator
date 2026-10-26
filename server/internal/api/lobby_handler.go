@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -238,6 +239,25 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 		}
 		wordCount := utf8.RuneCountInString(req.Content)
 
+		// Canon state is never trusted from the client. Inside a co-creation project only the
+		// project owner / admins publish canon directly; everyone else publishes doujin.
+		req.CocreationID = strings.TrimSpace(req.CocreationID)
+		canonStatus := "canon"
+		if req.CocreationID != "" {
+			reviewer, err := s.store.IsProjectReviewer(r.Context(), req.CocreationID, user.ID, user.Email)
+			if err != nil {
+				if errors.Is(err, store.ErrProjectNotFound) {
+					writeErr(w, http.StatusBadRequest, "共创企划不存在")
+					return
+				}
+				writeErr(w, http.StatusInternalServerError, "校验共创企划失败")
+				return
+			}
+			if !reviewer && !user.IsAdmin {
+				canonStatus = "doujin"
+			}
+		}
+
 		sh, err := s.store.UpsertShareMeta(
 			r.Context(),
 			req.ID,
@@ -252,9 +272,9 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 			req.EntityID,
 			req.Tags,
 			wordCount,
-			req.CanonStatus,
+			canonStatus,
 			req.CocreationID,
-			req.CanonRequested,
+			false,
 			req.TachiEURL,
 			0,
 		)
@@ -263,7 +283,12 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusForbidden, "您已被管理员禁言，无法公开作品")
 				return
 			}
-			writeErr(w, http.StatusInternalServerError, "发布或保存失败: "+err.Error())
+			if errors.Is(err, store.ErrShareForbidden) {
+				writeErr(w, http.StatusForbidden, "无权修改他人的分享")
+				return
+			}
+			log.Printf("[shares] upsert failed: %v", err)
+			writeErr(w, http.StatusInternalServerError, "发布或保存失败")
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]interface{}{

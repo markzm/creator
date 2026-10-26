@@ -30,7 +30,7 @@
       <div v-if="currentTab === 'users'">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
           <span class="hint" style="font-size: 12px">
-            {{ authStore.isSuperAdmin ? '超级管理员 markzm 权限生效：可自由增减管理员、管理禁言及封禁状态。' : '管理员权限生效：可管理禁言创作者、限制登录账号与解除惩罚。' }}
+            {{ authStore.isSuperAdmin ? '超级管理员权限生效：可自由增减管理员、管理禁言及封禁状态。' : '管理员权限生效：可管理禁言创作者、限制登录账号与解除惩罚。' }}
           </span>
           <button type="button" class="btn sm" :disabled="loadingUsers" @click="fetchUsers">
             🔄 刷新
@@ -74,7 +74,7 @@
 
             <!-- Action buttons -->
             <div v-if="u.id !== authStore.user?.id" style="display: flex; gap: 6px; flex-wrap: wrap">
-              <!-- markzm superadmin toggle -->
+              <!-- super admin toggle -->
               <button
                 v-if="authStore.isSuperAdmin && !u.isSuperAdmin"
                 type="button"

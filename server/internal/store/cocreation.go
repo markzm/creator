@@ -13,10 +13,12 @@ import (
 )
 
 var (
-	ErrProjectNotFound   = errors.New("cocreation project not found")
-	ErrCommentNotFound   = errors.New("comment not found")
-	ErrCommentForbidden  = errors.New("permission denied to delete comment")
-	ErrUserMuted         = errors.New("您已被管理员禁言，无法发表评论或公开作品")
+	ErrProjectNotFound  = errors.New("cocreation project not found")
+	ErrCommentNotFound  = errors.New("comment not found")
+	ErrCommentForbidden = errors.New("permission denied to delete comment")
+	ErrUserMuted        = errors.New("您已被管理员禁言，无法发表评论或公开作品")
+	ErrCanonForbidden   = errors.New("只有企划负责人、企划管理员或站点管理员可以审批转正")
+	ErrCanonNotEligible = errors.New("该作品不是共创企划中的同人作品，无需转正")
 )
 
 type SettingComment struct {
@@ -494,14 +496,50 @@ func (s *Store) RequestCanon(ctx context.Context, shareID string, userID int64) 
 	return nil
 }
 
-func (s *Store) ApproveCanon(ctx context.Context, shareID string, reviewerID int64, reviewerName string) error {
+// IsProjectReviewer reports whether the user may review canon requests for a project:
+// the project owner, or a listed project admin (matched by email).
+func (s *Store) IsProjectReviewer(ctx context.Context, projectID string, userID int64, userEmail string) (bool, error) {
+	proj, err := s.GetCocreationProject(ctx, projectID)
+	if err != nil {
+		return false, err
+	}
+	if proj.OwnerID == userID {
+		return true, nil
+	}
+	email := strings.ToLower(strings.TrimSpace(userEmail))
+	for _, adm := range proj.Admins {
+		if email != "" && strings.ToLower(strings.TrimSpace(adm)) == email {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ApproveCanon promotes a doujin share inside a co-creation project to canon. Only the project
+// owner, a project admin, or a site admin may approve; the share must be a doujin attached to a project.
+func (s *Store) ApproveCanon(ctx context.Context, shareID string, reviewerID int64, reviewerName, reviewerEmail string, reviewerIsSiteAdmin bool) error {
 	now := time.Now().Unix()
 	var authorID int64
-	var shareTitle, cocreationID string
-	err := s.ReadDB.QueryRowContext(ctx, `SELECT user_id, title, COALESCE(cocreation_id, '') FROM world_shares WHERE id = ?`, shareID).
-		Scan(&authorID, &shareTitle, &cocreationID)
+	var shareTitle, cocreationID, canonStatus string
+	err := s.ReadDB.QueryRowContext(ctx, `SELECT user_id, title, COALESCE(cocreation_id, ''), COALESCE(canon_status, 'canon') FROM world_shares WHERE id = ?`, shareID).
+		Scan(&authorID, &shareTitle, &cocreationID, &canonStatus)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrShareNotFound
+		}
 		return err
+	}
+	if cocreationID == "" || canonStatus != "doujin" {
+		return ErrCanonNotEligible
+	}
+	if !reviewerIsSiteAdmin {
+		ok, err := s.IsProjectReviewer(ctx, cocreationID, reviewerID, reviewerEmail)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrCanonForbidden
+		}
 	}
 
 	_, err = s.WriteDB.ExecContext(ctx, `
@@ -546,7 +584,7 @@ func (s *Store) GetCreatorProfile(ctx context.Context, userID int64) (*CreatorPr
 	}
 
 	// Fetch public shares
-	shares, err := s.ListUserItems(ctx, userID, "all", "public", 50)
+	shares, err := s.ListUserItems(ctx, userID, "public", "all", 50)
 	if err != nil {
 		shares = []WorldShare{}
 	}

@@ -123,11 +123,13 @@ import { computed, ref, watch } from 'vue';
 import Modal from '../base/Modal.vue';
 import { useToast } from '../../composables/useToast';
 import { api } from '../../data/api';
+import { useAuthStore } from '../../stores/auth';
 import { useDocStore } from '../../stores/doc';
 import { useUIStore } from '../../stores/ui';
 
 const docStore = useDocStore();
 const uiStore = useUIStore();
+const authStore = useAuthStore();
 const { toast } = useToast();
 
 const selectedStyle = ref('makoto_shinkai');
@@ -165,6 +167,11 @@ watch(() => uiStore.modals.animeArt, (open) => {
 
 async function generateArtwork() {
   if (!promptText.value.trim() || generating.value) return;
+  if (!authStore.isLoggedIn) {
+    toast('AI 立绘生成需要登录后使用', 'warn');
+    uiStore.openModal('auth');
+    return;
+  }
   generating.value = true;
   resultImage.value = '';
   try {

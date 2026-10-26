@@ -29,6 +29,13 @@ type Config struct {
 	AllowedOrigin string
 	SecretKey     string // Used for stateless HMAC challenge signing
 
+	// SuperAdminEmail (SUPER_ADMIN_EMAIL) is promoted to super admin at startup. Super-admin status
+	// is otherwise only granted via the CLI (`creator user promote --super`), never by nickname.
+	SuperAdminEmail string
+	// AllowedAIHosts (ALLOWED_AI_HOSTS, comma separated) extends the allow-list of hosts that
+	// user-supplied AI base URLs may point to.
+	AllowedAIHosts []string
+
 	// AI settings
 	OpenRouterAPIKey string
 	OpenRouterModels []string
@@ -73,7 +80,17 @@ func Load() *Config {
 		models = []string{"openrouter/free"}
 	}
 
+	var aiHosts []string
+	for _, h := range strings.Split(os.Getenv("ALLOWED_AI_HOSTS"), ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" {
+			aiHosts = append(aiHosts, h)
+		}
+	}
+
 	return &Config{
+		SuperAdminEmail:  strings.ToLower(strings.TrimSpace(os.Getenv("SUPER_ADMIN_EMAIL"))),
+		AllowedAIHosts:   aiHosts,
 		ListenAddr:       envOr("LISTEN_ADDR", "0.0.0.0:8080"),
 		DataDir:          dataDir,
 		DBPath:           dbPath,

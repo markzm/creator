@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -304,8 +305,18 @@ func (s *Server) handleCocreation(w http.ResponseWriter, r *http.Request) {
 					writeErr(w, http.StatusUnauthorized, "请先登录")
 					return
 				}
-				if err := s.store.ApproveCanon(r.Context(), shareID, user.ID, user.Nickname); err != nil {
-					writeErr(w, http.StatusInternalServerError, "转正审批失败: "+err.Error())
+				if err := s.store.ApproveCanon(r.Context(), shareID, user.ID, user.Nickname, user.Email, user.IsAdmin); err != nil {
+					switch {
+					case errors.Is(err, store.ErrCanonForbidden):
+						writeErr(w, http.StatusForbidden, err.Error())
+					case errors.Is(err, store.ErrCanonNotEligible):
+						writeErr(w, http.StatusBadRequest, err.Error())
+					case errors.Is(err, store.ErrShareNotFound), errors.Is(err, store.ErrProjectNotFound):
+						writeErr(w, http.StatusNotFound, "作品或企划不存在")
+					default:
+						log.Printf("[approve-canon] %v", err)
+						writeErr(w, http.StatusInternalServerError, "转正审批失败")
+					}
 					return
 				}
 				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -386,10 +397,10 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		action := parts[1]
 
-		// 2. Grant/Revoke Admin: PUT /api/admin/users/:id/role (Only markzm / SuperAdmin)
+		// 2. Grant/Revoke Admin: PUT /api/admin/users/:id/role (super admin only)
 		if action == "role" && r.Method == http.MethodPut {
 			if !user.IsSuperAdmin {
-				writeErr(w, http.StatusForbidden, "权限不足：只有超级管理员 markzm 才能增减管理员设置")
+				writeErr(w, http.StatusForbidden, "权限不足：只有超级管理员才能增减管理员")
 				return
 			}
 			var req struct {

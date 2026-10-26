@@ -53,10 +53,17 @@ func (s *Server) handleUpdateReferenceMaterials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Verify valid JSON
-	var dummy map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &dummy); err != nil {
+	// Verify valid JSON and keep ONLY official reference items. Whatever the client sends, an
+	// admin's private worlds / articles / preferences must never land in the public seed file.
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
 		writeErr(w, http.StatusBadRequest, "素材格式必须是合法的 JSON 设定集")
+		return
+	}
+	filtered := filterReferenceOnly(raw)
+	bodyBytes, err = json.Marshal(filtered)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "序列化素材失败")
 		return
 	}
 
@@ -183,7 +190,7 @@ func (s *Server) handleAddReferenceItem(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "官方范例设定已成功添加"})
 }
 
-// handleDeleteReferenceItem allows admins to delete their own created reference items (or markzm can delete any)
+// handleDeleteReferenceItem allows admins to delete their own created reference items (super admins can delete any)
 func (s *Server) handleDeleteReferenceItem(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -300,4 +307,45 @@ func (s *Server) handleDeleteReferenceItem(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "范例设定已成功删除"})
+}
+
+var referenceMapCollections = []string{"worlds", "orgs", "chars", "templates"}
+var referenceListCollections = []string{"timeline", "plots", "scenes", "glossary", "articles"}
+
+func isReferenceFlagged(v interface{}) bool {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	flag, _ := m["isReference"].(bool)
+	return flag
+}
+
+// filterReferenceOnly returns a DocV6-shaped document that contains only `isReference` items.
+// Non-collection fields (stats, preferences, ui) are dropped.
+func filterReferenceOnly(doc map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{"_version": 6}
+	for _, key := range referenceMapCollections {
+		res := map[string]interface{}{}
+		if m, ok := doc[key].(map[string]interface{}); ok {
+			for id, v := range m {
+				if isReferenceFlagged(v) {
+					res[id] = v
+				}
+			}
+		}
+		out[key] = res
+	}
+	for _, key := range referenceListCollections {
+		res := make([]interface{}, 0)
+		if list, ok := doc[key].([]interface{}); ok {
+			for _, v := range list {
+				if isReferenceFlagged(v) {
+					res = append(res, v)
+				}
+			}
+		}
+		out[key] = res
+	}
+	return out
 }

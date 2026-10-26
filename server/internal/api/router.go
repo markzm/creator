@@ -99,9 +99,9 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 
 	// AI generation, anime painting & config
 	mux.HandleFunc("/api/ai/status", srv.handleAIStatus)
-	mux.HandleFunc("/api/ai/generate", srv.handleAIGenerate)
-	mux.HandleFunc("/api/ai/paint", srv.handleAIPaint)
-	mux.HandleFunc("/api/ai/test", srv.handleAITest)
+	mux.HandleFunc("/api/ai/generate", RequireAuth(srv.handleAIGenerate))
+	mux.HandleFunc("/api/ai/paint", RequireAuth(srv.handleAIPaint))
+	mux.HandleFunc("/api/ai/test", RequireAuth(srv.handleAITest))
 	mux.HandleFunc("/api/me/ai-config", srv.handleUserAIConfig)
 
 	// Serve avatars directly when accessed via Go server

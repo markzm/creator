@@ -144,7 +144,7 @@ function onUndo() {
   display: none !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .hide-mobile {
     display: none !important;
   }

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -86,4 +87,39 @@ func indexOf(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+func TestValidateBaseURLWith(t *testing.T) {
+	allowed := []string{"api.deepseek.com", "openrouter.ai", "my-proxy.example.org"}
+	cases := []struct {
+		in string
+		ok bool
+	}{
+		{"https://api.deepseek.com/v1", true},
+		{"https://openrouter.ai/api/v1/", true},
+		{"https://sub.my-proxy.example.org/v1", true},
+		{"http://api.deepseek.com/v1", false},
+		{"https://127.0.0.1/v1", false},
+		{"https://169.254.169.254/latest", false},
+		{"https://[::1]/v1", false},
+		{"https://localhost/v1", false},
+		{"https://router.internal/v1", false},
+		{"https://evil.example.com/v1", false},
+		{"https://user:pw@api.deepseek.com/v1", false},
+		{"https://api.deepseek.com.evil.com/v1", false},
+		{"", false},
+		{"not a url", false},
+	}
+	for _, c := range cases {
+		got, err := ValidateBaseURLWith(c.in, allowed)
+		if c.ok && err != nil {
+			t.Errorf("%q: expected ok, got %v", c.in, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("%q: expected rejection, got %q", c.in, got)
+		}
+		if c.ok && strings.HasSuffix(got, "/") {
+			t.Errorf("%q: trailing slash not trimmed: %q", c.in, got)
+		}
+	}
 }

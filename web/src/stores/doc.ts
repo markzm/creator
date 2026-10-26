@@ -17,6 +17,7 @@ import type {
   TimelineEvent,
   WorldEntity
 } from '../core/schema/types';
+import { extractReferenceSubset, mergeReferenceMaterials } from '../core/reference';
 import { createStarterExampleDoc } from '../core/starterExample';
 import { recordDailyStats } from '../core/stats';
 import { uid } from '../core/uid';
@@ -32,64 +33,6 @@ import { useToast } from '../composables/useToast';
 import { api } from '../data/api';
 
 const GENTLE_REF_MSG = '此条目为官方公共参考素材，仅供大家查阅与引用。如需在此基础上修改或创作，请点击「📑 复制为衍生副本」即可在您的专属库中自由调整~';
-
-function mergeReferenceMaterials(target: DocV6, refDoc: DocV6) {
-  // Worlds
-  for (const [id, w] of Object.entries(refDoc.worlds || {})) {
-    if (w.isReference && !target.worlds[id]) {
-      target.worlds[id] = w;
-    }
-  }
-  // Orgs
-  for (const [id, o] of Object.entries(refDoc.orgs || {})) {
-    if (o.isReference && !target.orgs[id]) {
-      target.orgs[id] = o;
-    }
-  }
-  // Chars
-  for (const [id, c] of Object.entries(refDoc.chars || {})) {
-    if (c.isReference && !target.chars[id]) {
-      target.chars[id] = c;
-    }
-  }
-  // Templates
-  for (const [id, t] of Object.entries(refDoc.templates || {})) {
-    if (t.isReference && !target.templates[id]) {
-      target.templates[id] = t;
-    }
-  }
-  // Timeline
-  for (const item of refDoc.timeline || []) {
-    if (item.isReference && !target.timeline.some((x) => x.id === item.id)) {
-      target.timeline.push(item);
-    }
-  }
-  // Plots
-  for (const item of refDoc.plots || []) {
-    if (item.isReference && !target.plots.some((x) => x.id === item.id)) {
-      target.plots.push(item);
-    }
-  }
-  // Scenes
-  for (const item of refDoc.scenes || []) {
-    if (item.isReference && !target.scenes.some((x) => x.id === item.id)) {
-      target.scenes.push(item);
-    }
-  }
-  // Glossary
-  for (const item of refDoc.glossary || []) {
-    if (item.isReference && !target.glossary.some((x) => x.id === item.id)) {
-      target.glossary.push(item);
-    }
-  }
-  // Articles
-  if (!target.articles) target.articles = [];
-  for (const item of refDoc.articles || []) {
-    if (item.isReference && !target.articles.some((x) => x.id === item.id)) {
-      target.articles.push(item);
-    }
-  }
-}
 
 export const useDocStore = defineStore('doc', () => {
   const authStore = useAuthStore();
@@ -170,16 +113,32 @@ export const useDocStore = defineStore('doc', () => {
     });
   }
 
+  /** Last official reference document fetched from the server (used to re-apply after sync). */
+  let lastReferenceDoc: DocV6 | null = null;
+
   async function fetchAndMergeReferenceMaterials() {
     try {
       const refDoc = await api.getReferenceMaterials();
       if (refDoc && typeof refDoc === 'object' && (refDoc.worlds || refDoc.chars || refDoc.orgs)) {
-        mergeReferenceMaterials(doc.value, refDoc);
-        ensureActiveIds();
-        touch(false, false);
+        lastReferenceDoc = migrateToV6(refDoc);
+        reapplyReferences();
       }
     } catch {
       // Ignore network errors
+    }
+  }
+
+  /**
+   * Re-merges the cached official reference materials into the current document.
+   * Reference items are never part of the synced payload, so this must run after any
+   * cloud document replaces the local one.
+   */
+  function reapplyReferences() {
+    if (!lastReferenceDoc) return;
+    const res = mergeReferenceMaterials(doc.value, lastReferenceDoc);
+    if (res.added || res.updated || res.removed) {
+      ensureActiveIds();
+      touch(false, false);
     }
   }
 
@@ -605,11 +564,29 @@ export const useDocStore = defineStore('doc', () => {
     touch(true);
   }
 
+  /**
+   * Replaces the workspace with the starter example. Local-only: the cloud document is untouched
+   * (the caller resets the sync base so the next pull adopts the cloud copy again).
+   */
   function resetToStarterExample() {
     saveUndoSnapshot();
     const starter = createStarterExampleDoc();
     doc.value = starter;
-    touch(true);
+    reapplyReferences();
+    touch(true, false);
+  }
+
+  /**
+   * Called on logout. Drops the undo snapshot (so the next person on this device cannot
+   * restore the previous user's data) and loads the starter example without marking the
+   * document dirty, so nothing is ever pushed to the cloud as a side effect of logging out.
+   */
+  function unloadForLogout() {
+    undoSnapshot.value = null;
+    doc.value = createStarterExampleDoc();
+    reapplyReferences();
+    ensureActiveIds();
+    touch(true, false);
   }
 
   function forkReferenceEntity(kind: EntityKind, sourceId: string): BaseEntity | null {
@@ -782,7 +759,7 @@ export const useDocStore = defineStore('doc', () => {
     }
     try {
       toast('正在保存全站官方公共参考素材…', 'ok');
-      const refDoc: DocV6 = JSON.parse(JSON.stringify(doc.value));
+      const refDoc: DocV6 = extractReferenceSubset(JSON.parse(JSON.stringify(doc.value)));
       const res = await api.updateReferenceMaterials(refDoc);
       toast(res.message || '官方公共素材已更新 ✓', 'ok');
       return true;
@@ -792,11 +769,13 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  /** Clears the local workspace only. See `resetToStarterExample` for the cloud contract. */
   function clearAllData() {
     saveUndoSnapshot();
     const empty = createEmptyDocV6();
     doc.value = empty;
-    touch(true);
+    reapplyReferences();
+    touch(true, false);
   }
 
   return {
@@ -845,7 +824,9 @@ export const useDocStore = defineStore('doc', () => {
     forkReferenceScene,
     forkReferenceTimeline,
     saveOfficialReferenceMaterials,
+    reapplyReferences,
     resetToStarterExample,
+    unloadForLogout,
     clearAllData
   };
 });

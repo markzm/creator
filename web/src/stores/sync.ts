@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { showToast } from '../composables/useToast';
-import { computeSyncHash, threeWayMerge } from '../core/diff';
+import { computeSyncHash, threeWayMerge, isDocEffectivelyEmpty } from '../core/diff';
 import { migrateToV6 } from '../core/schema/migrations';
 import type { DiffSummary, DocV6, FieldConflict } from '../core/schema/types';
 import { ApiConflictError, api } from '../data/api';
@@ -19,22 +19,6 @@ export interface ActiveConflictState {
   mergedDoc: DocV6;
   conflicts: FieldConflict[];
   summary: DiffSummary;
-}
-
-function isDocEffectivelyEmpty(doc: DocV6): boolean {
-  const hasAny = (coll: Record<string, { data?: Record<string, string> }>) =>
-    Object.values(coll || {}).some(
-      (x) => x.data && Object.values(x.data).some((v) => v && String(v).trim())
-    );
-  return (
-    !hasAny(doc.worlds) &&
-    !hasAny(doc.orgs) &&
-    !hasAny(doc.chars) &&
-    !(doc.timeline && doc.timeline.length) &&
-    !(doc.plots && doc.plots.length) &&
-    !(doc.scenes && doc.scenes.length) &&
-    !(doc.glossary && doc.glossary.length)
-  );
 }
 
 export const useSyncStore = defineStore('sync', () => {
@@ -100,7 +84,8 @@ export const useSyncStore = defineStore('sync', () => {
 
     // If local doc is completely empty, adopt server doc directly
     if (isDocEffectivelyEmpty(docStore.doc) && !isDocEffectivelyEmpty(serverDoc)) {
-      docStore.replaceDoc(serverDoc, true, false);
+      docStore.replaceDoc(serverDoc, false, false);
+      docStore.reapplyReferences();
       await updateBaseState(serverDoc, serverRev, serverUpdatedAt);
       status.value = 'synced';
       showToast(uiStore.lang === 'zh' ? '已从云端恢复 ✓' : 'Restored from cloud ✓', 'ok');
@@ -120,7 +105,8 @@ export const useSyncStore = defineStore('sync', () => {
     // Run 3-way merge
     const mergeRes = threeWayMerge(baseDoc.value, docStore.doc, serverDoc);
     if (mergeRes.canAutoMerge) {
-      docStore.replaceDoc(mergeRes.mergedDoc, true, false);
+      docStore.replaceDoc(mergeRes.mergedDoc, false, false);
+      docStore.reapplyReferences();
       await updateBaseState(serverDoc, serverRev, serverUpdatedAt);
       // Push merged result with baseRev = serverRev
       const putRes = await api.putSync(docStore.doc, serverRev);
@@ -245,7 +231,8 @@ export const useSyncStore = defineStore('sync', () => {
     const uiStore = useUIStore();
 
     if (choice === 'remote') {
-      docStore.replaceDoc(cState.serverDoc, true, false);
+      docStore.replaceDoc(cState.serverDoc, false, false);
+      docStore.reapplyReferences();
       await updateBaseState(cState.serverDoc, cState.serverRev, cState.serverUpdatedAt);
       conflictState.value = null;
       status.value = 'synced';
@@ -256,7 +243,8 @@ export const useSyncStore = defineStore('sync', () => {
 
     const targetDoc =
       choice === 'local' ? docStore.doc : customMergedDoc || cState.mergedDoc;
-    docStore.replaceDoc(targetDoc, true, false);
+    docStore.replaceDoc(targetDoc, false, false);
+    docStore.reapplyReferences();
     await updateBaseState(cState.serverDoc, cState.serverRev, cState.serverUpdatedAt);
     conflictState.value = null;
     uiStore.closeModal('conflict');
@@ -297,10 +285,27 @@ export const useSyncStore = defineStore('sync', () => {
     }
   }
 
-  function onLogout() {
+  /**
+   * Forgets the merge base (memory + IndexedDB). Must run on logout and before any
+   * local-only reset, otherwise a later 3-way merge would read the missing entities as
+   * intentional local deletions and wipe them from the cloud.
+   */
+  async function resetBaseState() {
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+    }
+    baseDoc.value = null;
+    baseRev.value = 0;
+    lastSyncedAt.value = null;
+    conflictState.value = null;
+    await saveBaseSyncState(null, 0);
+  }
+
+  async function onLogout() {
     stopPresenceHeartbeat();
     status.value = 'offline';
-    conflictState.value = null;
+    await resetBaseState();
   }
 
   return {
@@ -315,6 +320,7 @@ export const useSyncStore = defineStore('sync', () => {
     push,
     pull,
     resolveConflict,
+    resetBaseState,
     sendPresence,
     startPresenceHeartbeat,
     stopPresenceHeartbeat,

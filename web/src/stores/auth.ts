@@ -11,13 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => Boolean(user.value));
   const isAdmin = computed(() => Boolean(user.value?.isAdmin));
-  const isSuperAdmin = computed(() => {
-    if (!user.value) return false;
-    if (user.value.isSuperAdmin) return true;
-    const email = (user.value.email || '').toLowerCase();
-    const name = (user.value.name || '').toLowerCase();
-    return email.startsWith('markzm@') || email === 'markzm' || name === 'markzm';
-  });
+  const isSuperAdmin = computed(() => Boolean(user.value?.isSuperAdmin));
   const isMuted = computed(() => Boolean(user.value?.isMuted));
 
   const displayName = computed(() => {
@@ -95,12 +89,25 @@ export const useAuthStore = defineStore('auth', () => {
       // Ignore logout network error
     } finally {
       user.value = null;
+      // Order matters: forget the sync base BEFORE swapping the document, so nothing that
+      // happens during the swap can be interpreted as a deletion against the old base.
+      try {
+        const { useSyncStore } = await import('./sync');
+        await useSyncStore().onLogout();
+      } catch {
+        // Ignore sync teardown error
+      }
       try {
         const { useDocStore } = await import('./doc');
-        const docStore = useDocStore();
-        docStore.resetToStarterExample();
+        useDocStore().unloadForLogout();
       } catch {
         // Ignore reset error
+      }
+      try {
+        const { useAIStore } = await import('./ai');
+        useAIStore().clearLocal();
+      } catch {
+        // Ignore AI teardown error
       }
     }
   }

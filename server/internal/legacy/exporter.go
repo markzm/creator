@@ -301,7 +301,7 @@ func RunExport(ctx context.Context, cfg ExportConfig) (*ExportManifest, error) {
 		manifest.AllShareCnt = len(shareRows)
 		var myShares []worldShareRow
 		for _, s := range shareRows {
-			if (uid != "" && s.OwnerID == uid) || ( s.OwnerID == "" && manifest.UserName != "" && s.OwnerName == manifest.UserName) {
+			if (uid != "" && s.OwnerID == uid) || (s.OwnerID == "" && manifest.UserName != "" && s.OwnerName == manifest.UserName) {
 				myShares = append(myShares, s)
 			}
 		}

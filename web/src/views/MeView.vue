@@ -237,15 +237,18 @@
           <div>
             <h4 style="margin: 0 0 2px; font-size: 14.5px; color: var(--er)">⚠️ {{ tr('基础范例重置与数据清空', 'Reset & Data Utilities') }}</h4>
             <p class="hint" style="margin: 0; font-size: 12px">
-              {{ tr('可随时重新加载「星渊群岛」官方示例设定，或清空本地创作数据。', 'Reload starter example dataset or clear local data.') }}
+              {{ tr('重置或清空只影响本设备；云端副本会在下次同步时重新拉回。如需同时删除云端数据，请使用最右侧按钮。', 'Reset / clear only affect this device; the cloud copy is restored on next sync. Use the right-most button to also wipe the cloud.') }}
             </p>
           </div>
-          <div style="display: flex; gap: 8px">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap">
             <button type="button" class="btn sm" @click="onResetStarter">
               🔄 {{ tr('重置为星渊群岛范例', 'Load Starter Example') }}
             </button>
-            <button type="button" class="btn sm danger" @click="onClearData">
+            <button type="button" class="btn sm" @click="onClearData">
               🗑️ {{ tr('清空本地数据', 'Clear Local Data') }}
+            </button>
+            <button v-if="authStore.isLoggedIn" type="button" class="btn sm danger" @click="onWipeCloudAndLocal">
+              ☁️🗑️ {{ tr('清空本地并覆盖云端', 'Wipe Local & Cloud') }}
             </button>
           </div>
         </div>
@@ -550,8 +553,9 @@ async function onResetStarter() {
   ) {
     return;
   }
+  await syncStore.resetBaseState();
   docStore.resetToStarterExample();
-  toast(tr('已加载星渊群岛基础范例 ✨', 'Loaded starter example ✨'), 'ok');
+  toast(tr('已加载星渊群岛基础范例 ✨（云端数据未受影响）', 'Loaded starter example ✨ (cloud untouched)'), 'ok');
 }
 
 async function onClearData() {
@@ -563,8 +567,27 @@ async function onClearData() {
   ) {
     return;
   }
+  await syncStore.resetBaseState();
   docStore.clearAllData();
-  toast(tr('已清空本地数据', 'Local data cleared'), 'ok');
+  toast(tr('已清空本地数据（云端数据未受影响）', 'Local data cleared (cloud untouched)'), 'ok');
+}
+
+async function onWipeCloudAndLocal() {
+  if (
+    !(await confirm(
+      tr('确定同时清空本地与云端全部数据？', 'Wipe BOTH local and cloud data?'),
+      tr('此操作会把空白库推送到云端并覆盖所有设备上的数据，无法通过同步找回（仅可从服务器历史快照回滚）。强烈建议先导出备份。', 'This pushes an empty workspace to the cloud and overwrites every device. Only server-side revision snapshots can restore it. Export a backup first.')
+    ))
+  ) {
+    return;
+  }
+  docStore.clearAllData();
+  docStore.touch(true, true);
+  const ok = await syncStore.push(true);
+  toast(
+    ok ? tr('本地与云端已清空', 'Local and cloud wiped') : tr('本地已清空，云端推送失败，请稍后手动同步', 'Local cleared; cloud push failed, sync manually later'),
+    ok ? 'ok' : 'warn'
+  );
 }
 
 watch(
@@ -634,8 +657,8 @@ async function onSaveBio() {
 }
 
 async function onLogout() {
+  // authStore.logout() tears down sync state, the document and local AI config in the right order.
   await authStore.logout();
-  syncStore.onLogout();
   toast(tr('已退出登录', 'Signed out'), 'ok');
 }
 </script>

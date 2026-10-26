@@ -1,5 +1,5 @@
 import { del, get, set } from 'idb-keyval';
-import { mergeBackupIntoDoc } from '../core/backup';
+import { extractReferenceSubset, mergeReferenceMaterials } from '../core/reference';
 import { createEmptyDocV6, migrateToV6 } from '../core/schema/migrations';
 import type { DocV6 } from '../core/schema/types';
 import { createStarterExampleDoc } from '../core/starterExample';
@@ -42,14 +42,6 @@ export async function requestPersistentStorage(): Promise<boolean> {
   return false;
 }
 
-function isDocBlank(doc: DocV6): boolean {
-  const hasAnyData = (map: Record<string, { data?: Record<string, string> }>) =>
-    Object.values(map || {}).some((e) =>
-      Object.values(e.data || {}).some((v) => v && String(v).trim().length > 0)
-    );
-  return !hasAnyData(doc.worlds) && !hasAnyData(doc.orgs) && !hasAnyData(doc.chars);
-}
-
 async function tryFetchServerSeed(): Promise<any | null> {
   try {
     if (
@@ -90,7 +82,8 @@ export async function loadOrMigrateDoc(): Promise<DocV6> {
       if (notSeededYet) {
         const seedRaw = await tryFetchServerSeed();
         if (seedRaw) {
-          doc = isDocBlank(doc) ? migrateToV6(seedRaw) : mergeBackupIntoDoc(doc, seedRaw);
+          // Only official `isReference` items may enter a user's workspace from the seed.
+          mergeReferenceMaterials(doc, extractReferenceSubset(migrateToV6(seedRaw)));
           localStorage.setItem(SEED_FLAG_KEY, '1');
           await saveDocToIDB(doc, false);
         }
@@ -119,7 +112,8 @@ export async function loadOrMigrateDoc(): Promise<DocV6> {
   if (notSeededYet) {
     const seedRaw = await tryFetchServerSeed();
     if (seedRaw) {
-      const seeded = migrateToV6(seedRaw);
+      const seeded = createStarterExampleDoc();
+      mergeReferenceMaterials(seeded, extractReferenceSubset(migrateToV6(seedRaw)));
       try {
         localStorage.setItem(SEED_FLAG_KEY, '1');
         await saveDocToIDB(seeded, false);

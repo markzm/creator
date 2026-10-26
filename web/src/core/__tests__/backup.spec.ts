@@ -91,3 +91,33 @@ describe('backup & migrations — Golden Master & DocV6 upgrade', () => {
     expect(parsed.worlds.w1.name).toBe('艾瑟兰');
   });
 });
+
+describe('backup — articles/preferences round-trip and no-clobber merge', () => {
+  it('serializes articles and preferences and restores them via mergeBackupIntoDoc', () => {
+    const doc = createEmptyDocV6(() => 'u', 1000);
+    doc.articles = [
+      { id: 'art_1', title: '第一章', category: '小说正文', summary: '', content: '正文', visibility: 'private', orgIds: [], charIds: [], wordCount: 2, createdAt: 1, updatedAt: 1 }
+    ];
+    doc.preferences = { preferredGenre: '科幻', writingTone: 'x', defaultPerspective: 'y', aiCustomInstruction: 'z' };
+    const json = serializeBackupV6(doc);
+    const restored = mergeBackupIntoDoc(createEmptyDocV6(() => 'v', 2000), JSON.parse(json));
+    expect(restored.articles?.map((a) => a.id)).toEqual(['art_1']);
+    expect(restored.preferences?.preferredGenre).toBe('科幻');
+  });
+
+  it('does not let an older backup overwrite a newer local entity', () => {
+    const local = createEmptyDocV6(() => 'u', 1000);
+    const id = Object.keys(local.chars)[0];
+    local.chars[id].data.name = '新名字';
+    local.chars[id].updatedAt = 5000;
+    const older = JSON.parse(serializeBackupV6(local));
+    older.chars[id].data.name = '旧名字';
+    older.chars[id].updatedAt = 10;
+    const merged = mergeBackupIntoDoc(local, older);
+    expect(merged.chars[id].data.name).toBe('新名字');
+    const newer = JSON.parse(serializeBackupV6(local));
+    newer.chars[id].data.name = '更新名字';
+    newer.chars[id].updatedAt = 9000;
+    expect(mergeBackupIntoDoc(local, newer).chars[id].data.name).toBe('更新名字');
+  });
+});

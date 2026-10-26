@@ -467,16 +467,19 @@ func TestAIStatusAndAnonymousLobbyAndVisibility(t *testing.T) {
 }
 
 func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
-	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	srv, st, _ := setupTestServer(t, config.RegisterModeOpen)
 	client := srv.Client()
 
-	// 1. Register markzm user (SuperAdmin) and a regular creator
+	// 1. Register the site owner and promote via the store (what SUPER_ADMIN_EMAIL / CLI do), plus a regular creator
 	respAdmin, bodyAdmin := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
-		"email":    "markzm@creator.local",
+		"email":    "owner@creator.local",
 		"password": "Password123",
 	}, nil, "")
 	if respAdmin.StatusCode != http.StatusCreated {
-		t.Fatalf("register markzm failed: %d %v", respAdmin.StatusCode, bodyAdmin)
+		t.Fatalf("register owner failed: %d %v", respAdmin.StatusCode, bodyAdmin)
+	}
+	if err := st.SetUserSuperAdmin(context.Background(), "owner@creator.local", true); err != nil {
+		t.Fatalf("promote super admin: %v", err)
 	}
 	var cookieAdmin *http.Cookie
 	if len(respAdmin.Cookies()) > 0 {
@@ -526,7 +529,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 	shareObj := bodyShare["share"].(map[string]interface{})
 	shareID := shareObj["id"].(string)
 
-	// 4. Markzm posts a comment on the share
+	// 4. Site owner posts a comment on the share
 	respComment, bodyComment := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares/"+shareID+"/comments", map[string]interface{}{
 		"content": "设定非常惊艳，期待后续展开！",
 	}, cookieAdmin, "")
@@ -547,7 +550,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 		t.Fatalf("expected at least 1 notification, got 0")
 	}
 
-	// 5. Creator likes markzm's comment
+	// 5. Creator likes the owner's comment
 	respLike, bodyLike := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/comments/"+strconv.FormatInt(commentID, 10)+"/like", nil, cookieCreator, "")
 	if respLike.StatusCode != http.StatusOK {
 		t.Fatalf("like comment failed: %d %v", respLike.StatusCode, bodyLike)
@@ -561,7 +564,7 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 		"worldId":    shareID,
 		"worldTitle": "星界巨塔",
 		"summary":    "官方与同人共创世界观企划",
-		"admins":     []string{"markzm@creator.local"},
+		"admins":     []string{"owner@creator.local"},
 	}, cookieCreator, "")
 	if respProj.StatusCode != http.StatusCreated {
 		t.Fatalf("create cocreation project failed: %d %v", respProj.StatusCode, bodyProj)
@@ -569,12 +572,12 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 	projObj := bodyProj["project"].(map[string]interface{})
 	projID := projObj["id"].(string)
 
-	// 7. Markzm (superadmin) manages roles: promotes creator to admin
+	// 7. Super admin manages roles: promotes creator to admin
 	respRole, _ := doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/admin/users/"+strconv.FormatInt(creatorID, 10)+"/role", map[string]interface{}{
 		"isAdmin": true,
 	}, cookieAdmin, "")
 	if respRole.StatusCode != http.StatusOK {
-		t.Fatalf("markzm set admin role failed: %d", respRole.StatusCode)
+		t.Fatalf("super admin set admin role failed: %d", respRole.StatusCode)
 	}
 
 	// Verify creator is now admin in /api/admin/users
@@ -592,33 +595,67 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 		t.Fatalf("expected creator to be admin, got %v", foundCreator)
 	}
 
-	// 8. Test Canonization workflow
-	// Doujin creator publishes a fan setting for the cocreation project
+	// 8. Test Canonization workflow with a third user (a fan who is NOT part of the project)
+	respFan, bodyFan := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
+		"email":    "fan@example.com",
+		"password": "Password123",
+	}, nil, "")
+	if respFan.StatusCode != http.StatusCreated {
+		t.Fatalf("register fan failed: %d %v", respFan.StatusCode, bodyFan)
+	}
+	cookieFan := respFan.Cookies()[0]
+
+	// The fan tries to declare the share canon; the server must downgrade it to doujin.
 	respDoujin, bodyDoujin := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
 		"kind":         "char",
 		"title":        "塔之守护者 · 阿尔温",
 		"summary":      "星界巨塔守卫队长（同人衍生）",
 		"content":      "守护高塔百年的机械人偶骑士",
 		"visibility":   "public",
-		"canonStatus":  "doujin",
+		"canonStatus":  "canon",
 		"cocreationId": projID,
-	}, cookieCreator, "")
+	}, cookieFan, "")
 	if respDoujin.StatusCode != http.StatusCreated {
 		t.Fatalf("create doujin failed: %d %v", respDoujin.StatusCode, bodyDoujin)
 	}
 	doujinObj := bodyDoujin["share"].(map[string]interface{})
 	doujinID := doujinObj["id"].(string)
+	if doujinObj["canonStatus"] != "doujin" {
+		t.Fatalf("expected server to force doujin for non-member, got %v", doujinObj["canonStatus"])
+	}
+
+	// The project owner publishing inside their own project is canon directly.
+	_, bodyOwnerShare := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind": "org", "title": "巨塔守卫队", "content": "官方设定", "visibility": "public", "cocreationId": projID,
+	}, cookieCreator, "")
+	if bodyOwnerShare["share"].(map[string]interface{})["canonStatus"] != "canon" {
+		t.Fatalf("expected owner share to be canon")
+	}
 
 	// Request canonization
-	respReqCanon, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+doujinID+"/request-canon", nil, cookieCreator, "")
+	respReqCanon, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+doujinID+"/request-canon", nil, cookieFan, "")
 	if respReqCanon.StatusCode != http.StatusOK {
 		t.Fatalf("request canon failed: %d", respReqCanon.StatusCode)
 	}
 
-	// Project creator approves canonization
+	// The fan cannot approve their own request
+	respSelfApprove, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+doujinID+"/approve-canon", nil, cookieFan, "")
+	if respSelfApprove.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for self-approval, got %d", respSelfApprove.StatusCode)
+	}
+
+	// Project owner approves canonization
 	respApproveCanon, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/cocreation/shares/"+doujinID+"/approve-canon", nil, cookieCreator, "")
 	if respApproveCanon.StatusCode != http.StatusOK {
 		t.Fatalf("approve canon failed: %d", respApproveCanon.StatusCode)
+	}
+
+	// Re-publishing the share (same id) must NOT reset the review state
+	_, bodyRepub := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"id": doujinID, "kind": "char", "title": "塔之守护者 · 阿尔温（修订）", "content": "修订版", "visibility": "public", "cocreationId": projID,
+	}, cookieFan, "")
+	if bodyRepub["share"].(map[string]interface{})["canonStatus"] != "canon" {
+		t.Fatalf("expected canon state preserved on re-publish, got %v", bodyRepub["share"])
 	}
 
 	// Verify share is now canon
@@ -626,5 +663,127 @@ func TestV66CocreationDiscussionsAndAdmin(t *testing.T) {
 	shCheck := bodyShareCheck["share"].(map[string]interface{})
 	if shCheck["canonStatus"] != "canon" {
 		t.Fatalf("expected canonStatus to be 'canon', got %v", shCheck["canonStatus"])
+	}
+}
+
+func registerUser(t *testing.T, srv *httptest.Server, email string) (*http.Cookie, int64) {
+	t.Helper()
+	resp, body := doJSONRequest(t, srv.Client(), http.MethodPost, srv.URL+"/api/auth/register", map[string]string{
+		"email":    email,
+		"password": "Password123",
+	}, nil, "")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("register %s failed: %d %v", email, resp.StatusCode, body)
+	}
+	id := int64(body["user"].(map[string]interface{})["id"].(float64))
+	return resp.Cookies()[0], id
+}
+
+func TestNoNicknameEscalation(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	// First registered user (id=1) must NOT be auto-admin, and the magic nickname must do nothing.
+	cookieA, _ := registerUser(t, srv, "markzm@evil.example")
+	_, me := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/me", nil, cookieA, "")
+	u := me["user"].(map[string]interface{})
+	if u["isAdmin"] == true || u["isSuperAdmin"] == true {
+		t.Fatalf("expected no admin flags for first user / markzm-like email, got %v", u)
+	}
+	resp, _ := doJSONRequest(t, client, http.MethodPatch, srv.URL+"/api/me", map[string]string{"name": "markzm"}, cookieA, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch name: %d", resp.StatusCode)
+	}
+	_, me2 := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/me", nil, cookieA, "")
+	u2 := me2["user"].(map[string]interface{})
+	if u2["isAdmin"] == true || u2["isSuperAdmin"] == true {
+		t.Fatalf("nickname 'markzm' must not grant admin, got %v", u2)
+	}
+	_, idB := registerUser(t, srv, "b@example.com")
+	respRole, _ := doJSONRequest(t, client, http.MethodPut, srv.URL+"/api/admin/users/"+strconv.FormatInt(idB, 10)+"/role", map[string]bool{"isAdmin": true}, cookieA, "")
+	if respRole.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for role change by non-admin, got %d", respRole.StatusCode)
+	}
+}
+
+func TestShareOwnershipGuard(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookieA, _ := registerUser(t, srv, "a@example.com")
+	cookieB, _ := registerUser(t, srv, "b2@example.com")
+
+	_, bodyA := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind": "world", "title": "A 的世界", "content": "原文", "visibility": "public",
+	}, cookieA, "")
+	shareID := bodyA["share"].(map[string]interface{})["id"].(string)
+
+	respB, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"id": shareID, "kind": "world", "title": "被篡改", "content": "恶意内容", "visibility": "private",
+	}, cookieB, "")
+	if respB.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 when overwriting another user's share, got %d", respB.StatusCode)
+	}
+	_, detail := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/shares/"+shareID, nil, nil, "")
+	sh := detail["share"].(map[string]interface{})
+	if sh["title"] != "A 的世界" || sh["visibility"] != "public" {
+		t.Fatalf("share was modified by a non-owner: %v", sh)
+	}
+
+	respA, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"id": shareID, "kind": "world", "title": "A 的世界 v2", "content": "修订", "visibility": "public",
+	}, cookieA, "")
+	if respA.StatusCode != http.StatusCreated {
+		t.Fatalf("owner re-publish should succeed, got %d", respA.StatusCode)
+	}
+}
+
+func TestAIEndpointsRequireAuthAndRejectPrivateHosts(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+
+	for _, path := range []string{"/api/ai/generate", "/api/ai/paint", "/api/ai/test"} {
+		resp, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+path, map[string]interface{}{"prompt": "x"}, nil, "")
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s: expected 401 for anonymous call, got %d", path, resp.StatusCode)
+		}
+	}
+
+	cookie, _ := registerUser(t, srv, "ai@example.com")
+	for _, bad := range []string{"http://169.254.169.254/latest", "https://127.0.0.1:8080/v1", "https://localhost/v1", "https://evil.example.com/v1", "https://user:pw@api.deepseek.com/v1"} {
+		resp, body := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/ai/generate", map[string]interface{}{
+			"task": "field_gen", "fieldLabel": "性格",
+			"customAi": map[string]string{"provider": "custom", "baseUrl": bad, "apiKey": "sk-x", "model": "m"},
+		}, cookie, "")
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("generate with baseUrl %s: expected 400, got %d %v", bad, resp.StatusCode, body)
+		}
+		respT, _ := doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/ai/test", map[string]string{
+			"provider": "custom", "baseUrl": bad, "apiKey": "sk-x", "model": "m",
+		}, cookie, "")
+		if respT.StatusCode != http.StatusBadRequest {
+			t.Fatalf("test with baseUrl %s: expected 400, got %d", bad, respT.StatusCode)
+		}
+	}
+}
+
+func TestCreatorProfileListsPublicShares(t *testing.T) {
+	srv, _, _ := setupTestServer(t, config.RegisterModeOpen)
+	client := srv.Client()
+	cookie, uid := registerUser(t, srv, "profile@example.com")
+	doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind": "char", "title": "公开角色", "content": "x", "visibility": "public",
+	}, cookie, "")
+	doJSONRequest(t, client, http.MethodPost, srv.URL+"/api/shares", map[string]interface{}{
+		"kind": "char", "title": "私密角色", "content": "y", "visibility": "private",
+	}, cookie, "")
+	resp, body := doJSONRequest(t, client, http.MethodGet, srv.URL+"/api/lobby/creator-profile?user_id="+strconv.FormatInt(uid, 10), nil, nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("profile: %d %v", resp.StatusCode, body)
+	}
+	shares, _ := body["publishedShares"].([]interface{})
+	if len(shares) != 1 {
+		t.Fatalf("expected exactly 1 public share in profile, got %d (%v)", len(shares), body["publishedShares"])
+	}
+	if shares[0].(map[string]interface{})["title"] != "公开角色" {
+		t.Fatalf("unexpected share in profile: %v", shares[0])
 	}
 }

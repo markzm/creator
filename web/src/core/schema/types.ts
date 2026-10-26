@@ -7,6 +7,7 @@ export interface BaseEntity {
   visibility?: 'private' | 'public';
   shareId?: string;
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   avatar?: string;
   tachiE?: string; // 立绘 URL or base64
@@ -39,6 +40,7 @@ export interface TemplateDef {
   fields: string[];
   builtin?: boolean;
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   updatedAt?: number;
 }
@@ -55,6 +57,7 @@ export interface TimelineEvent {
   link?: string;
   src?: 'manual' | 'world' | 'org' | 'char';
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   updatedAt?: number;
 }
@@ -86,6 +89,7 @@ export interface PlotVolume {
   note?: string;
   acts: PlotAct[];
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   updatedAt?: number;
 }
@@ -104,6 +108,7 @@ export interface SceneCard {
   note?: string;
   status?: ChapterStatus;
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   updatedAt?: number;
 }
@@ -116,6 +121,7 @@ export interface GlossaryItem {
   def?: string;
   note?: string;
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   updatedAt?: number;
 }
@@ -140,6 +146,7 @@ export interface ArticleItem {
   visibility: 'private' | 'public';
   shareId?: string;
   isReference?: boolean;
+  refAuthorId?: number;
   refAuthorName?: string;
   wordCount: number;
   createdAt: number;

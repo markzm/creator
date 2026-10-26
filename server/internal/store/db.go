@@ -148,9 +148,6 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 	}
 
-	// Ensure user ID 1 or markzm@creator.local is marked as admin
-	_, _ = s.WriteDB.ExecContext(ctx, "UPDATE users SET is_admin = 1 WHERE id = 1 OR email = 'markzm@creator.local'")
-
 	return nil
 }
 

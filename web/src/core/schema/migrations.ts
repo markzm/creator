@@ -20,6 +20,63 @@ import type {
   WorldEntity
 } from './types';
 
+const ENTITY_META_KEYS = [
+  'isReference',
+  'visibility',
+  'shareId',
+  'refAuthorId',
+  'refAuthorName',
+  'avatar',
+  'tachiE',
+  'canonStatus',
+  'cocreationId',
+  'canonRequested'
+] as const;
+
+const WORLD_META_KEYS = ['isCocreation', 'cocreationAdmins', 'cocreationSummary'] as const;
+
+const ITEM_META_KEYS = ['isReference', 'refAuthorId', 'refAuthorName'] as const;
+
+/**
+ * Copies optional metadata keys (visibility, shareId, avatar, co-creation flags, ...) from a raw
+ * entity so that re-running the migration never strips data the UI has written.
+ * Only keys that are present and truthy/defined are emitted so golden fixtures stay byte-identical.
+ */
+function pickMeta(val: Record<string, any>, keys: readonly string[]): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const k of keys) {
+    const v = val[k];
+    if (v === undefined || v === null || v === '' || v === false) continue;
+    if (k === 'isReference' || k === 'canonRequested' || k === 'isCocreation') {
+      out[k] = true;
+    } else if (k === 'cocreationAdmins') {
+      if (Array.isArray(v)) out[k] = v.map(String);
+    } else if (k === 'refAuthorId') {
+      const n = Number(v);
+      if (!Number.isNaN(n)) out[k] = n;
+    } else if (k === 'visibility') {
+      if (v === 'public' || v === 'private') out[k] = v;
+    } else if (k === 'canonStatus') {
+      if (v === 'canon' || v === 'doujin') out[k] = v;
+    } else {
+      out[k] = String(v);
+    }
+  }
+  return out;
+}
+
+export function pickEntityMeta(val: Record<string, any>): Record<string, any> {
+  return pickMeta(val, ENTITY_META_KEYS);
+}
+
+export function pickWorldMeta(val: Record<string, any>): Record<string, any> {
+  return { ...pickMeta(val, ENTITY_META_KEYS), ...pickMeta(val, WORLD_META_KEYS) };
+}
+
+export function pickItemMeta(val: Record<string, any>): Record<string, any> {
+  return pickMeta(val, ITEM_META_KEYS);
+}
+
 function createBuiltinTemplates(
   uidFn: (prefix?: string) => string,
   now: number
@@ -161,9 +218,7 @@ export function migrateToV6(
         name: String(data.w_name || val.name || T.zh.unnamed),
         data,
         customInsp: Array.isArray(val.customInsp) ? val.customInsp.map(String) : [],
-        ...(val.isReference ? { isReference: true } : {}),
-        ...(val.visibility ? { visibility: val.visibility } : {}),
-        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
+        ...pickWorldMeta(val),
         createdAt,
         updatedAt
       };
@@ -182,9 +237,7 @@ export function migrateToV6(
         id,
         name: String(data.o_name || val.name || T.zh.unnamed),
         data,
-        ...(val.isReference ? { isReference: true } : {}),
-        ...(val.visibility ? { visibility: val.visibility } : {}),
-        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
+        ...pickEntityMeta(val),
         createdAt,
         updatedAt
       };
@@ -203,9 +256,7 @@ export function migrateToV6(
         id,
         name: String(data.name || val.name || T.zh.unnamed),
         data,
-        ...(val.isReference ? { isReference: true } : {}),
-        ...(val.visibility ? { visibility: val.visibility } : {}),
-        ...(val.shareId ? { shareId: String(val.shareId) } : {}),
+        ...pickEntityMeta(val),
         createdAt,
         updatedAt
       };
@@ -233,7 +284,7 @@ export function migrateToV6(
         ...(val.enDesc ? { enDesc: String(val.enDesc) } : {}),
         fields: Array.isArray(val.fields) ? val.fields.map(String) : [],
         builtin: Boolean(val.builtin),
-        ...(val.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(val),
         updatedAt: typeof val.updatedAt === 'number' ? val.updatedAt : now
       };
     }
@@ -261,7 +312,7 @@ export function migrateToV6(
         ...(item.chars ? { chars: String(item.chars) } : {}),
         ...(item.desc !== undefined ? { desc: String(item.desc) } : {}),
         ...(item.link !== undefined ? { link: String(item.link) } : {}),
-        ...(item.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(item),
         src: item.src || 'manual',
         updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : now
       };
@@ -305,7 +356,7 @@ export function migrateToV6(
         id: String(p.id || uidFn('pl_')),
         title: String(p.title || T.zh.unnamed),
         ...(p.note !== undefined ? { note: String(p.note) } : {}),
-        ...(p.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(p),
         acts,
         updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : now
       });
@@ -316,9 +367,10 @@ export function migrateToV6(
   if (Array.isArray(baseSource.scenes)) {
     for (const s of baseSource.scenes) {
       if (!s || typeof s !== 'object') continue;
-      const place = s.place ?? s.location;
-      const purpose = s.purpose ?? s.conflict;
-      const beat = s.beat ?? s.note;
+      // The UI edits `location` / `conflict` / `note`; the legacy keys are kept as aliases.
+      const place = s.location ?? s.place;
+      const purpose = s.conflict ?? s.purpose;
+      const beat = s.note ?? s.beat;
       scenes.push({
         id: String(s.id || uidFn('sc_')),
         title: String(s.title || T.zh.unnamed),
@@ -328,7 +380,7 @@ export function migrateToV6(
         ...(s.mood !== undefined ? { mood: String(s.mood) } : {}),
         ...(purpose !== undefined ? { purpose: String(purpose), conflict: String(purpose) } : {}),
         ...(beat !== undefined ? { beat: String(beat), note: String(beat) } : {}),
-        ...(s.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(s),
         status: s.status === '写作中' || s.status === '已完成' ? s.status : '未写',
         updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : now
       });
@@ -339,14 +391,15 @@ export function migrateToV6(
   if (Array.isArray(baseSource.glossary)) {
     for (const g of baseSource.glossary) {
       if (!g || typeof g !== 'object') continue;
-      const cat = g.cat ?? g.std;
-      const def = g.def ?? g.note;
+      // The UI edits `std` / `note`; `cat` / `def` are legacy aliases.
+      const cat = g.std ?? g.cat;
+      const def = g.note ?? g.def;
       glossary.push({
         id: String(g.id || uidFn('gl_')),
         term: String(g.term || ''),
         ...(cat !== undefined ? { cat: String(cat), std: String(cat) } : {}),
         ...(def !== undefined ? { def: String(def), note: String(def) } : {}),
-        ...(g.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(g),
         updatedAt: typeof g.updatedAt === 'number' ? g.updatedAt : now
       });
     }
@@ -383,7 +436,7 @@ export function migrateToV6(
         charIds: Array.isArray(a.charIds) ? a.charIds.map(String) : [],
         visibility: a.visibility === 'public' ? 'public' : 'private',
         shareId: a.shareId ? String(a.shareId) : undefined,
-        ...(a.isReference ? { isReference: true } : {}),
+        ...pickItemMeta(a),
         wordCount: typeof a.wordCount === 'number' ? a.wordCount : content.length,
         createdAt: typeof a.createdAt === 'number' ? a.createdAt : now,
         updatedAt: typeof a.updatedAt === 'number' ? a.updatedAt : now

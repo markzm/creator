@@ -188,7 +188,7 @@ function onSelectMore(item: { to?: string; action?: string }) {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .mobile-nav-container {
     display: block;
   }

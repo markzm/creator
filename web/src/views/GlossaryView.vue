@@ -228,6 +228,7 @@ function addTerm() {
     id: uid('gl_'),
     term,
     std: newTerm.std.trim(),
+    cat: newTerm.std.trim(),
     note: newTerm.note.trim(),
     def: newTerm.note.trim(),
     updatedAt: Date.now()

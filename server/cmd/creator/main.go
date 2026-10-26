@@ -57,6 +57,14 @@ func runServe() {
 		log.Fatalf("[FATAL] create avatar dir (%s): %v", cfg.AvatarDir, err)
 	}
 
+	if cfg.SuperAdminEmail == "" {
+		log.Printf("[WARN] SUPER_ADMIN_EMAIL is not set; promote an account with `creator user promote --email <email> --super`")
+	} else if promoted, err := st.EnsureSuperAdmin(context.Background(), cfg.SuperAdminEmail); err != nil {
+		log.Printf("[WARN] ensure super admin %s: %v", cfg.SuperAdminEmail, err)
+	} else if promoted {
+		log.Printf("[creator] promoted %s to super admin", cfg.SuperAdminEmail)
+	}
+
 	handler := api.NewServer(cfg, st)
 	srv := &http.Server{
 		Addr:         cfg.ListenAddr,
@@ -112,7 +120,7 @@ func runInvite(args []string) {
 
 func runUser(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: creator user [list | create | reset-password | set-admin | disable | enable]")
+		fmt.Fprintln(os.Stderr, "Usage: creator user [list | create | reset-password | set-admin | promote | demote | disable | enable]")
 		os.Exit(1)
 	}
 	cfg := config.Load()
@@ -195,6 +203,27 @@ func runUser(args []string) {
 			log.Fatalf("set admin failed: %v", err)
 		}
 		fmt.Printf("Updated admin status for %s to %v\n", *email, *admin)
+
+	case "promote", "demote":
+		fs := flag.NewFlagSet("user "+sub, flag.ExitOnError)
+		email := fs.String("email", "", "User email")
+		super := fs.Bool("super", false, "Grant/revoke SUPER admin (otherwise regular admin)")
+		_ = fs.Parse(args[1:])
+		if *email == "" {
+			log.Fatalf("--email is required")
+		}
+		grant := sub == "promote"
+		if *super {
+			if err := st.SetUserSuperAdmin(ctx, *email, grant); err != nil {
+				log.Fatalf("%s super admin failed: %v", sub, err)
+			}
+			fmt.Printf("Super admin for %s set to %v\n", *email, grant)
+		} else {
+			if err := st.SetUserAdmin(ctx, *email, grant); err != nil {
+				log.Fatalf("%s admin failed: %v", sub, err)
+			}
+			fmt.Printf("Admin for %s set to %v\n", *email, grant)
+		}
 
 	default:
 		log.Fatalf("unknown user subcommand: %s", sub)

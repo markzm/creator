@@ -225,6 +225,10 @@ function saveScene() {
     modal.target.chars = modal.chars.trim();
     modal.target.conflict = modal.conflict.trim();
     modal.target.note = modal.note.trim();
+    // Keep legacy alias keys in lockstep so a re-migration never resurrects stale values.
+    modal.target.place = modal.target.location;
+    modal.target.purpose = modal.target.conflict;
+    modal.target.beat = modal.target.note;
     modal.target.status = modal.status;
     modal.target.updatedAt = now;
   } else {
@@ -232,9 +236,12 @@ function saveScene() {
       id: uid('sc_'),
       title: modal.title.trim(),
       location: modal.location.trim(),
+      place: modal.location.trim(),
       chars: modal.chars.trim(),
       conflict: modal.conflict.trim(),
+      purpose: modal.conflict.trim(),
       note: modal.note.trim(),
+      beat: modal.note.trim(),
       status: modal.status,
       updatedAt: now
     });

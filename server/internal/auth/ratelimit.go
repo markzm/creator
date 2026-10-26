@@ -19,10 +19,11 @@ type accountLock struct {
 
 // Guard provides dual-dimension rate limiting (IP + Email) and brute-force account lockout.
 type Guard struct {
-	mu          sync.Mutex
-	ipLogin     map[string]*bucket
-	ipRegister  map[string]*bucket
-	emailLocks  map[string]*accountLock
+	mu         sync.Mutex
+	ipLogin    map[string]*bucket
+	ipRegister map[string]*bucket
+	emailLocks map[string]*accountLock
+	scopes     map[string]map[string]*bucket
 }
 
 func NewGuard() *Guard {
@@ -30,7 +31,20 @@ func NewGuard() *Guard {
 		ipLogin:    make(map[string]*bucket),
 		ipRegister: make(map[string]*bucket),
 		emailLocks: make(map[string]*accountLock),
+		scopes:     make(map[string]map[string]*bucket),
 	}
+}
+
+// Allow is a generic fixed-window limiter: at most `limit` events per `window` for `key` within `scope`.
+func (g *Guard) Allow(scope, key string, limit int, window time.Duration) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	m, ok := g.scopes[scope]
+	if !ok {
+		m = make(map[string]*bucket)
+		g.scopes[scope] = m
+	}
+	return allowBucket(m, key, limit, window, time.Now())
 }
 
 // AllowLogin checks IP rate limit (max 15/min) and whether the target email is currently locked out.

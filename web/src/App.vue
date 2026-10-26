@@ -173,7 +173,7 @@ onUnmounted(() => {
 .offline-banner-btn:hover {
   background: #fef3c7 !important;
 }
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .offline-banner {
     flex-direction: column;
     align-items: flex-start;

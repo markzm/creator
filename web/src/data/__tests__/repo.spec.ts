@@ -71,3 +71,31 @@ describe('data/repo — IndexedDB persistence & legacy cc_db_v5 migration', () =
     expect(state.baseDoc?._version).toBe(6);
   });
 });
+
+describe('data/repo — server seed only contributes official reference items', () => {
+  it('ignores non-reference entities in /api/seed and never overwrites user items', async () => {
+    const { vi } = await import('vitest');
+    const seed = {
+      _version: 6,
+      worlds: {
+        wd_official: { id: 'wd_official', name: '官方世界', isReference: true, customInsp: [], data: { w_name: '官方世界' }, createdAt: 1, updatedAt: 1 },
+        wd_admin_private: { id: 'wd_admin_private', name: '管理员私货', customInsp: [], data: { w_name: '管理员私货' }, createdAt: 1, updatedAt: 1 }
+      },
+      orgs: {},
+      chars: {}
+    };
+    const fetchMock = vi.fn(async () => ({ status: 200, json: async () => seed }));
+    await clear();
+    localStorage.clear();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const doc = await loadOrMigrateDoc();
+      expect(fetchMock).toHaveBeenCalled();
+      expect(doc.worlds.wd_official).toBeDefined();
+      expect(doc.worlds.wd_official.isReference).toBe(true);
+      expect(doc.worlds.wd_admin_private).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,7 +31,7 @@ type UserAIConfig struct {
 	Provider string `json:"provider"` // "public" | "deepseek" | "siliconflow" | "openrouter" | "custom"
 	BaseURL  string `json:"baseUrl"`  // e.g. "https://api.deepseek.com/v1"
 	APIKey   string `json:"apiKey"`
-	Model    string `json:"model"`    // e.g. "deepseek-chat", "deepseek-reasoner"
+	Model    string `json:"model"` // e.g. "deepseek-chat", "deepseek-reasoner"
 }
 
 type StudioPreferences struct {
@@ -58,13 +60,88 @@ type GenerateResponse struct {
 	UsedAI  string `json:"usedAi"` // "public" or "custom"
 }
 
+// ErrInvalidBaseURL is returned when a user-supplied AI endpoint is not on the allow-list or
+// points at a private / loopback / link-local address (SSRF protection).
+var ErrInvalidBaseURL = errors.New("不支持的 AI 接口地址：仅允许 https 访问受信任的 AI 服务商域名")
+
+// defaultAllowedAIHosts are the OpenAI-compatible providers offered as presets in the UI.
+var defaultAllowedAIHosts = []string{
+	"api.deepseek.com",
+	"api.siliconflow.cn",
+	"openrouter.ai",
+	"api.openai.com",
+}
+
 func NewService(cfg *config.Config) *AIService {
-	return &AIService{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: 90 * time.Second,
+	svc := &AIService{cfg: cfg}
+	svc.httpClient = &http.Client{
+		Timeout: 90 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return errors.New("too many redirects")
+			}
+			// A trusted host must not be able to bounce us to an internal address.
+			if _, err := svc.ValidateBaseURL(req.URL.String()); err != nil {
+				return err
+			}
+			return nil
 		},
 	}
+	return svc
+}
+
+func (s *AIService) allowedHosts() []string {
+	hosts := append([]string{}, defaultAllowedAIHosts...)
+	if s.cfg != nil {
+		hosts = append(hosts, s.cfg.AllowedAIHosts...)
+	}
+	return hosts
+}
+
+// ValidateBaseURL checks a user-supplied base URL and returns it normalised (no trailing slash).
+// Rules: https only, no userinfo, hostname (not IP literal) on the allow-list, and - when the
+// name resolves - no private, loopback or link-local addresses.
+func (s *AIService) ValidateBaseURL(raw string) (string, error) {
+	return ValidateBaseURLWith(raw, s.allowedHosts())
+}
+
+func ValidateBaseURLWith(raw string, allowed []string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", ErrInvalidBaseURL
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Hostname() == "" {
+		return "", ErrInvalidBaseURL
+	}
+	host := strings.ToLower(u.Hostname())
+	if net.ParseIP(host) != nil || host == "localhost" ||
+		strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".localhost") {
+		return "", ErrInvalidBaseURL
+	}
+	ok := false
+	for _, a := range allowed {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a == "" {
+			continue
+		}
+		if host == a || strings.HasSuffix(host, "."+a) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return "", ErrInvalidBaseURL
+	}
+	// Defense in depth against DNS tricks on an allow-listed name.
+	if ips, err := net.LookupIP(host); err == nil {
+		for _, ip := range ips {
+			if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+				return "", ErrInvalidBaseURL
+			}
+		}
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 // OpenRouter / OpenAI compatible chat request payload
@@ -148,6 +225,11 @@ func (s *AIService) Generate(ctx context.Context, req GenerateRequest) (*Generat
 		if baseURL == "" {
 			baseURL = "https://api.deepseek.com/v1"
 		}
+		validated, err := s.ValidateBaseURL(baseURL)
+		if err != nil {
+			return nil, fmt.Errorf("个人外部 AI 配置无效: %w", err)
+		}
+		baseURL = validated
 		model := strings.TrimSpace(req.CustomAI.Model)
 		if model == "" {
 			model = "deepseek-chat"
@@ -210,6 +292,11 @@ func (s *AIService) TestConnection(ctx context.Context, cfg UserAIConfig) (strin
 	if baseURL == "" {
 		baseURL = "https://api.deepseek.com/v1"
 	}
+	validated, err := s.ValidateBaseURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	baseURL = validated
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
 		return "", errors.New("API Key 不能为空")
@@ -267,7 +354,8 @@ func (s *AIService) callOpenRouter(ctx context.Context, model, systemPrompt, use
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(respBytes))
+		log.Printf("[ai] upstream %s returned %d: %.300s", req.URL.Host, resp.StatusCode, string(respBytes))
+		return "", fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
 
 	var chatResp chatCompletionResp
@@ -319,7 +407,8 @@ func (s *AIService) callOpenAICompatible(ctx context.Context, baseURL, apiKey, m
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(respBytes))
+		log.Printf("[ai] upstream %s returned %d: %.300s", req.URL.Host, resp.StatusCode, string(respBytes))
+		return "", fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
 
 	var chatResp chatCompletionResp
@@ -580,8 +669,11 @@ func (s *AIService) PaintAnimeArt(ctx context.Context, req *AnimePaintRequest) (
 	}
 
 	// 1. If custom AI has an image generation API endpoint configured
-	if req.CustomAI != nil && req.CustomAI.APIKey != "" && strings.Contains(req.CustomAI.BaseURL, "http") {
-		customURL := strings.TrimRight(req.CustomAI.BaseURL, "/")
+	if req.CustomAI != nil && req.CustomAI.APIKey != "" && strings.TrimSpace(req.CustomAI.BaseURL) != "" {
+		customURL, err := s.ValidateBaseURL(req.CustomAI.BaseURL)
+		if err != nil {
+			return nil, err
+		}
 		if !strings.HasSuffix(customURL, "/images/generations") {
 			customURL += "/images/generations"
 		}
@@ -599,8 +691,10 @@ func (s *AIService) PaintAnimeArt(ctx context.Context, req *AnimePaintRequest) (
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Authorization", "Bearer "+req.CustomAI.APIKey)
 			resp, err := s.httpClient.Do(httpReq)
-			if err == nil && resp.StatusCode == http.StatusOK {
+			if err == nil {
 				defer resp.Body.Close()
+			}
+			if err == nil && resp.StatusCode == http.StatusOK {
 				var customResp struct {
 					Data []struct {
 						URL     string `json:"url"`

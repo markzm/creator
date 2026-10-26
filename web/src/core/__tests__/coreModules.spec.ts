@@ -160,3 +160,56 @@ describe('core utility modules — format, consistency, graphLayout, stats, glos
     expect(byField[0].where).toBe('武器');
   });
 });
+
+describe('schema migrations — metadata & alias preservation', () => {
+  it('keeps avatar/tachiE/visibility/refAuthorId and co-creation flags across repeated migrations', async () => {
+    const { migrateToV6 } = await import('../schema/migrations');
+    const doc = createEmptyDocV6(() => 'u', 1000);
+    const cId = Object.keys(doc.chars)[0];
+    const wId = Object.keys(doc.worlds)[0];
+    Object.assign(doc.chars[cId], {
+      avatar: '🧝',
+      tachiE: 'https://img.example/tachie.png',
+      visibility: 'public',
+      shareId: 'sh_1',
+      refAuthorId: 7,
+      refAuthorName: 'admin',
+      canonStatus: 'doujin',
+      cocreationId: 'ccp_1'
+    });
+    Object.assign(doc.worlds[wId], { isCocreation: true, cocreationAdmins: ['a@x'], cocreationSummary: 's' });
+    const twice = migrateToV6(migrateToV6(doc));
+    expect(twice.chars[cId]).toMatchObject({
+      avatar: '🧝',
+      tachiE: 'https://img.example/tachie.png',
+      visibility: 'public',
+      shareId: 'sh_1',
+      refAuthorId: 7,
+      refAuthorName: 'admin',
+      canonStatus: 'doujin',
+      cocreationId: 'ccp_1'
+    });
+    expect(twice.worlds[wId]).toMatchObject({ isCocreation: true, cocreationAdmins: ['a@x'], cocreationSummary: 's' });
+  });
+
+  it('prefers the UI-edited scene/glossary keys over legacy aliases when they disagree', async () => {
+    const { migrateToV6 } = await import('../schema/migrations');
+    const doc = createEmptyDocV6(() => 'u', 1000);
+    doc.scenes.push({
+      id: 'sc_1',
+      title: '对峙',
+      place: '旧地点',
+      location: '新地点',
+      purpose: '旧目的',
+      conflict: '新冲突',
+      beat: '旧节拍',
+      note: '新备注',
+      status: '未写',
+      updatedAt: 1
+    });
+    doc.glossary.push({ id: 'gl_1', term: '以太', cat: '旧分类', std: '新标准', def: '旧释义', note: '新备注', updatedAt: 1 });
+    const m = migrateToV6(doc);
+    expect(m.scenes[0]).toMatchObject({ place: '新地点', location: '新地点', purpose: '新冲突', conflict: '新冲突', beat: '新备注', note: '新备注' });
+    expect(m.glossary[0]).toMatchObject({ cat: '新标准', std: '新标准', def: '新备注', note: '新备注' });
+  });
+});

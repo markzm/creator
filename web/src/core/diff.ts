@@ -51,6 +51,33 @@ export function stripUIForSync(doc: DocV6): Omit<DocV6, 'ui'> {
 }
 
 /**
+ * True when the document holds no user-authored content.
+ * Official reference materials (`isReference`) and builtin templates do not count, so a
+ * freshly reset workspace (starter example) is "empty" and will adopt the cloud copy on login.
+ */
+export function isDocEffectivelyEmpty(doc: DocV6): boolean {
+  const own = <T extends { isReference?: boolean }>(x: T) => !x.isReference;
+  const hasEntity = (coll: Record<string, BaseEntity> | undefined) =>
+    Object.values(coll || {}).some(
+      (x) => own(x) && x.data && Object.values(x.data).some((v) => v && String(v).trim())
+    );
+  const hasItems = (list: Array<{ isReference?: boolean }> | undefined) =>
+    (list || []).some(own);
+  const hasUserTemplates = Object.values(doc.templates || {}).some((t) => !t.builtin && own(t));
+  return (
+    !hasEntity(doc.worlds) &&
+    !hasEntity(doc.orgs) &&
+    !hasEntity(doc.chars) &&
+    !hasUserTemplates &&
+    !hasItems(doc.timeline) &&
+    !hasItems(doc.plots) &&
+    !hasItems(doc.scenes) &&
+    !hasItems(doc.glossary) &&
+    !hasItems(doc.articles)
+  );
+}
+
+/**
  * Computes a deterministic sync fingerprint ignoring `doc.ui` (active tabs, nowYear).
  */
 export function computeSyncHash(doc: DocV6): string {

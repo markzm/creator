@@ -127,12 +127,6 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, inviteCode 
 	}, nil
 }
 
-func isMarkzm(email, nickname string) bool {
-	e := strings.ToLower(strings.TrimSpace(email))
-	n := strings.ToLower(strings.TrimSpace(nickname))
-	return strings.HasPrefix(e, "markzm@") || e == "markzm" || n == "markzm"
-}
-
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	row := s.ReadDB.QueryRowContext(ctx, `
@@ -179,8 +173,7 @@ func scanUser(row *sql.Row) (*User, error) {
 	if mutedReason.Valid {
 		u.MutedReason = mutedReason.String
 	}
-	if isMarkzm(u.Email, u.Nickname) {
-		u.IsSuperAdmin = true
+	if u.IsSuperAdmin {
 		u.IsAdmin = true
 	}
 	return &u, nil
@@ -272,6 +265,41 @@ func (s *Store) SetUserAdmin(ctx context.Context, email string, isAdmin bool) er
 	return nil
 }
 
+// SetUserSuperAdmin grants or revokes super-admin status by email. Super admins are always admins.
+func (s *Store) SetUserSuperAdmin(ctx context.Context, email string, isSuper bool) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	var q string
+	if isSuper {
+		q = `UPDATE users SET is_super_admin = 1, is_admin = 1, updated_at = ? WHERE email = ?`
+	} else {
+		q = `UPDATE users SET is_super_admin = 0, updated_at = ? WHERE email = ?`
+	}
+	res, err := s.WriteDB.ExecContext(ctx, q, time.Now().Unix(), email)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// EnsureSuperAdmin promotes the configured SUPER_ADMIN_EMAIL at startup. It is a no-op when the
+// account has not registered yet (the promotion happens on the next boot after registration).
+func (s *Store) EnsureSuperAdmin(ctx context.Context, email string) (bool, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false, nil
+	}
+	res, err := s.WriteDB.ExecContext(ctx,
+		`UPDATE users SET is_super_admin = 1, is_admin = 1 WHERE email = ? AND (is_super_admin = 0 OR is_admin = 0)`, email)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 func (s *Store) SetUserAdminByID(ctx context.Context, id int64, isAdmin bool) error {
 	val := 0
 	if isAdmin {
@@ -354,8 +382,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 		if mutedReason.Valid {
 			u.MutedReason = mutedReason.String
 		}
-		if isMarkzm(u.Email, u.Nickname) {
-			u.IsSuperAdmin = true
+		if u.IsSuperAdmin {
 			u.IsAdmin = true
 		}
 		list = append(list, u)

@@ -84,7 +84,13 @@ func TestReferenceMaterialsEndpoints(t *testing.T) {
 	}
 
 	// Admin user updating -> 200 OK
-	updatedJSON := `{"_version":6,"worlds":{"wd_astral":{"id":"wd_astral","name":"星渊群岛","isReference":true}}}`
+	// The admin "accidentally" posts their whole workspace: a private char, private article and AI prefs.
+	updatedJSON := `{"_version":6,
+		"worlds":{"wd_astral":{"id":"wd_astral","name":"星渊群岛","isReference":true}},
+		"chars":{"ch_secret":{"id":"ch_secret","name":"管理员私有角色","data":{"name":"绝密"}}},
+		"articles":[{"id":"art_ref","title":"官方范文","isReference":true},{"id":"art_private","title":"私人日记"}],
+		"preferences":{"aiCustomInstruction":"private prompt"},
+		"stats":[{"date":"2026-01-01","chars":10}]}`
 	tokenAdmin := "sess_admin_12345"
 	_ = st.CreateSession(req.Context(), auth.HashToken(tokenAdmin), uAdmin.ID, "ua", "127.0.0.1", 3600*time.Second)
 	reqAdmin := httptest.NewRequest(http.MethodPut, "/api/admin/reference-materials", bytes.NewReader([]byte(updatedJSON)))
@@ -101,5 +107,17 @@ func TestReferenceMaterialsEndpoints(t *testing.T) {
 	_ = json.Unmarshal(b, &check)
 	if check["_version"] != float64(6) {
 		t.Errorf("expected _version 6 in saved seed.json")
+	}
+	saved := string(b)
+	for _, leak := range []string{"ch_secret", "绝密", "私人日记", "private prompt", "2026-01-01"} {
+		if bytes.Contains(b, []byte(leak)) {
+			t.Errorf("seed.json must only contain isReference items, but leaked %q: %s", leak, saved)
+		}
+	}
+	if !bytes.Contains(b, []byte("wd_astral")) || !bytes.Contains(b, []byte("art_ref")) {
+		t.Errorf("seed.json lost reference items: %s", saved)
+	}
+	if _, ok := check["preferences"]; ok {
+		t.Errorf("preferences must be dropped from seed.json")
 	}
 }

@@ -13,6 +13,8 @@ export interface NormalizedBackupPayload {
   scenes: any[];
   glossary: any[];
   stats: any[];
+  articles?: any[];
+  preferences?: any;
 }
 
 /**
@@ -57,6 +59,8 @@ export function normalizeBackup(
     if (p.scenes) result.scenes = p.scenes;
     if (p.glossary) result.glossary = p.glossary;
     if (p.stats) result.stats = p.stats;
+    if (Array.isArray(p.articles)) result.articles = p.articles;
+    if (p.preferences && typeof p.preferences === 'object') result.preferences = p.preferences;
     return result;
   }
 
@@ -116,18 +120,24 @@ export function mergeBackupIntoDoc(
   const incomingV6 = migrateToV6({ ...normalized, _version: 6 }, uidFn);
   const next: DocV6 = JSON.parse(JSON.stringify(target));
 
+  // Never let an older backup clobber a newer local edit of the same entity.
+  const isNotOlder = (incoming: { updatedAt?: number }, existing?: { updatedAt?: number }) =>
+    !existing || (incoming.updatedAt ?? 0) >= (existing.updatedAt ?? 0);
+
   Object.entries(incomingV6.worlds).forEach(([k, v]) => {
-    next.worlds[k] = v;
+    if (isNotOlder(v, next.worlds[k])) next.worlds[k] = v;
   });
   Object.entries(incomingV6.orgs).forEach(([k, v]) => {
-    next.orgs[k] = v;
+    if (isNotOlder(v, next.orgs[k])) next.orgs[k] = v;
   });
   Object.entries(incomingV6.chars).forEach(([k, v]) => {
-    next.chars[k] = v;
+    if (isNotOlder(v, next.chars[k])) next.chars[k] = v;
   });
   Object.entries(normalized.templates || {}).forEach(([k, v]) => {
     if (incomingV6.templates[k]) {
-      next.templates[k] = incomingV6.templates[k];
+      if (isNotOlder(incomingV6.templates[k], next.templates[k])) {
+        next.templates[k] = incomingV6.templates[k];
+      }
     } else if (v && typeof v === 'object') {
       next.templates[k] = {
         id: v.id || k,
@@ -144,10 +154,13 @@ export function mergeBackupIntoDoc(
     }
   });
 
-  const mergeById = <T extends { id: string }>(arr: T[], items: T[]) => {
+  const mergeById = <T extends { id: string; updatedAt?: number }>(arr: T[], items: T[]) => {
     items.forEach((x) => {
-      if (!arr.some((y) => String(y.id) === String(x.id))) {
+      const idx = arr.findIndex((y) => String(y.id) === String(x.id));
+      if (idx === -1) {
         arr.push(x);
+      } else if (isNotOlder(x, arr[idx]) && (x.updatedAt ?? 0) > (arr[idx].updatedAt ?? 0)) {
+        arr[idx] = x;
       }
     });
   };
@@ -165,6 +178,10 @@ export function mergeBackupIntoDoc(
       next.stats.push(s);
     }
   });
+
+  if (normalized.preferences && typeof normalized.preferences === 'object') {
+    next.preferences = { ...(next.preferences || {}), ...incomingV6.preferences } as DocV6['preferences'];
+  }
 
   if (!next.ui.activeW || !next.worlds[next.ui.activeW]) {
     next.ui.activeW = Object.keys(next.worlds)[0] || null;
@@ -196,6 +213,8 @@ export function serializeBackupV6(doc: DocV6): string {
     scenes: doc.scenes,
     glossary: doc.glossary,
     stats: doc.stats,
+    articles: doc.articles || [],
+    preferences: doc.preferences,
     ui: doc.ui
   };
   return JSON.stringify(payload, null, 2);

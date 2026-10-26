@@ -171,7 +171,27 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 		canonReqVal = 1
 	}
 
-	_, err := s.WriteDB.ExecContext(ctx, `
+	tx, err := s.WriteDB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// A client may supply its own id to update an existing share, but only its own.
+	if strings.TrimSpace(customID) != "" {
+		var ownerID int64
+		err := tx.QueryRowContext(ctx, `SELECT user_id FROM world_shares WHERE id = ?`, id).Scan(&ownerID)
+		if err == nil && ownerID != userID {
+			return nil, ErrShareForbidden
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+
+	// canon_status / canon_requested are server-owned review state: an update only resets them
+	// when the share is moved to a different co-creation project.
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO world_shares (id, user_id, owner_name, kind, title, summary, content, draft_code, visibility, entity_id, tags, word_count, canon_status, cocreation_id, canon_requested, tachi_e_url, author_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -182,15 +202,32 @@ func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int
 			visibility = excluded.visibility,
 			tags = excluded.tags,
 			word_count = excluded.word_count,
-			canon_status = excluded.canon_status,
+			canon_status = CASE WHEN excluded.cocreation_id <> world_shares.cocreation_id THEN excluded.canon_status ELSE world_shares.canon_status END,
+			canon_requested = CASE WHEN excluded.cocreation_id <> world_shares.cocreation_id THEN 0 ELSE world_shares.canon_requested END,
 			cocreation_id = excluded.cocreation_id,
-			canon_requested = excluded.canon_requested,
 			tachi_e_url = excluded.tachi_e_url,
 			updated_at = excluded.updated_at
+		WHERE world_shares.user_id = excluded.user_id
 	`, id, userID, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags, wordCount, canonStatus, cocreationID, canonReqVal, tachiEURL, userID, createdAt, now)
 	if err != nil {
 		return nil, err
 	}
+
+	// Read back the authoritative row (review state may have been preserved by the upsert).
+	var createdAtDB, updatedAtDB int64
+	var canonStatusDB string
+	var canonReqDB int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(canon_status,'canon'), COALESCE(canon_requested,0), created_at, updated_at FROM world_shares WHERE id = ?`, id).
+		Scan(&canonStatusDB, &canonReqDB, &createdAtDB, &updatedAtDB); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	canonStatus = canonStatusDB
+	canonRequested = canonReqDB != 0
+	createdAt = createdAtDB
+	now = updatedAtDB
 
 	// If a doujin setting is published publicly in a co-creation project, notify owner and admins
 	if visibility == "public" && canonStatus == "doujin" && cocreationID != "" {

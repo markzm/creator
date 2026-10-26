@@ -182,7 +182,7 @@
         </div>
       </div>
 
-      <!-- Admin Actions Bar (Visible to Admins / markzm) -->
+      <!-- Admin Actions Bar (visible to admins) -->
       <div
         v-if="authStore.isAdmin && !isViewingSelf"
         class="card"
@@ -192,7 +192,7 @@
           🛡️ 管理员治理快捷操作
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap">
-          <!-- markzm only: grant/revoke admin -->
+          <!-- super admin only: grant/revoke admin -->
           <button
             v-if="authStore.isSuperAdmin"
             type="button"

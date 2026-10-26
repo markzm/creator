@@ -16,10 +16,10 @@ import (
 )
 
 type ImportOptions struct {
-	ExportDir      string
-	Email          string
-	PasswordIfNew  string
-	AvatarDestDir  string
+	ExportDir     string
+	Email         string
+	PasswordIfNew string
+	AvatarDestDir string
 }
 
 type ImportResult struct {

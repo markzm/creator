@@ -350,7 +350,7 @@
   animation: cardIn 0.2s var(--e);
 }
 
-.err {
+.f .err {
   display: none;
   color: var(--dg);
   font-size: 12px;

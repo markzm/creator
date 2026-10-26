@@ -2,11 +2,36 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"creator/server/internal/ai"
+	"creator/server/internal/store"
 )
+
+// allowAI enforces the per-user AI quota (30 calls / minute). The routes are wrapped in
+// RequireAuth, so user is never nil here; the guard is defensive.
+func (s *Server) allowAI(w http.ResponseWriter, user *store.User) bool {
+	if user == nil {
+		writeErr(w, http.StatusUnauthorized, "请先登录后使用 AI 功能")
+		return false
+	}
+	if !s.guard.Allow("ai", strconv.FormatInt(user.ID, 10), 30, time.Minute) {
+		writeErr(w, http.StatusTooManyRequests, "AI 调用过于频繁，请稍后再试")
+		return false
+	}
+	return true
+}
+
+func aiErrStatus(err error) int {
+	if errors.Is(err, ai.ErrInvalidBaseURL) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
+}
 
 func (s *Server) handleAIStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -49,6 +74,11 @@ func (s *Server) handleAIGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := CurrentUser(r)
+	if !s.allowAI(w, user) {
+		return
+	}
+
 	var req ai.GenerateRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -56,7 +86,6 @@ func (s *Server) handleAIGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := CurrentUser(r)
 	// If custom AI is not passed directly by client, check if user has cloud-saved config
 	if (req.CustomAI == nil || req.CustomAI.APIKey == "") && user != nil && user.AIConfigEnc != "" {
 		decJSON, err := ai.DecryptUserConfig(user.AIConfigEnc, s.cfg.SecretKey)
@@ -78,7 +107,7 @@ func (s *Server) handleAIGenerate(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.aiService.Generate(r.Context(), req)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeErr(w, aiErrStatus(err), err.Error())
 		return
 	}
 
@@ -91,6 +120,11 @@ func (s *Server) handleAIPaint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := CurrentUser(r)
+	if !s.allowAI(w, user) {
+		return
+	}
+
 	var req ai.AnimePaintRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -98,7 +132,6 @@ func (s *Server) handleAIPaint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := CurrentUser(r)
 	if (req.CustomAI == nil || req.CustomAI.APIKey == "") && user != nil && user.AIConfigEnc != "" {
 		decJSON, err := ai.DecryptUserConfig(user.AIConfigEnc, s.cfg.SecretKey)
 		if err == nil && decJSON != "" {
@@ -111,7 +144,7 @@ func (s *Server) handleAIPaint(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.aiService.PaintAnimeArt(r.Context(), &req)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "AI绘画生成失败: "+err.Error())
+		writeErr(w, aiErrStatus(err), "AI绘画生成失败: "+err.Error())
 		return
 	}
 
@@ -121,6 +154,10 @@ func (s *Server) handleAIPaint(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAITest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	if !s.allowAI(w, CurrentUser(r)) {
 		return
 	}
 
