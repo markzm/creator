@@ -7,12 +7,21 @@ export interface BaseEntity {
   visibility?: 'private' | 'public';
   shareId?: string;
   isReference?: boolean;
+  refAuthorName?: string;
+  avatar?: string;
+  tachiE?: string; // 立绘 URL or base64
+  canonStatus?: 'canon' | 'doujin';
+  cocreationId?: string;
+  canonRequested?: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface WorldEntity extends BaseEntity {
   customInsp: string[];
+  isCocreation?: boolean;
+  cocreationAdmins?: string[];
+  cocreationSummary?: string;
 }
 
 export interface OrgEntity extends BaseEntity {}
@@ -30,6 +39,7 @@ export interface TemplateDef {
   fields: string[];
   builtin?: boolean;
   isReference?: boolean;
+  refAuthorName?: string;
   updatedAt?: number;
 }
 
@@ -45,6 +55,7 @@ export interface TimelineEvent {
   link?: string;
   src?: 'manual' | 'world' | 'org' | 'char';
   isReference?: boolean;
+  refAuthorName?: string;
   updatedAt?: number;
 }
 
@@ -75,6 +86,7 @@ export interface PlotVolume {
   note?: string;
   acts: PlotAct[];
   isReference?: boolean;
+  refAuthorName?: string;
   updatedAt?: number;
 }
 
@@ -92,6 +104,7 @@ export interface SceneCard {
   note?: string;
   status?: ChapterStatus;
   isReference?: boolean;
+  refAuthorName?: string;
   updatedAt?: number;
 }
 
@@ -103,6 +116,7 @@ export interface GlossaryItem {
   def?: string;
   note?: string;
   isReference?: boolean;
+  refAuthorName?: string;
   updatedAt?: number;
 }
 
@@ -126,6 +140,7 @@ export interface ArticleItem {
   visibility: 'private' | 'public';
   shareId?: string;
   isReference?: boolean;
+  refAuthorName?: string;
   wordCount: number;
   createdAt: number;
   updatedAt: number;
@@ -204,4 +219,63 @@ export interface DiffSummary {
   plotsDelta: number;
   scenesDelta: number;
   glossaryDelta: number;
+}
+
+export interface SettingComment {
+  id: number;
+  shareId: string;
+  userId: number;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  parentId: number;
+  likeCount: number;
+  hasLiked?: boolean;
+  createdAt: number;
+  replies?: SettingComment[];
+}
+
+export interface NotificationItem {
+  id: number;
+  userId: number;
+  senderId: number;
+  senderName: string;
+  type: string;
+  title: string;
+  content: string;
+  targetId: string;
+  targetKind: string;
+  isRead: boolean;
+  createdAt: number;
+}
+
+export interface CocreationProject {
+  id: string;
+  worldId: string;
+  worldTitle: string;
+  ownerId: number;
+  ownerName: string;
+  admins: string[];
+  summary: string;
+  isOpenDoujin: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreatorProfile {
+  user: {
+    id: number;
+    name: string;
+    avatar: string;
+    bio: string;
+    focus: string;
+    lastSeen: number;
+    isOnline: boolean;
+  };
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isMuted: boolean;
+  createdAt: number;
+  publishedShares: any[];
+  cocreations: CocreationProject[];
 }

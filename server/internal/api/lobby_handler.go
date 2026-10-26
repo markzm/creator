@@ -72,6 +72,11 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/shares")
 	path = strings.Trim(path, "/")
 
+	if strings.Contains(path, "/comments") {
+		s.handleShareComments(w, r)
+		return
+	}
+
 	// Sub-resource: /api/shares/:id
 	if path != "" {
 		switch r.Method {
@@ -205,15 +210,19 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var req struct {
-			ID         string `json:"id,omitempty"`
-			EntityID   string `json:"entityId,omitempty"`
-			Kind       string `json:"kind"`
-			Title      string `json:"title"`
-			Summary    string `json:"summary"`
-			Content    string `json:"content"`
-			DraftCode  string `json:"draftCode"`
-			Visibility string `json:"visibility"`
-			Tags       string `json:"tags"`
+			ID             string `json:"id,omitempty"`
+			EntityID       string `json:"entityId,omitempty"`
+			Kind           string `json:"kind"`
+			Title          string `json:"title"`
+			Summary        string `json:"summary"`
+			Content        string `json:"content"`
+			DraftCode      string `json:"draftCode"`
+			Visibility     string `json:"visibility"`
+			Tags           string `json:"tags"`
+			CanonStatus    string `json:"canonStatus"`
+			CocreationID   string `json:"cocreationId"`
+			CanonRequested bool   `json:"canonRequested"`
+			TachiEURL      string `json:"tachiEUrl"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -229,7 +238,7 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 		}
 		wordCount := utf8.RuneCountInString(req.Content)
 
-		sh, err := s.store.UpsertShare(
+		sh, err := s.store.UpsertShareMeta(
 			r.Context(),
 			req.ID,
 			user.ID,
@@ -243,9 +252,17 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 			req.EntityID,
 			req.Tags,
 			wordCount,
+			req.CanonStatus,
+			req.CocreationID,
+			req.CanonRequested,
+			req.TachiEURL,
 			0,
 		)
 		if err != nil {
+			if errors.Is(err, store.ErrUserMuted) {
+				writeErr(w, http.StatusForbidden, "您已被管理员禁言，无法公开作品")
+				return
+			}
 			writeErr(w, http.StatusInternalServerError, "发布或保存失败: "+err.Error())
 			return
 		}

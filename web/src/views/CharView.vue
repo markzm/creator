@@ -89,6 +89,14 @@
             >
               ✨ {{ tr('一键人设', 'Auto Persona') }}
             </button>
+            <button
+              type="button"
+              class="btn sm"
+              style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%); border-color: #ec4899; color: #db2777; font-weight: 700"
+              @click="uiStore.openModal('animeArt')"
+            >
+              🎨 {{ tr('二次元 AI 立绘生成', 'Anime AI Art') }}
+            </button>
             <button type="button" class="btn sm" @click="allOpenState = true">
               {{ t.expand }}
             </button>
@@ -115,6 +123,91 @@
             >
               {{ t.clear }}
             </button>
+          </div>
+
+          <!-- Character Visuals & Tachi-E Showcase -->
+          <div
+            class="card open"
+            style="
+              padding: 14px 16px;
+              margin-bottom: 12px;
+              display: flex;
+              gap: 16px;
+              align-items: center;
+              flex-wrap: wrap;
+              background: linear-gradient(135deg, var(--card) 0%, var(--acs) 100%);
+            "
+          >
+            <!-- Avatar Section -->
+            <div style="display: flex; align-items: center; gap: 12px">
+              <Avatar :avatar="char.avatar" :name="char.name" :size="58" />
+              <div>
+                <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px">角色头像</div>
+                <div style="display: flex; gap: 6px; align-items: center">
+                  <label class="btn sm" style="cursor: pointer; padding: 2px 7px; font-size: 11px">
+                    📁 上传头像
+                    <input type="file" accept="image/*" style="display: none" @change="onUploadAvatar" />
+                  </label>
+                  <button type="button" class="btn sm" style="padding: 2px 7px; font-size: 11px" @click="uiStore.openModal('animeArt')">
+                    🎨 AI 生成
+                  </button>
+                  <button v-if="char.avatar" type="button" class="btn sm" style="padding: 2px 6px; font-size: 11px" title="清除头像" @click="char.avatar = ''; docStore.touch(true)">
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-left: 1px solid var(--li2); height: 44px; display: inline-block" />
+
+            <!-- Full-body Illustration (立绘) Section -->
+            <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 240px">
+              <div>
+                <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px">
+                  <span>🧍 全身立绘展示</span>
+                  <span v-if="char.tachiE" class="pill" style="font-size: 10px; padding: 1px 6px; background: var(--ok); color: #fff; border-radius: 99px">已配置</span>
+                </div>
+                <div class="hint" style="font-size: 11.5px">
+                  {{ char.tachiE ? '支持导入高清 PNG/WebP 立绘或使用二次元 AI 自动绘制' : '尚未导入角色全身立绘' }}
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center">
+                <label class="btn sm" style="cursor: pointer; padding: 3px 8px; font-size: 11.5px">
+                  📁 导入立绘图片
+                  <input type="file" accept="image/*" style="display: none" @change="onUploadTachiE" />
+                </label>
+                <button
+                  type="button"
+                  class="btn sm primary"
+                  style="padding: 3px 9px; font-size: 11.5px; background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); border: none"
+                  @click="uiStore.openModal('animeArt')"
+                >
+                  🎨 AI 绘制立绘
+                </button>
+                <button v-if="char.tachiE" type="button" class="btn sm danger" style="padding: 3px 7px; font-size: 11.5px" @click="char.tachiE = ''; docStore.touch(true)">
+                  清除
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Expanded Tachi-E Image Preview Card (if set) -->
+          <div
+            v-if="char.tachiE"
+            class="card"
+            style="padding: 12px; margin-bottom: 12px; text-align: center; background: var(--soft)"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+              <span style="font-size: 12px; font-weight: 700; color: var(--ac)">✨ 《{{ char.name }}》立绘视效</span>
+              <a :href="char.tachiE" target="_blank" download="tachie.png" class="btn sm" style="font-size: 11px; text-decoration: none">
+                💾 查看/下载高清立绘
+              </a>
+            </div>
+            <img
+              :src="char.tachiE"
+              alt="立绘"
+              style="max-width: 100%; max-height: 420px; border-radius: 8px; object-fit: contain; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12)"
+            />
           </div>
 
           <!-- Smart Rename Linked References Banner -->
@@ -215,6 +308,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import Avatar from '../components/base/Avatar.vue';
 import AIGenerateModal from '../components/editor/AIGenerateModal.vue';
 import BacklinksPanel from '../components/editor/BacklinksPanel.vue';
 import ConsistencyBox from '../components/editor/ConsistencyBox.vue';
@@ -431,6 +525,48 @@ function onImportDraftData(data: Record<string, string>) {
   docStore.syncEntityName('char', char.value);
   committedName.value = (char.value.data.name || '').trim();
   docStore.touch(true);
+}
+
+function onUploadAvatar(e: Event) {
+  if (!char.value || isReadOnlyReference.value) return;
+  const input = e.target as HTMLInputElement;
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) {
+    toast(tr('图片大小不能超过 5MB', 'Image size must be <= 5MB'), 'warn');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === 'string' && char.value) {
+      char.value.avatar = reader.result;
+      docStore.touch(true);
+      toast(tr('头像上传成功', 'Avatar uploaded'), 'ok');
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function onUploadTachiE(e: Event) {
+  if (!char.value || isReadOnlyReference.value) return;
+  const input = e.target as HTMLInputElement;
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  if (file.size > 8 * 1024 * 1024) {
+    toast(tr('立绘图片大小不能超过 8MB', 'Illustration size must be <= 8MB'), 'warn');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === 'string' && char.value) {
+      char.value.tachiE = reader.result;
+      docStore.touch(true);
+      toast(tr('立绘上传成功', 'Illustration uploaded'), 'ok');
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
 }
 
 function validateRequiredFields() {

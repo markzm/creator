@@ -305,6 +305,7 @@ export const useDocStore = defineStore('doc', () => {
     const w: WorldEntity = {
       id,
       name,
+      visibility: 'private',
       data: initialName ? { w_name: initialName.trim() } : {},
       customInsp: [],
       createdAt: now,
@@ -325,6 +326,7 @@ export const useDocStore = defineStore('doc', () => {
     const w: WorldEntity = {
       id,
       name: copyName,
+      visibility: 'private',
       data: { ...src.data, ...(src.data.w_name ? { w_name: copyName } : {}) },
       customInsp: [...(src.customInsp || [])],
       createdAt: now,
@@ -365,6 +367,7 @@ export const useDocStore = defineStore('doc', () => {
     const o: OrgEntity = {
       id,
       name,
+      visibility: 'private',
       data: initialName ? { o_name: initialName.trim() } : {},
       createdAt: now,
       updatedAt: now
@@ -384,6 +387,7 @@ export const useDocStore = defineStore('doc', () => {
     const o: OrgEntity = {
       id,
       name: copyName,
+      visibility: 'private',
       data: { ...src.data, ...(src.data.o_name ? { o_name: copyName } : {}) },
       createdAt: now,
       updatedAt: now
@@ -423,6 +427,7 @@ export const useDocStore = defineStore('doc', () => {
     const c: CharEntity = {
       id,
       name,
+      visibility: 'private',
       data: initialName ? { name: initialName.trim() } : {},
       ...(templateId ? { templateId } : {}),
       createdAt: now,
@@ -443,6 +448,7 @@ export const useDocStore = defineStore('doc', () => {
     const c: CharEntity = {
       id,
       name: copyName,
+      visibility: 'private',
       data: { ...src.data, ...(src.data.name ? { name: copyName } : {}) },
       ...(src.templateId ? { templateId: src.templateId } : {}),
       createdAt: now,

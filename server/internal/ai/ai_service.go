@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -517,4 +518,122 @@ func DecryptUserConfig(enc string, secretKey string) (string, error) {
 		return "", err
 	}
 	return string(plain), nil
+}
+
+type AnimePaintRequest struct {
+	Prompt         string        `json:"prompt"`
+	NegativePrompt string        `json:"negativePrompt,omitempty"`
+	Style          string        `json:"style"`       // e.g. "anime_classic", "makoto_shinkai", "cyberpunk_anime", "gothic_anime", "chibi_anime", "otome_anime"
+	AspectRatio    string        `json:"aspectRatio"` // "1:1" | "9:16" | "3:4"
+	CharName       string        `json:"charName,omitempty"`
+	Features       string        `json:"features,omitempty"`
+	CustomAI       *UserAIConfig `json:"customAi,omitempty"`
+}
+
+type AnimePaintResponse struct {
+	ImageURL    string `json:"imageUrl"`
+	Prompt      string `json:"prompt"`
+	Style       string `json:"style"`
+	UsedModel   string `json:"usedModel"`
+	FallbackSVG string `json:"fallbackSvg,omitempty"`
+}
+
+func (s *AIService) PaintAnimeArt(ctx context.Context, req *AnimePaintRequest) (*AnimePaintResponse, error) {
+	styleMod := "masterpiece, best quality, ultra-detailed anime illustration, exquisite facial features, vibrant expressive eyes, clean sharp lineart"
+	switch req.Style {
+	case "makoto_shinkai":
+		styleMod += ", Makoto Shinkai aesthetic, cinematic sky, gorgeous volumetric sunset lighting, dramatic clouds, starry sparkle"
+	case "cyberpunk_anime":
+		styleMod += ", futuristic cyberpunk anime style, neon lighting, holographic UI, glowing circuitry, high-tech jacket"
+	case "gothic_anime":
+		styleMod += ", elegant dark gothic anime style, antique lace, dramatic shadows, mysterious crimson accents, Victorian atmosphere"
+	case "chibi_anime":
+		styleMod += ", cute chibi anime style, adorable proportions, sparkling big eyes, kawaii pastel palette, soft gradient background"
+	case "otome_anime":
+		styleMod += ", delicate otome romance anime style, soft watercolor texture, blooming petals, dreamy romantic glow, handsome refined aura"
+	case "pixel_anime":
+		styleMod += ", high-detail 16-bit pixel anime art style, retro JRPG aesthetic, crisp pixel lineart"
+	default:
+		styleMod += ", modern Japanese anime style, Kyoto Animation studio aesthetic, vibrant cel shading"
+	}
+
+	finalPrompt := styleMod
+	if strings.TrimSpace(req.CharName) != "" {
+		finalPrompt += ", character: " + strings.TrimSpace(req.CharName)
+	}
+	if strings.TrimSpace(req.Features) != "" {
+		finalPrompt += ", " + strings.TrimSpace(req.Features)
+	}
+	if strings.TrimSpace(req.Prompt) != "" {
+		finalPrompt += ", " + strings.TrimSpace(req.Prompt)
+	}
+
+	w := 512
+	h := 512
+	switch req.AspectRatio {
+	case "9:16":
+		w = 576
+		h = 1024
+	case "3:4":
+		w = 576
+		h = 768
+	}
+
+	// 1. If custom AI has an image generation API endpoint configured
+	if req.CustomAI != nil && req.CustomAI.APIKey != "" && strings.Contains(req.CustomAI.BaseURL, "http") {
+		customURL := strings.TrimRight(req.CustomAI.BaseURL, "/")
+		if !strings.HasSuffix(customURL, "/images/generations") {
+			customURL += "/images/generations"
+		}
+		imgReqBody := map[string]interface{}{
+			"prompt": finalPrompt,
+			"n":      1,
+			"size":   fmt.Sprintf("%dx%d", w, h),
+		}
+		if req.CustomAI.Model != "" {
+			imgReqBody["model"] = req.CustomAI.Model
+		}
+		jsonBytes, _ := json.Marshal(imgReqBody)
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, customURL, bytes.NewReader(jsonBytes))
+		if err == nil {
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Authorization", "Bearer "+req.CustomAI.APIKey)
+			resp, err := s.httpClient.Do(httpReq)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				defer resp.Body.Close()
+				var customResp struct {
+					Data []struct {
+						URL     string `json:"url"`
+						B64JSON string `json:"b64_json"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&customResp); err == nil && len(customResp.Data) > 0 {
+					imgURL := customResp.Data[0].URL
+					if imgURL == "" && customResp.Data[0].B64JSON != "" {
+						imgURL = "data:image/png;base64," + customResp.Data[0].B64JSON
+					}
+					if imgURL != "" {
+						return &AnimePaintResponse{
+							ImageURL:  imgURL,
+							Prompt:    finalPrompt,
+							Style:     req.Style,
+							UsedModel: req.CustomAI.Model,
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Pollinations AI high-quality anime model
+	seed := time.Now().UnixNano() % 1000000
+	encodedPrompt := url.QueryEscape(finalPrompt)
+	imageURL := fmt.Sprintf("https://image.pollinations.ai/prompt/%s?model=flux-anime&width=%d&height=%d&nologo=true&enhance=true&seed=%d", encodedPrompt, w, h, seed)
+
+	return &AnimePaintResponse{
+		ImageURL:  imageURL,
+		Prompt:    finalPrompt,
+		Style:     req.Style,
+		UsedModel: "flux-anime",
+	}, nil
 }

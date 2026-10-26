@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,20 +28,25 @@ type LobbyUser struct {
 }
 
 type WorldShare struct {
-	ID         string `json:"id"`
-	UserID     int64  `json:"userId"`
-	OwnerName  string `json:"ownerName"`
-	Kind       string `json:"kind"`
-	Title      string `json:"title"`
-	Summary    string `json:"summary"`
-	Content    string `json:"content"`
-	DraftCode  string `json:"draftCode,omitempty"`
-	Visibility string `json:"visibility"` // 'public' | 'private'
-	EntityID   string `json:"entityId,omitempty"`
-	Tags       string `json:"tags,omitempty"`
-	WordCount  int    `json:"wordCount"`
-	CreatedAt  int64  `json:"createdAt"`
-	UpdatedAt  int64  `json:"updatedAt"`
+	ID             string `json:"id"`
+	UserID         int64  `json:"userId"`
+	OwnerName      string `json:"ownerName"`
+	Kind           string `json:"kind"`
+	Title          string `json:"title"`
+	Summary        string `json:"summary"`
+	Content        string `json:"content"`
+	DraftCode      string `json:"draftCode,omitempty"`
+	Visibility     string `json:"visibility"` // 'public' | 'private'
+	EntityID       string `json:"entityId,omitempty"`
+	Tags           string `json:"tags,omitempty"`
+	WordCount      int    `json:"wordCount"`
+	CanonStatus    string `json:"canonStatus,omitempty"` // 'canon' or 'doujin'
+	CocreationID   string `json:"cocreationId,omitempty"`
+	CanonRequested bool   `json:"canonRequested,omitempty"`
+	TachiEURL      string `json:"tachiEUrl,omitempty"`
+	AuthorID       int64  `json:"authorId,omitempty"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
 }
 
 type GlobalDashboardStats struct {
@@ -100,7 +106,31 @@ func (s *Store) CreateShareWithMeta(ctx context.Context, customID string, userID
 	return s.UpsertShare(ctx, customID, userID, ownerName, kind, title, summary, content, draftCode, "public", "", "", utf8.RuneCountInString(content), createdAt)
 }
 
-func (s *Store) UpsertShare(ctx context.Context, customID string, userID int64, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags string, wordCount int, createdAt int64) (*WorldShare, error) {
+const shareSelectCols = `
+	id, user_id, owner_name, kind, title, summary, content, draft_code,
+	COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
+	COALESCE(canon_status, 'canon'), COALESCE(cocreation_id, ''), COALESCE(canon_requested, 0),
+	COALESCE(tachi_e_url, ''), COALESCE(author_id, user_id),
+	created_at, COALESCE(updated_at, created_at)
+`
+
+func scanShareRow(scanner interface{ Scan(...interface{}) error }) (*WorldShare, error) {
+	var sh WorldShare
+	var canonReq int
+	err := scanner.Scan(
+		&sh.ID, &sh.UserID, &sh.OwnerName, &sh.Kind, &sh.Title, &sh.Summary, &sh.Content, &sh.DraftCode,
+		&sh.Visibility, &sh.EntityID, &sh.Tags, &sh.WordCount,
+		&sh.CanonStatus, &sh.CocreationID, &canonReq, &sh.TachiEURL, &sh.AuthorID,
+		&sh.CreatedAt, &sh.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sh.CanonRequested = canonReq != 0
+	return &sh, nil
+}
+
+func (s *Store) UpsertShareMeta(ctx context.Context, customID string, userID int64, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags string, wordCount int, canonStatus, cocreationID string, canonRequested bool, tachiEURL string, createdAt int64) (*WorldShare, error) {
 	id := strings.TrimSpace(customID)
 	if id == "" {
 		b := make([]byte, 6)
@@ -113,6 +143,14 @@ func (s *Store) UpsertShare(ctx context.Context, customID string, userID int64, 
 	if visibility != "private" {
 		visibility = "public"
 	}
+	// Check if user is muted when publishing publicly
+	if visibility == "public" {
+		var isMuted int
+		_ = s.ReadDB.QueryRowContext(ctx, `SELECT COALESCE(is_muted, 0) FROM users WHERE id = ?`, userID).Scan(&isMuted)
+		if isMuted != 0 {
+			return nil, ErrUserMuted
+		}
+	}
 	now := time.Now().Unix()
 	if createdAt <= 0 {
 		createdAt = now
@@ -120,14 +158,22 @@ func (s *Store) UpsertShare(ctx context.Context, customID string, userID int64, 
 	if wordCount <= 0 {
 		wordCount = utf8.RuneCountInString(content)
 	}
+	if canonStatus == "" {
+		canonStatus = "canon"
+	}
 	title = truncateRunes(title, 80)
 	summary = truncateRunes(summary, 200)
 	ownerName = truncateRunes(ownerName, 16)
 	tags = truncateRunes(tags, 100)
 
+	canonReqVal := 0
+	if canonRequested {
+		canonReqVal = 1
+	}
+
 	_, err := s.WriteDB.ExecContext(ctx, `
-		INSERT INTO world_shares (id, user_id, owner_name, kind, title, summary, content, draft_code, visibility, entity_id, tags, word_count, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO world_shares (id, user_id, owner_name, kind, title, summary, content, draft_code, visibility, entity_id, tags, word_count, canon_status, cocreation_id, canon_requested, tachi_e_url, author_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			summary = excluded.summary,
@@ -136,48 +182,78 @@ func (s *Store) UpsertShare(ctx context.Context, customID string, userID int64, 
 			visibility = excluded.visibility,
 			tags = excluded.tags,
 			word_count = excluded.word_count,
+			canon_status = excluded.canon_status,
+			cocreation_id = excluded.cocreation_id,
+			canon_requested = excluded.canon_requested,
+			tachi_e_url = excluded.tachi_e_url,
 			updated_at = excluded.updated_at
-	`, id, userID, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags, wordCount, createdAt, now)
+	`, id, userID, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags, wordCount, canonStatus, cocreationID, canonReqVal, tachiEURL, userID, createdAt, now)
 	if err != nil {
 		return nil, err
 	}
+
+	// If a doujin setting is published publicly in a co-creation project, notify owner and admins
+	if visibility == "public" && canonStatus == "doujin" && cocreationID != "" {
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			proj, err := s.GetCocreationProject(bgCtx, cocreationID)
+			if err == nil {
+				if proj.OwnerID != userID {
+					_ = s.CreateNotification(bgCtx, proj.OwnerID, userID, ownerName, "doujin_created",
+						fmt.Sprintf("新同人作品《%s》已发布", title),
+						fmt.Sprintf("创作者 %s 为您的共创企划《%s》创作了同人作品《%s》", ownerName, proj.WorldTitle, title),
+						id, "share")
+				}
+				for _, adm := range proj.Admins {
+					var admUID int64
+					if err := s.ReadDB.QueryRowContext(bgCtx, `SELECT id FROM users WHERE email = ? OR nickname = ?`, adm, adm).Scan(&admUID); err == nil {
+						if admUID != proj.OwnerID && admUID != userID {
+							_ = s.CreateNotification(bgCtx, admUID, userID, ownerName, "doujin_created",
+								fmt.Sprintf("新同人作品《%s》已发布", title),
+								fmt.Sprintf("创作者 %s 为共创企划《%s》创作了同人作品《%s》", ownerName, proj.WorldTitle, title),
+								id, "share")
+						}
+					}
+				}
+			}
+		}()
+	}
+
 	return &WorldShare{
-		ID:         id,
-		UserID:     userID,
-		OwnerName:  ownerName,
-		Kind:       kind,
-		Title:      title,
-		Summary:    summary,
-		Content:    content,
-		DraftCode:  draftCode,
-		Visibility: visibility,
-		EntityID:   entityID,
-		Tags:       tags,
-		WordCount:  wordCount,
-		CreatedAt:  createdAt,
-		UpdatedAt:  now,
+		ID:             id,
+		UserID:         userID,
+		OwnerName:      ownerName,
+		Kind:           kind,
+		Title:          title,
+		Summary:        summary,
+		Content:        content,
+		DraftCode:      draftCode,
+		Visibility:     visibility,
+		EntityID:       entityID,
+		Tags:           tags,
+		WordCount:      wordCount,
+		CanonStatus:    canonStatus,
+		CocreationID:   cocreationID,
+		CanonRequested: canonRequested,
+		TachiEURL:      tachiEURL,
+		AuthorID:       userID,
+		CreatedAt:      createdAt,
+		UpdatedAt:      now,
 	}, nil
 }
 
+func (s *Store) UpsertShare(ctx context.Context, customID string, userID int64, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags string, wordCount int, createdAt int64) (*WorldShare, error) {
+	return s.UpsertShareMeta(ctx, customID, userID, ownerName, kind, title, summary, content, draftCode, visibility, entityID, tags, wordCount, "canon", "", false, "", createdAt)
+}
+
 func (s *Store) GetShare(ctx context.Context, shareID string) (*WorldShare, error) {
-	var sh WorldShare
-	err := s.ReadDB.QueryRowContext(ctx, `
-		SELECT id, user_id, owner_name, kind, title, summary, content, draft_code,
-		       COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
-		       created_at, COALESCE(updated_at, created_at)
-		FROM world_shares
-		WHERE id = ?
-	`, shareID).Scan(
-		&sh.ID, &sh.UserID, &sh.OwnerName, &sh.Kind, &sh.Title, &sh.Summary, &sh.Content, &sh.DraftCode,
-		&sh.Visibility, &sh.EntityID, &sh.Tags, &sh.WordCount, &sh.CreatedAt, &sh.UpdatedAt,
-	)
+	row := s.ReadDB.QueryRowContext(ctx, "SELECT "+shareSelectCols+" FROM world_shares WHERE id = ?", shareID)
+	sh, err := scanShareRow(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrShareNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &sh, nil
+	return sh, err
 }
 
 // ListShares maintains backward compatibility while respecting public visibility when ownerID is nil
@@ -196,18 +272,17 @@ func (s *Store) ListPublicShares(ctx context.Context, kind, keyword string, befo
 		beforeCreatedAt = time.Now().Unix() + 3600
 	}
 
-	query := `
-		SELECT id, user_id, owner_name, kind, title, summary, content, draft_code,
-		       COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
-		       created_at, COALESCE(updated_at, created_at)
-		FROM world_shares
-		WHERE visibility = 'public' AND created_at <= ?
-	`
+	query := "SELECT " + shareSelectCols + " FROM world_shares WHERE visibility = 'public' AND created_at <= ?"
 	args := []interface{}{beforeCreatedAt}
 
 	if kind != "" && kind != "all" {
-		query += " AND kind = ?"
-		args = append(args, kind)
+		if kind == "canon" || kind == "doujin" {
+			query += " AND canon_status = ?"
+			args = append(args, kind)
+		} else {
+			query += " AND kind = ?"
+			args = append(args, kind)
+		}
 	}
 	if keyword = strings.TrimSpace(keyword); keyword != "" {
 		query += " AND (title LIKE ? OR summary LIKE ? OR tags LIKE ?)"
@@ -226,14 +301,11 @@ func (s *Store) ListPublicShares(ctx context.Context, kind, keyword string, befo
 
 	list := make([]WorldShare, 0)
 	for rows.Next() {
-		var sh WorldShare
-		if err := rows.Scan(
-			&sh.ID, &sh.UserID, &sh.OwnerName, &sh.Kind, &sh.Title, &sh.Summary, &sh.Content, &sh.DraftCode,
-			&sh.Visibility, &sh.EntityID, &sh.Tags, &sh.WordCount, &sh.CreatedAt, &sh.UpdatedAt,
-		); err != nil {
+		sh, err := scanShareRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		list = append(list, sh)
+		list = append(list, *sh)
 	}
 	return list, nil
 }
@@ -243,13 +315,7 @@ func (s *Store) ListUserItems(ctx context.Context, userID int64, visibilityFilte
 		limit = 100
 	}
 
-	query := `
-		SELECT id, user_id, owner_name, kind, title, summary, content, draft_code,
-		       COALESCE(visibility, 'public'), COALESCE(entity_id, ''), COALESCE(tags, ''), COALESCE(word_count, 0),
-		       created_at, COALESCE(updated_at, created_at)
-		FROM world_shares
-		WHERE user_id = ?
-	`
+	query := "SELECT " + shareSelectCols + " FROM world_shares WHERE user_id = ?"
 	args := []interface{}{userID}
 
 	if visibilityFilter == "public" || visibilityFilter == "private" {
@@ -272,14 +338,11 @@ func (s *Store) ListUserItems(ctx context.Context, userID int64, visibilityFilte
 
 	list := make([]WorldShare, 0)
 	for rows.Next() {
-		var sh WorldShare
-		if err := rows.Scan(
-			&sh.ID, &sh.UserID, &sh.OwnerName, &sh.Kind, &sh.Title, &sh.Summary, &sh.Content, &sh.DraftCode,
-			&sh.Visibility, &sh.EntityID, &sh.Tags, &sh.WordCount, &sh.CreatedAt, &sh.UpdatedAt,
-		); err != nil {
+		sh, err := scanShareRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		list = append(list, sh)
+		list = append(list, *sh)
 	}
 	return list, nil
 }

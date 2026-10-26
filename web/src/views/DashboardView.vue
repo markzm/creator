@@ -1,53 +1,79 @@
 <template>
   <div class="page-container" style="max-width: 1080px; margin: 0 auto; padding: 24px 20px">
-    <!-- View Switcher Tabs -->
-    <div style="display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid var(--li2); padding-bottom: 12px">
-      <button
-        type="button"
-        class="tab-btn"
-        :class="{ active: currentTab === 'personal' }"
-        @click="currentTab = 'personal'"
-      >
-        👤 {{ tr('个人创作大盘', 'Personal Studio') }}
-      </button>
-      <button
-        type="button"
-        class="tab-btn"
-        :class="{ active: currentTab === 'global' }"
-        @click="switchGlobalTab"
-      >
-        🌐 {{ tr('全站整体大盘', 'Community Overview') }}
-      </button>
+    <!-- Guest / Offline Mode Locked Gate -->
+    <div
+      v-if="!authStore.isLoggedIn"
+      class="card"
+      style="padding: 44px 24px; text-align: center; max-width: 680px; margin: 40px auto; border: 2px dashed var(--ac); background: var(--card)"
+    >
+      <div style="font-size: 44px; margin-bottom: 12px">🔒</div>
+      <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 10px">
+        {{ tr('离线体验版 · 创作看板已锁定', 'Offline Mode · Studio Dashboard Locked') }}
+      </h2>
+      <p style="color: var(--mu); font-size: 14px; line-height: 1.6; margin-bottom: 22px; max-width: 520px; margin-left: auto; margin-right: auto">
+        {{ tr('您当前处于未登录的离线体验版本。离线版本仅提供基础设定构思与官方AI范例查阅。创作看板提供全方位的个人字数追踪、角色完成度图谱、创作连续打卡与全站生态数据，仅面向登录创作者开放。', 'You are currently in offline guest mode. The dashboard tracks personal word count, character completion, and community analytics, which require an account.') }}
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap">
+        <button type="button" class="btn primary" style="padding: 10px 24px; font-size: 15px; font-weight: 700" @click="uiStore.openModal('auth')">
+          ☁️ {{ tr('立即登录 / 注册 开启专属看板', 'Sign In / Register') }}
+        </button>
+        <button type="button" class="btn" style="padding: 10px 20px; font-size: 14px" @click="router.push('/char')">
+          ✍️ {{ tr('前往基础设定器构思', 'Open Character Studio') }}
+        </button>
+      </div>
     </div>
 
-    <!-- ==================== TAB 1: 个人创作大盘 ==================== -->
-    <div v-if="currentTab === 'personal'">
-      <!-- Top Banner & Metrics -->
-      <div class="card" style="padding: 22px 24px; margin-bottom: 20px; background: linear-gradient(135deg, var(--card) 0%, var(--acs) 100%)">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px">
-          <div>
-            <h1 style="margin: 0; font-size: 22px; font-weight: 800">
-              ✨ {{ tr('设定创作器 v6 · 个人创作大盘', 'Worldbuilding Studio v6 · Personal Dashboard') }}
-            </h1>
-            <p class="hint" style="margin: 6px 0 0">
-              {{ tr('本地优先 (IndexedDB) · 自由接入 AI 引擎 · 设定维基双向链接 · 沉浸式小说写作', 'Local-first · AI Powered · Wiki Backlinks · Immersive Story Studio') }}
-            </p>
+    <!-- Logged in: Dashboard Content -->
+    <template v-else>
+      <!-- View Switcher Tabs -->
+      <div style="display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid var(--li2); padding-bottom: 12px">
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: currentTab === 'personal' }"
+          @click="currentTab = 'personal'"
+        >
+          👤 {{ tr('个人创作大盘', 'Personal Studio') }}
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: currentTab === 'global' }"
+          @click="switchGlobalTab"
+        >
+          🌐 {{ tr('全站整体大盘', 'Community Overview') }}
+        </button>
+      </div>
+
+      <!-- ==================== TAB 1: 个人创作大盘 ==================== -->
+      <div v-if="currentTab === 'personal'">
+        <!-- Top Banner & Metrics -->
+        <div class="card" style="padding: 22px 24px; margin-bottom: 20px; background: linear-gradient(135deg, var(--card) 0%, var(--acs) 100%)">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px">
+            <div>
+              <h1 style="margin: 0; font-size: 22px; font-weight: 800">
+                ✨ {{ tr('设定创作器 v6 · 个人创作大盘', 'Worldbuilding Studio v6 · Personal Dashboard') }}
+                <span style="font-size: 14px; font-weight: 600; color: var(--ac); margin-left: 8px">@{{ authStore.displayName }}</span>
+              </h1>
+              <p class="hint" style="margin: 6px 0 0">
+                {{ tr('专属个人工作室 · 自由接入 AI 引擎 · 设定维基双向链接 · 沉浸式小说写作', 'Personal Studio · AI Powered · Wiki Backlinks · Immersive Story Studio') }}
+              </p>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button class="btn sm" @click="uiStore.openModal('aiConfig')">
+                🤖 {{ tr('定制设定器 & AI', 'AI & Studio') }}
+              </button>
+              <button class="btn sm" @click="uiStore.openModal('commandPalette')">
+                🔍 {{ tr('全局搜索 (⌘K)', 'Search (⌘K)') }}
+              </button>
+              <button class="btn sm" @click="uiStore.openModal('backup')">
+                💾 {{ tr('备份 / 导出', 'Backup / Export') }}
+              </button>
+              <button class="btn sm primary" @click="uiStore.openModal('tutorial')">
+                📖 {{ tr('新手引导', 'Tutorial') }}
+              </button>
+            </div>
           </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap">
-            <button class="btn sm" @click="uiStore.openModal('aiConfig')">
-              🤖 {{ tr('定制设定器 & AI', 'AI & Studio') }}
-            </button>
-            <button class="btn sm" @click="uiStore.openModal('commandPalette')">
-              🔍 {{ tr('全局搜索 (⌘K)', 'Search (⌘K)') }}
-            </button>
-            <button class="btn sm" @click="uiStore.openModal('backup')">
-              💾 {{ tr('备份 / 导出', 'Backup / Export') }}
-            </button>
-            <button class="btn sm primary" @click="uiStore.openModal('tutorial')">
-              📖 {{ tr('新手引导', 'Tutorial') }}
-            </button>
-          </div>
-        </div>
 
         <!-- Studio Preference & AI Indicator Banner -->
         <div
@@ -308,6 +334,7 @@
         </div>
       </div>
     </div>
+    </template>
 
     <!-- View Share Modal for Global Dashboard -->
     <Modal
@@ -354,9 +381,11 @@ import { avgDone, streakDays, totalChars } from '../core/stats';
 import { collectAllEvents } from '../core/timeline';
 import { api, type GlobalDashboardStats, type WorldShareItem } from '../data/api';
 import { useAIStore } from '../stores/ai';
+import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
 import { useUIStore } from '../stores/ui';
 
+const authStore = useAuthStore();
 const docStore = useDocStore();
 const uiStore = useUIStore();
 const aiStore = useAIStore();
@@ -369,13 +398,18 @@ const globalStats = ref<GlobalDashboardStats | null>(null);
 const loadingGlobal = ref(false);
 const viewingShare = ref<WorldShareItem | null>(null);
 
-const worldCount = computed(() => Object.keys(docStore.doc.worlds || {}).length);
-const orgCount = computed(() => Object.keys(docStore.doc.orgs || {}).length);
-const charCount = computed(() => Object.keys(docStore.doc.chars || {}).length);
-const articleCount = computed(() => (docStore.doc.articles || []).length);
+const myWorlds = computed(() => Object.values(docStore.doc.worlds || {}).filter((w) => !w.isReference));
+const myOrgs = computed(() => Object.values(docStore.doc.orgs || {}).filter((o) => !o.isReference));
+const myChars = computed(() => Object.values(docStore.doc.chars || {}).filter((c) => !c.isReference));
+const myArticles = computed(() => (docStore.doc.articles || []).filter((a) => !a.isReference));
+
+const worldCount = computed(() => myWorlds.value.length);
+const orgCount = computed(() => myOrgs.value.length);
+const charCount = computed(() => myChars.value.length);
+const articleCount = computed(() => myArticles.value.length);
 const charCountTotal = computed(() => {
   const settingsWords = totalChars(docStore.doc);
-  const articlesWords = (docStore.doc.articles || []).reduce((acc, a) => acc + (a.wordCount || (a.content || '').length), 0);
+  const articlesWords = (myArticles.value || []).reduce((acc, a) => acc + (a.wordCount || (a.content || '').length), 0);
   return settingsWords + articlesWords;
 });
 const completionAvg = computed(() => avgDone(docStore.doc));

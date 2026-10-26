@@ -12,7 +12,11 @@ export type ModalName =
   | 'tutorial'
   | 'guide'
   | 'aiConfig'
-  | 'aiGenerate';
+  | 'aiGenerate'
+  | 'animeArt'
+  | 'creatorProfile'
+  | 'adminConsole'
+  | 'cocreationManage';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -48,8 +52,19 @@ export const useUIStore = defineStore('ui', () => {
     tutorial: false,
     guide: false,
     aiConfig: false,
-    aiGenerate: false
+    aiGenerate: false,
+    animeArt: false,
+    creatorProfile: false,
+    adminConsole: false,
+    cocreationManage: false
   });
+
+  const activeProfileUserId = ref<number | null>(null);
+
+  function openCreatorProfile(userId: number) {
+    activeProfileUserId.value = userId;
+    modals.creatorProfile = true;
+  }
 
   const guideContext = ref<{
     mode: EntityKind;
@@ -146,6 +161,8 @@ export const useUIStore = defineStore('ui', () => {
     openGuide,
     closeTopModal,
     checkFirstRunTutorial,
-    markTutorialDone
+    markTutorialDone,
+    activeProfileUserId,
+    openCreatorProfile
   };
 });

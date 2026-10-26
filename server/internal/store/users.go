@@ -30,7 +30,10 @@ type User struct {
 	PresenceFocus   string `json:"focus"`
 	LastSeenAt      int64  `json:"lastSeenAt"`
 	IsAdmin         bool   `json:"isAdmin,omitempty"`
-	IsDisabled      bool   `json:"-"`
+	IsSuperAdmin    bool   `json:"isSuperAdmin,omitempty"`
+	IsMuted         bool   `json:"isMuted,omitempty"`
+	MutedReason     string `json:"mutedReason,omitempty"`
+	IsDisabled      bool   `json:"isDisabled,omitempty"`
 	AIConfigEnc     string `json:"-"`
 	CustomPrefsJSON string `json:"customPrefs,omitempty"`
 	CreatedAt       int64  `json:"createdAt"`
@@ -124,10 +127,19 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, inviteCode 
 	}, nil
 }
 
+func isMarkzm(email, nickname string) bool {
+	e := strings.ToLower(strings.TrimSpace(email))
+	n := strings.ToLower(strings.TrimSpace(nickname))
+	return strings.HasPrefix(e, "markzm@") || e == "markzm" || n == "markzm"
+}
+
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	row := s.ReadDB.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'), created_at, updated_at
+		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at,
+		       is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'),
+		       COALESCE(is_super_admin, 0), COALESCE(is_muted, 0), COALESCE(muted_reason, ''),
+		       created_at, updated_at
 		FROM users WHERE email = ?
 	`, email)
 	return scanUser(row)
@@ -135,7 +147,10 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 
 func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	row := s.ReadDB.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at, is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'), created_at, updated_at
+		SELECT id, email, password_hash, nickname, avatar_url, bio, presence_focus, last_seen_at,
+		       is_admin, is_disabled, COALESCE(ai_config_enc, ''), COALESCE(custom_prefs_json, '{}'),
+		       COALESCE(is_super_admin, 0), COALESCE(is_muted, 0), COALESCE(muted_reason, ''),
+		       created_at, updated_at
 		FROM users WHERE id = ?
 	`, id)
 	return scanUser(row)
@@ -143,10 +158,13 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 
 func scanUser(row *sql.Row) (*User, error) {
 	var u User
-	var isAdmin, isDisabled int
+	var isAdmin, isDisabled, isSuperAdmin, isMuted int
+	var mutedReason sql.NullString
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Nickname, &u.AvatarURL, &u.Bio,
-		&u.PresenceFocus, &u.LastSeenAt, &isAdmin, &isDisabled, &u.AIConfigEnc, &u.CustomPrefsJSON, &u.CreatedAt, &u.UpdatedAt,
+		&u.PresenceFocus, &u.LastSeenAt, &isAdmin, &isDisabled, &u.AIConfigEnc, &u.CustomPrefsJSON,
+		&isSuperAdmin, &isMuted, &mutedReason,
+		&u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
@@ -156,6 +174,15 @@ func scanUser(row *sql.Row) (*User, error) {
 	}
 	u.IsAdmin = isAdmin != 0
 	u.IsDisabled = isDisabled != 0
+	u.IsSuperAdmin = isSuperAdmin != 0
+	u.IsMuted = isMuted != 0
+	if mutedReason.Valid {
+		u.MutedReason = mutedReason.String
+	}
+	if isMarkzm(u.Email, u.Nickname) {
+		u.IsSuperAdmin = true
+		u.IsAdmin = true
+	}
 	return &u, nil
 }
 
@@ -182,7 +209,7 @@ func (s *Store) UpdateProfile(ctx context.Context, userID int64, name, avatar, b
 		u.AvatarURL = truncateRunes(*avatar, 128)
 	}
 	if bio != nil {
-		u.Bio = truncateRunes(*bio, 80)
+		u.Bio = truncateRunes(*bio, 5000)
 	}
 	u.UpdatedAt = time.Now().Unix()
 
@@ -245,9 +272,67 @@ func (s *Store) SetUserAdmin(ctx context.Context, email string, isAdmin bool) er
 	return nil
 }
 
+func (s *Store) SetUserAdminByID(ctx context.Context, id int64, isAdmin bool) error {
+	val := 0
+	if isAdmin {
+		val = 1
+	}
+	res, err := s.WriteDB.ExecContext(ctx, `UPDATE users SET is_admin = ?, updated_at = ? WHERE id = ?`, val, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (s *Store) SetUserMuteByID(ctx context.Context, id int64, isMuted bool, reason string) error {
+	val := 0
+	if isMuted {
+		val = 1
+	}
+	res, err := s.WriteDB.ExecContext(ctx, `UPDATE users SET is_muted = ?, muted_reason = ?, updated_at = ? WHERE id = ?`, val, reason, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (s *Store) SetUserDisabledByID(ctx context.Context, id int64, disabled bool) error {
+	val := 0
+	if disabled {
+		val = 1
+	}
+	res, err := s.WriteDB.ExecContext(ctx, `UPDATE users SET is_disabled = ?, updated_at = ? WHERE id = ?`, val, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (s *Store) LiftAllPenalties(ctx context.Context, id int64) error {
+	res, err := s.WriteDB.ExecContext(ctx, `UPDATE users SET is_disabled = 0, is_muted = 0, muted_reason = '', updated_at = ? WHERE id = ?`, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.ReadDB.QueryContext(ctx, `
-		SELECT id, email, nickname, avatar_url, bio, last_seen_at, is_admin, is_disabled, created_at
+		SELECT id, email, nickname, avatar_url, bio, last_seen_at,
+		       is_admin, is_disabled, COALESCE(is_super_admin, 0), COALESCE(is_muted, 0), COALESCE(muted_reason, ''),
+		       created_at
 		FROM users ORDER BY id ASC
 	`)
 	if err != nil {
@@ -257,12 +342,22 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	var list []User
 	for rows.Next() {
 		var u User
-		var adm, dis int
-		if err := rows.Scan(&u.ID, &u.Email, &u.Nickname, &u.AvatarURL, &u.Bio, &u.LastSeenAt, &adm, &dis, &u.CreatedAt); err != nil {
+		var adm, dis, sup, mut int
+		var mutedReason sql.NullString
+		if err := rows.Scan(&u.ID, &u.Email, &u.Nickname, &u.AvatarURL, &u.Bio, &u.LastSeenAt, &adm, &dis, &sup, &mut, &mutedReason, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		u.IsAdmin = adm != 0
 		u.IsDisabled = dis != 0
+		u.IsSuperAdmin = sup != 0
+		u.IsMuted = mut != 0
+		if mutedReason.Valid {
+			u.MutedReason = mutedReason.String
+		}
+		if isMarkzm(u.Email, u.Nickname) {
+			u.IsSuperAdmin = true
+			u.IsAdmin = true
+		}
 		list = append(list, u)
 	}
 	return list, nil

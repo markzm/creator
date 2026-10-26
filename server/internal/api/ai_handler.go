@@ -85,6 +85,39 @@ func (s *Server) handleAIGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (s *Server) handleAIPaint(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req ai.AnimePaintRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+
+	user := CurrentUser(r)
+	if (req.CustomAI == nil || req.CustomAI.APIKey == "") && user != nil && user.AIConfigEnc != "" {
+		decJSON, err := ai.DecryptUserConfig(user.AIConfigEnc, s.cfg.SecretKey)
+		if err == nil && decJSON != "" {
+			var cloudCfg ai.UserAIConfig
+			if json.Unmarshal([]byte(decJSON), &cloudCfg) == nil && cloudCfg.APIKey != "" {
+				req.CustomAI = &cloudCfg
+			}
+		}
+	}
+
+	resp, err := s.aiService.PaintAnimeArt(r.Context(), &req)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AI绘画生成失败: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) handleAITest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")

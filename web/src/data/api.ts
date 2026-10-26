@@ -1,4 +1,4 @@
-import type { DocV6, StudioPreferences } from '../core/schema/types';
+import type { CocreationProject, CreatorProfile, DocV6, NotificationItem, SettingComment, StudioPreferences } from '../core/schema/types';
 
 export interface AuthUser {
   id: number;
@@ -7,6 +7,10 @@ export interface AuthUser {
   avatar: string;
   bio: string;
   isAdmin?: boolean;
+  isSuperAdmin?: boolean;
+  isMuted?: boolean;
+  mutedReason?: string;
+  isDisabled?: boolean;
   customPrefs?: StudioPreferences;
   lastSeenAt?: number;
   createdAt?: number;
@@ -98,6 +102,10 @@ export interface WorldShareItem {
   entityId?: string;
   tags?: string;
   wordCount?: number;
+  canonStatus?: 'canon' | 'doujin';
+  cocreationId?: string;
+  canonRequested?: boolean;
+  tachiEUrl?: string;
   createdAt: number;
   updatedAt?: number;
 }
@@ -393,6 +401,141 @@ export const api = {
     return requestJson<{ status: string; message: string }>('/api/admin/reference-materials', {
       method: 'PUT',
       body: JSON.stringify(doc)
+    });
+  },
+
+  // Anime AI Paint
+  paintAnime(payload: {
+    prompt: string;
+    style?: string;
+    aspectRatio?: string;
+    charName?: string;
+    features?: string;
+  }): Promise<{ imageUrl: string; prompt: string; style: string; usedModel: string }> {
+    return requestJson('/api/ai/paint', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  // Comments & Discussions
+  getComments(shareId: string | number): Promise<{ comments: SettingComment[] }> {
+    return requestJson<{ comments: SettingComment[] }>(`/api/shares/${shareId}/comments`);
+  },
+
+  addComment(shareId: string | number, content: string, parentId?: number): Promise<{ comment: SettingComment }> {
+    return requestJson<{ comment: SettingComment }>(`/api/shares/${shareId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content, parentId: parentId || 0 })
+    });
+  },
+
+  toggleCommentLike(commentId: number): Promise<{ liked: boolean; likeCount: number }> {
+    return requestJson<{ liked: boolean; likeCount: number }>(`/api/comments/${commentId}/like`, {
+      method: 'POST'
+    });
+  },
+
+  deleteComment(commentId: number): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/comments/${commentId}`, {
+      method: 'DELETE'
+    });
+  },
+
+  // Notifications
+  getNotifications(limit?: number): Promise<{ notifications: NotificationItem[]; unreadCount: number }> {
+    return requestJson<{ notifications: NotificationItem[]; unreadCount: number }>(`/api/notifications?limit=${limit || 30}`);
+  },
+
+  markNotificationsRead(): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>('/api/notifications/read-all', {
+      method: 'POST'
+    });
+  },
+
+  // Co-creation
+  getCocreationProjects(): Promise<{ projects: CocreationProject[] }> {
+    return requestJson<{ projects: CocreationProject[] }>('/api/cocreation/projects');
+  },
+
+  createCocreationProject(payload: {
+    worldId: string;
+    worldTitle: string;
+    summary: string;
+    admins: string[];
+  }): Promise<{ project: CocreationProject }> {
+    return requestJson<{ project: CocreationProject }>('/api/cocreation/projects', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  updateCocreationAdmins(projectId: string, admins: string[]): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/cocreation/projects/${projectId}/admins`, {
+      method: 'PUT',
+      body: JSON.stringify({ admins })
+    });
+  },
+
+  requestCanon(shareId: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/request-canon`, {
+      method: 'POST'
+    });
+  },
+
+  approveCanon(shareId: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/approve-canon`, {
+      method: 'POST'
+    });
+  },
+
+  // Creator Profile
+  getCreatorProfile(userId: number): Promise<CreatorProfile> {
+    return requestJson<CreatorProfile>(`/api/lobby/creator-profile?user_id=${userId}`);
+  },
+
+  // Admin Management
+  getAdminUsers(): Promise<{ users: AuthUser[] }> {
+    return requestJson<{ users: AuthUser[] }>('/api/admin/users');
+  },
+
+  setAdminUserRole(userId: number, isAdmin: boolean): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ isAdmin })
+    });
+  },
+
+  setAdminUserMute(userId: number, isMuted: boolean, reason?: string): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/admin/users/${userId}/mute`, {
+      method: 'POST',
+      body: JSON.stringify({ isMuted, reason: reason || '' })
+    });
+  },
+
+  setAdminUserStatus(userId: number, isDisabled: boolean): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/admin/users/${userId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ isDisabled })
+    });
+  },
+
+  liftAdminUserPenalties(userId: number): Promise<{ ok: boolean }> {
+    return requestJson<{ ok: boolean }>(`/api/admin/users/${userId}/lift`, {
+      method: 'POST'
+    });
+  },
+
+  addReferenceExample(kind: string, item: any): Promise<{ ok: boolean; message: string }> {
+    return requestJson<{ ok: boolean; message: string }>('/api/admin/reference-materials/item', {
+      method: 'POST',
+      body: JSON.stringify({ kind, item })
+    });
+  },
+
+  deleteReferenceExample(kind: string, id: string): Promise<{ ok: boolean; message: string }> {
+    return requestJson<{ ok: boolean; message: string }>(`/api/admin/reference-materials/item?kind=${kind}&id=${id}`, {
+      method: 'DELETE'
     });
   }
 };

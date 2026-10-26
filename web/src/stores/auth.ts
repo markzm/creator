@@ -11,6 +11,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => Boolean(user.value));
   const isAdmin = computed(() => Boolean(user.value?.isAdmin));
+  const isSuperAdmin = computed(() => {
+    if (!user.value) return false;
+    if (user.value.isSuperAdmin) return true;
+    const email = (user.value.email || '').toLowerCase();
+    const name = (user.value.name || '').toLowerCase();
+    return email.startsWith('markzm@') || email === 'markzm' || name === 'markzm';
+  });
+  const isMuted = computed(() => Boolean(user.value?.isMuted));
 
   const displayName = computed(() => {
     if (!user.value) return '创作者';
@@ -87,6 +95,13 @@ export const useAuthStore = defineStore('auth', () => {
       // Ignore logout network error
     } finally {
       user.value = null;
+      try {
+        const { useDocStore } = await import('./doc');
+        const docStore = useDocStore();
+        docStore.resetToStarterExample();
+      } catch {
+        // Ignore reset error
+      }
     }
   }
 
@@ -114,6 +129,8 @@ export const useAuthStore = defineStore('auth', () => {
     challenge,
     isLoggedIn,
     isAdmin,
+    isSuperAdmin,
+    isMuted,
     displayName,
     fetchChallenge,
     initSession,

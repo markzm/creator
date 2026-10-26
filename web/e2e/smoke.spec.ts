@@ -248,19 +248,60 @@ test.describe('Creator Studio v6 — End-to-End Smoke Suite (T14)', () => {
     await expect(page.locator('.sres').first()).toBeVisible();
   });
 
-  test('7. Anonymous guest can browse Lobby & switch category filters', async ({ page }) => {
+  test('7. Offline guest cannot access Lobby, while authenticated user can browse & filter', async ({ page }) => {
+    // 7a. Unauthenticated guest is gated in offline mode
     await page.goto('/lobby');
-    await expect(page.getByText('公共创作大厅 · 游客自由浏览中')).toBeVisible();
+    await expect(page.getByText('离线体验版 · 创作大厅已锁定')).toBeVisible();
+    await expect(page.getByText('离线体验版（未登录）').first()).toBeVisible();
+
+    // 7b. Authenticated user can access the Lobby
+    await page.route('**/api/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user: {
+            id: 101,
+            email: 'creator@example.com',
+            name: '大厅创作者',
+            isAdmin: false,
+            createdAt: Date.now()
+          }
+        })
+      });
+    });
+
+    await page.reload();
     await expect(page.getByRole('button', { name: /全部作品/ })).toBeVisible();
     await page.getByRole('button', { name: /文章作品/ }).click();
     await expect(page.getByText('作品展示列表')).toBeVisible();
   });
 
-  test('8. Dashboard switches between Personal Studio & Global Community Overview', async ({ page }) => {
+  test('8. Offline guest cannot access Dashboard, while authenticated user views personal studio metrics', async ({ page }) => {
+    // 8a. Unauthenticated guest is gated in offline mode
     await page.goto('/');
-    await expect(page.getByRole('button', { name: /个人创作大盘/ })).toBeVisible();
-    await page.getByRole('button', { name: /全站整体大盘/ }).click();
-    await expect(page.getByText('全站创作生态整体大盘')).toBeVisible();
+    await expect(page.getByText('离线体验版 · 创作看板已锁定')).toBeVisible();
+
+    // 8b. Authenticated user can view personal dashboard
+    await page.route('**/api/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user: {
+            id: 102,
+            email: 'studio@example.com',
+            name: '看板创作者',
+            isAdmin: false,
+            createdAt: Date.now()
+          }
+        })
+      });
+    });
+
+    await page.reload();
+    await expect(page.getByText('个人创作大盘').first()).toBeVisible();
+    await expect(page.getByText('总创作用字')).toBeVisible();
   });
 
   test('9. Articles Studio loads and AI Configuration modal opens cleanly', async ({ page }) => {

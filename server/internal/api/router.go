@@ -46,6 +46,19 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 	mux.HandleFunc("/api/seed", srv.handleGetReferenceMaterials)
 	mux.HandleFunc("/api/reference-materials", srv.handleGetReferenceMaterials)
 	mux.HandleFunc("/api/admin/reference-materials", srv.handleUpdateReferenceMaterials)
+	mux.HandleFunc("/api/admin/reference-materials/item", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			srv.handleAddReferenceItem(w, r)
+		} else if r.Method == http.MethodDelete {
+			srv.handleDeleteReferenceItem(w, r)
+		} else {
+			writeErr(w, http.StatusMethodNotAllowed, "Method not allowed")
+		}
+	})
+
+	// Admin users & permissions management
+	mux.HandleFunc("/api/admin/users", srv.handleAdminUsers)
+	mux.HandleFunc("/api/admin/users/", srv.handleAdminUsers)
 
 	// Auth endpoints
 	mux.HandleFunc("/api/auth/challenge", srv.handleAuthChallenge)
@@ -64,16 +77,30 @@ func NewServer(cfg *config.Config, st *store.Store) http.Handler {
 	mux.HandleFunc("/api/sync/revisions", srv.handleRevisions)
 	mux.HandleFunc("/api/sync/revisions/", srv.handleRevisions)
 
+	// Comments & Discussions
+	mux.HandleFunc("/api/comments", srv.handleComments)
+	mux.HandleFunc("/api/comments/", srv.handleComments)
+
+	// Notifications
+	mux.HandleFunc("/api/notifications", srv.handleNotifications)
+	mux.HandleFunc("/api/notifications/", srv.handleNotifications)
+
+	// Co-creation Projects
+	mux.HandleFunc("/api/cocreation", srv.handleCocreation)
+	mux.HandleFunc("/api/cocreation/", srv.handleCocreation)
+
 	// Presence, Lobby & World Shares
 	mux.HandleFunc("/api/presence", srv.handlePresence)
 	mux.HandleFunc("/api/lobby/users", srv.handleLobbyUsers)
+	mux.HandleFunc("/api/lobby/creator-profile", srv.handleCreatorProfile)
 	mux.HandleFunc("/api/shares", srv.handleShares)
 	mux.HandleFunc("/api/shares/", srv.handleShares)
 	mux.HandleFunc("/api/stats/global", srv.handleGlobalStats)
 
-	// AI generation & config
+	// AI generation, anime painting & config
 	mux.HandleFunc("/api/ai/status", srv.handleAIStatus)
 	mux.HandleFunc("/api/ai/generate", srv.handleAIGenerate)
+	mux.HandleFunc("/api/ai/paint", srv.handleAIPaint)
 	mux.HandleFunc("/api/ai/test", srv.handleAITest)
 	mux.HandleFunc("/api/me/ai-config", srv.handleUserAIConfig)
 

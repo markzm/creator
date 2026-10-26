@@ -1,55 +1,59 @@
 <template>
   <div class="wrap" style="max-width: 860px">
-    <!-- Anonymous Guest Welcome Banner -->
+    <!-- Anonymous Guest Locked Gate -->
     <div
       v-if="!authStore.isLoggedIn"
       class="card"
       style="
-        padding: 14px 18px;
-        margin-bottom: 16px;
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
-        border-left: 4px solid var(--ac);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
+        padding: 44px 24px;
+        text-align: center;
+        max-width: 680px;
+        margin: 40px auto;
+        border: 2px dashed var(--ac);
+        background: var(--card);
       "
     >
-      <div style="font-size: 13.5px">
-        <strong>👋 {{ tr('公共创作大厅 · 游客自由浏览中', 'Public Creator Lobby · Guest Browsing') }}</strong>
-        <p class="hint" style="margin: 3px 0 0; font-size: 12px">
-          {{ tr('可自由查阅全网公开共享的世界观、组织、角色与小说文章。登录后可发布你的作品并跨端同步。', 'Browse all public creations freely. Sign in to share your worlds, stories, and sync.') }}
-        </p>
+      <div style="font-size: 44px; margin-bottom: 12px">🔒</div>
+      <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 10px">
+        {{ tr('离线体验版 · 创作大厅已锁定', 'Offline Mode · Lobby Locked') }}
+      </h2>
+      <p style="color: var(--mu); font-size: 14px; line-height: 1.6; margin-bottom: 22px; max-width: 520px; margin-left: auto; margin-right: auto">
+        {{ tr('您当前处于未登录的离线体验版本。在大厅中您可以浏览海量公开设定、查看活跃创作者主页与精华设定、参与共创企划并留言互动。请登录或注册后进入。', 'You are currently in offline guest mode. Sign in or register to browse community lore, author profiles, and join co-creation projects.') }}
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap">
+        <button type="button" class="btn primary" style="padding: 10px 24px; font-size: 15px; font-weight: 700" @click="uiStore.openModal('auth')">
+          ☁️ {{ tr('立即登录 / 注册 进入大厅', 'Sign In / Register') }}
+        </button>
+        <button type="button" class="btn" style="padding: 10px 20px; font-size: 14px" @click="router.push('/char')">
+          ✍️ {{ tr('前往基础设定器构思', 'Open Character Studio') }}
+        </button>
       </div>
-      <button type="button" class="btn primary sm" @click="uiStore.openModal('auth')">
-        ☁️ {{ tr('立即登录 / 注册', 'Sign In / Register') }}
-      </button>
     </div>
 
-    <!-- Header & Controls -->
-    <div class="row" style="margin: 0 0 14px; align-items: center; gap: 10px; flex-wrap: wrap">
-      <div>
-        <h2 style="margin: 0; font-size: 20px">🌐 {{ tr('公共创作大厅', 'Community Creator Lobby') }}</h2>
-        <p class="hint" style="margin: 3px 0 0; font-size: 12px">
-          {{ tr('探索创作者们公开的世界构筑与小说篇章，支持一键导入灵感', 'Explore worlds and stories shared by creators, with one-click import') }}
-        </p>
+    <!-- Logged-in: Creator Lobby View -->
+    <template v-else>
+      <!-- Header & Controls -->
+      <div class="row" style="margin: 0 0 14px; align-items: center; gap: 10px; flex-wrap: wrap">
+        <div>
+          <h2 style="margin: 0; font-size: 20px">🌐 {{ tr('公共创作大厅', 'Community Creator Lobby') }}</h2>
+          <p class="hint" style="margin: 3px 0 0; font-size: 12px">
+            {{ tr('探索创作者们公开的世界构筑与小说篇章，支持一键导入灵感与社区共创', 'Explore worlds and stories shared by creators, with one-click import') }}
+          </p>
+        </div>
+        <span class="spacer" />
+        <div style="display: flex; gap: 8px">
+          <button type="button" class="btn sm" :disabled="loadingShares || loadingUsers" @click="refreshLobby">
+            🔄 {{ tr('刷新大厅', 'Refresh') }}
+          </button>
+          <button
+            type="button"
+            class="btn sm primary"
+            @click="router.push('/me')"
+          >
+            📤 {{ tr('管理我的分享', 'My Studio') }}
+          </button>
+        </div>
       </div>
-      <span class="spacer" />
-      <div style="display: flex; gap: 8px">
-        <button type="button" class="btn sm" :disabled="loadingShares || loadingUsers" @click="refreshLobby">
-          🔄 {{ tr('刷新大厅', 'Refresh') }}
-        </button>
-        <button
-          v-if="authStore.isLoggedIn"
-          type="button"
-          class="btn sm primary"
-          @click="router.push('/me')"
-        >
-          📤 {{ tr('管理我的分享', 'My Studio') }}
-        </button>
-      </div>
-    </div>
 
     <!-- Active Creators Row -->
     <div class="card open" style="padding: 16px; margin-bottom: 16px">
@@ -80,7 +84,7 @@
         <div
           v-for="u in users"
           :key="u.id"
-          class="card"
+          class="card interactive-user-card"
           style="
             flex-shrink: 0;
             padding: 8px 12px;
@@ -90,7 +94,11 @@
             min-width: 140px;
             background: var(--soft);
             border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
           "
+          title="点击查看创作者主页与精华设定"
+          @click="uiStore.openCreatorProfile(u.id)"
         >
           <div style="position: relative">
             <Avatar :avatar="u.avatar" :name="u.name" :size="32" />
@@ -197,6 +205,12 @@
           <!-- Main Info -->
           <div style="min-width: 0; flex: 1">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+              <span v-if="s.canonStatus === 'canon'" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #e0e7ff; color: #4338ca; font-weight: 700">
+                ⭐ 官方正典
+              </span>
+              <span v-else-if="s.canonStatus === 'doujin'" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #fdf2f8; color: #be185d; font-weight: 700">
+                🎨 同人衍生
+              </span>
               <strong style="font-size: 15px; cursor: pointer" @click="viewingShare = s">
                 {{ s.title }}
               </strong>
@@ -294,9 +308,33 @@
         >
           {{ viewingShare.content }}
         </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--li2); margin: 16px 0 10px" />
+        <!-- Discussion Group Component -->
+        <DiscussionSection :share-id="viewingShare.id" />
       </div>
 
       <template #footer>
+        <!-- Doujin author canon application -->
+        <button
+          v-if="viewingShare?.canonStatus === 'doujin' && authStore.user && viewingShare?.userId === authStore.user.id"
+          type="button"
+          class="btn sm"
+          style="color: var(--ac); font-weight: 700"
+          :disabled="viewingShare.canonRequested"
+          @click="handleRequestCanon(viewingShare)"
+        >
+          📜 {{ viewingShare.canonRequested ? '已提交官方正典申请' : '申请转为官方正典' }}
+        </button>
+        <!-- Project owner / admin canon promotion -->
+        <button
+          v-if="viewingShare?.canonStatus === 'doujin' && (authStore.isAdmin || viewingShare.cocreationId)"
+          type="button"
+          class="btn sm primary"
+          @click="handleApproveCanon(viewingShare)"
+        >
+          🌟 接纳并转为官方正典
+        </button>
         <button
           v-if="viewingShare?.kind === 'article'"
           type="button"
@@ -321,6 +359,7 @@
         </button>
       </template>
     </Modal>
+    </template>
   </div>
 </template>
 
@@ -329,6 +368,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';
 import Modal from '../components/base/Modal.vue';
+import DiscussionSection from '../components/app/DiscussionSection.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
@@ -517,6 +557,32 @@ function importShareDraftCode() {
     }
   } catch (err: any) {
     toast(t.value.importFail + (err?.message || ''), 'err');
+  }
+}
+
+async function handleRequestCanon(sh: any) {
+  if (!await confirm('申请转正为官方设定', `确认将同人设定《${sh.title}》向企划团队申请转为官方正典吗？`)) {
+    return;
+  }
+  try {
+    await api.requestCanon(sh.id);
+    sh.canonRequested = true;
+    toast('已提交转正申请，企划团队将收到通知审核！', 'ok');
+  } catch (err: any) {
+    toast(err?.message || '申请失败', 'err');
+  }
+}
+
+async function handleApproveCanon(sh: any) {
+  if (!await confirm('确认转为官方正典', `确认接纳同人设定《${sh.title}》并正式转为官方正典设定吗？`)) {
+    return;
+  }
+  try {
+    await api.approveCanon(sh.id);
+    sh.canonStatus = 'canon';
+    toast('已成功转为官方正典！作者将收到站内通知 ✓', 'ok');
+  } catch (err: any) {
+    toast(err?.message || '审批失败', 'err');
   }
 }
 
