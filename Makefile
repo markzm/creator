@@ -33,8 +33,8 @@ build:
 	cd web && npm run build
 	rm -rf server/internal/api/dist
 	cp -r web/dist server/internal/api/dist
-	cd server && go build -o ../bin/creator ./cmd/creator
-	cd server && go build -o ../bin/legacy-export ./cmd/legacy-export
+	cd server && CGO_ENABLED=0 go build -ldflags="-s -w" -o ../bin/creator ./cmd/creator
+	cd server && CGO_ENABLED=0 go build -ldflags="-s -w" -o ../bin/legacy-export ./cmd/legacy-export
 
 release: test build
 	@echo "==> Release artifacts built in ./bin/ and ./web/dist/"
