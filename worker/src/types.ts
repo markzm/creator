@@ -4,7 +4,6 @@ export interface Env {
   ASSETS: Fetcher;
   REGISTER_MODE?: string;
   SECRET_KEY?: string;
-  SUPER_ADMIN_EMAIL?: string;
   ALLOWED_AI_HOSTS?: string;
   OPENROUTER_API_KEY?: string;
 }

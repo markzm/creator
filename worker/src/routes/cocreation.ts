@@ -22,7 +22,7 @@ cocreationRouter.get('/projects', async (c) => {
       LIMIT ?
     `).bind(user.id, limit).all<any>();
 
-    const projects = (results || []).map(formatProject);
+    const projects = await Promise.all((results || []).map((p) => enrichProject(c, p)));
     return c.json({ projects });
   }
 
@@ -32,7 +32,7 @@ cocreationRouter.get('/projects', async (c) => {
     LIMIT ?
   `).bind(limit).all<any>();
 
-  const projects = (results || []).map(formatProject);
+  const projects = await Promise.all((results || []).map((p) => enrichProject(c, p)));
   return c.json({ projects });
 });
 
@@ -50,11 +50,28 @@ function formatProject(p: any) {
     ownerId: p.owner_id,
     ownerName: p.owner_name,
     admins,
+    members: p.members || [],
     summary: p.summary,
     isOpenDoujin: Boolean(p.is_open_doujin),
+    pendingCount: Number(p.pendingCount || 0),
     createdAt: p.created_at,
     updatedAt: p.updated_at
   };
+}
+
+async function enrichProject(c: any, p: any) {
+  const { results: members } = await c.env.DB.prepare(`
+    SELECT m.user_id as userId, u.nickname as name, u.avatar_url as avatar, m.role
+    FROM cocreation_members m
+    JOIN users u ON u.id = m.user_id
+    WHERE m.project_id = ?
+    ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at ASC
+  `).bind(p.id).all();
+  const pending = await c.env.DB.prepare(`
+    SELECT COUNT(*) as count FROM world_shares
+    WHERE cocreation_id = ? AND canon_review = 'pending'
+  `).bind(p.id).first() as { count: number } | null;
+  return formatProject({ ...p, members: members || [], pendingCount: pending?.count || 0 });
 }
 
 // POST /api/cocreation/projects
@@ -111,7 +128,7 @@ cocreationRouter.post('/projects', async (c) => {
 
   const projRow = await c.env.DB.prepare('SELECT * FROM cocreation_projects WHERE id = ?').bind(id).first();
   return c.json({
-    project: formatProject(projRow),
+    project: await enrichProject(c, projRow),
     unresolved
   }, 201);
 });
@@ -123,7 +140,7 @@ cocreationRouter.get('/projects/:id', async (c) => {
   if (!proj) {
     return c.json({ error: '企划不存在' }, 404);
   }
-  return c.json({ project: formatProject(proj) });
+  return c.json({ project: await enrichProject(c, proj) });
 });
 
 // PATCH /api/cocreation/projects/:id
@@ -162,7 +179,7 @@ cocreationRouter.patch('/projects/:id', async (c) => {
   `).bind(summary, isOpenDoujin, now, id).run();
 
   const updated = await c.env.DB.prepare('SELECT * FROM cocreation_projects WHERE id = ?').bind(id).first();
-  return c.json({ ok: true, project: formatProject(updated) });
+  return c.json({ ok: true, project: await enrichProject(c, updated) });
 });
 
 // PUT /api/cocreation/projects/:id/admins
@@ -219,7 +236,7 @@ cocreationRouter.put('/projects/:id/admins', async (c) => {
   return c.json({
     ok: true,
     unresolved,
-    project: formatProject(updated)
+    project: await enrichProject(c, updated)
   });
 });
 

@@ -82,8 +82,8 @@ syncRouter.put('/', async (c) => {
 
   const rawJSON = JSON.stringify(data);
   const byteSize = new TextEncoder().encode(rawJSON).length;
-  if (byteSize > 10 * 1024 * 1024) {
-    return c.json({ error: '文档体积超过 10MB 上限' }, 413);
+  if (byteSize > 1_800_000) {
+    return c.json({ error: '文档体积超过 1.8MB 上限，请拆分文档后再同步' }, 413);
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -112,10 +112,21 @@ syncRouter.put('/', async (c) => {
       );
     }
     newRev = curDoc.rev + 1;
-    await c.env.DB.prepare(`
+    const updateResult = await c.env.DB.prepare(`
       UPDATE user_docs SET rev = ?, doc_json = ?, byte_size = ?, updated_at = ?
-      WHERE user_id = ?
-    `).bind(newRev, rawJSON, byteSize, now, user.id).run();
+      WHERE user_id = ? AND rev = ?
+    `).bind(newRev, rawJSON, byteSize, now, user.id, baseRev).run();
+    if (!updateResult.meta.changes) {
+      const latest = await c.env.DB.prepare(
+        'SELECT rev, doc_json, updated_at FROM user_docs WHERE user_id = ?'
+      ).bind(user.id).first<{ rev: number; doc_json: string; updated_at: number }>();
+      return c.json({
+        error: '检测到多端版本冲突',
+        serverData: latest ? JSON.parse(latest.doc_json) : null,
+        serverRev: latest?.rev || 0,
+        updatedAt: latest?.updated_at || now
+      }, 409);
+    }
   } else {
     if (baseRev !== 0) {
       return c.json({ error: '检测到多端版本冲突' }, 409);

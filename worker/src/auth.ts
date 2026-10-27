@@ -66,6 +66,50 @@ export function generateRawToken(): string {
 // ----------------------------------------------------
 const usedNonces = new Map<string, number>();
 
+const LOGIN_FAILURE_LIMIT = 5;
+const LOGIN_LOCK_SECONDS = 15 * 60;
+
+export function getClientIp(c: Context<{ Bindings: Env }>): string {
+  return (c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown')
+    .split(',')[0]
+    .trim()
+    .slice(0, 100);
+}
+
+function loginAttemptKey(ip: string, email: string): string {
+  return `login:${ip}:${email}`.slice(0, 240);
+}
+
+export async function getLoginLock(c: Context<{ Bindings: Env }>, ip: string, email: string): Promise<number> {
+  const key = loginAttemptKey(ip, email);
+  const row = await c.env.DB.prepare(
+    'SELECT locked_until FROM auth_attempts WHERE attempt_key = ?'
+  ).bind(key).first<{ locked_until: number }>();
+  const now = Math.floor(Date.now() / 1000);
+  return row && row.locked_until > now ? row.locked_until : 0;
+}
+
+export async function recordLoginFailure(c: Context<{ Bindings: Env }>, ip: string, email: string): Promise<void> {
+  const key = loginAttemptKey(ip, email);
+  const now = Math.floor(Date.now() / 1000);
+  await c.env.DB.prepare(`
+    INSERT INTO auth_attempts (attempt_key, failed_count, locked_until, updated_at)
+    VALUES (?, 1, 0, ?)
+    ON CONFLICT(attempt_key) DO UPDATE SET
+      failed_count = failed_count + 1,
+      locked_until = CASE
+        WHEN auth_attempts.failed_count + 1 >= ? THEN ?
+        ELSE auth_attempts.locked_until
+      END,
+      updated_at = excluded.updated_at
+  `).bind(key, now, LOGIN_FAILURE_LIMIT, now + LOGIN_LOCK_SECONDS).run();
+}
+
+export async function clearLoginFailures(c: Context<{ Bindings: Env }>, ip: string, email: string): Promise<void> {
+  await c.env.DB.prepare('DELETE FROM auth_attempts WHERE attempt_key = ?')
+    .bind(loginAttemptKey(ip, email)).run();
+}
+
 async function getHmacKey(secret: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   return crypto.subtle.importKey(
@@ -156,7 +200,8 @@ export async function verifyChallenge(secretKey: string, token: string, answer: 
 
     if (sig !== expectedSig) return false;
 
-    // Prevent replay
+    // Prevent replay in this isolate. Cross-isolate persistence is handled by the
+    // registration route's D1 nonce claim when the hardening migration is present.
     if (usedNonces.has(nonce)) return false;
     usedNonces.set(nonce, exp);
 
@@ -171,6 +216,31 @@ export async function verifyChallenge(secretKey: string, token: string, answer: 
   } catch {
     return false;
   }
+}
+
+export function parseChallengeToken(token: string): { nonce: string; expiresAt: number } | null {
+  try {
+    const decStr = new TextDecoder().decode(base64UrlDecode(token.trim()));
+    const parts = decStr.split(':');
+    if (parts.length !== 3) return null;
+    const expiresAt = Number(parts[1]);
+    if (!parts[0] || !Number.isFinite(expiresAt)) return null;
+    return { nonce: parts[0], expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+export async function claimChallenge(c: Context<{ Bindings: Env }>, token: string): Promise<boolean> {
+  const parsed = parseChallengeToken(token);
+  if (!parsed) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (parsed.expiresAt < now) return false;
+  const result = await c.env.DB.prepare(`
+    INSERT OR IGNORE INTO auth_challenges (nonce, expires_at, used_at, created_at)
+    VALUES (?, ?, ?, ?)
+  `).bind(parsed.nonce, parsed.expiresAt, now, now).run();
+  return Boolean(result.meta.changes);
 }
 
 // ----------------------------------------------------

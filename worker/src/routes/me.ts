@@ -108,6 +108,8 @@ meRouter.post('/avatar', async (c) => {
         contentType: isPNG ? 'image/png' : 'image/jpeg'
       }
     });
+  } else {
+    return c.json({ error: '头像存储服务未配置，请联系管理员' }, 503);
   }
 
   const newUrl = `/avatars/${fileName}`;

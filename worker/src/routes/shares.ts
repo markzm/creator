@@ -4,6 +4,17 @@ import type { Env, UserRow } from '../types';
 
 export const sharesRouter = new Hono<{ Bindings: Env }>();
 
+async function loadReadableShare(c: any, shareId: string, user: UserRow | null) {
+  const share = await c.env.DB.prepare(
+    'SELECT id, user_id as userId, visibility FROM world_shares WHERE id = ?'
+  ).bind(shareId).first() as { id: string; userId: number; visibility: string } | null;
+  if (!share) return null;
+  if (share.visibility === 'private' && (!user || (user.id !== share.userId && !user.is_admin))) {
+    return undefined;
+  }
+  return share;
+}
+
 // POST /api/presence
 sharesRouter.post('/presence', async (c) => {
   const user = await getCurrentUser(c);
@@ -59,7 +70,8 @@ sharesRouter.get('/lobby/creator-profile', async (c) => {
   }
 
   const user = await c.env.DB.prepare(`
-    SELECT id, nickname, avatar_url, bio, presence_focus, last_seen_at, created_at
+    SELECT id, nickname, avatar_url, bio, presence_focus, last_seen_at, created_at,
+           is_admin, is_super_admin, is_muted
     FROM users WHERE id = ? AND is_disabled = 0
   `).bind(uid).first<{
     id: number;
@@ -69,32 +81,92 @@ sharesRouter.get('/lobby/creator-profile', async (c) => {
     presence_focus: string;
     last_seen_at: number;
     created_at: number;
+    is_admin: number;
+    is_super_admin: number;
+    is_muted: number;
   }>();
 
   if (!user) {
     return c.json({ error: '未找到创作者信息' }, 404);
   }
 
-  const stats = await c.env.DB.prepare(`
-    SELECT
-      COUNT(*) as totalShares,
-      COALESCE(SUM(word_count), 0) as totalWords
+  // Keep this response in sync with CreatorProfile (and the Go API). The web
+  // client renders profile.user immediately after the request resolves, so a
+  // flat response here makes the modal throw during render and disappear.
+  const { results: publishedShares } = await c.env.DB.prepare(`
+    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
+           content, draft_code as draftCode, visibility, entity_id as entityId, tags,
+           word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
+           canon_requested as canonRequested, tachi_e_url as tachiEUrl,
+           author_id as authorId, canon_review as canonReview,
+           reviewed_by as reviewedBy, reviewed_at as reviewedAt,
+           created_at as createdAt, updated_at as updatedAt
     FROM world_shares
     WHERE user_id = ? AND visibility = 'public'
-  `).bind(uid).first<{ totalShares: number; totalWords: number }>();
+    ORDER BY created_at DESC, id DESC
+    LIMIT 50
+  `).bind(uid).all();
+
+  const { results: projectRows } = await c.env.DB.prepare(`
+    SELECT p.*,
+           (SELECT COUNT(*) FROM world_shares ws
+            WHERE ws.cocreation_id = p.id AND ws.canon_review = 'pending') AS pendingCount
+    FROM cocreation_projects p
+    JOIN cocreation_members cm ON cm.project_id = p.id
+    WHERE cm.user_id = ?
+    ORDER BY p.updated_at DESC
+    LIMIT 20
+  `).bind(uid).all<any>();
+
+  const cocreations = await Promise.all((projectRows || []).map(async (p: any) => {
+    let admins: string[] = [];
+    try {
+      admins = JSON.parse(p.admins_json || '[]');
+    } catch {
+      // Ignore malformed legacy display data; membership rows are authoritative.
+    }
+
+    const { results: members } = await c.env.DB.prepare(`
+      SELECT m.user_id as userId, u.nickname as name, u.avatar_url as avatar, m.role
+      FROM cocreation_members m
+      JOIN users u ON u.id = m.user_id
+      WHERE m.project_id = ?
+      ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at ASC
+    `).bind(p.id).all();
+
+    return {
+      id: p.id,
+      worldId: p.world_id,
+      worldTitle: p.world_title,
+      ownerId: p.owner_id,
+      ownerName: p.owner_name,
+      admins,
+      members: members || [],
+      summary: p.summary || '',
+      isOpenDoujin: Boolean(p.is_open_doujin),
+      pendingCount: Number(p.pendingCount || 0),
+      createdAt: p.created_at,
+      updatedAt: p.updated_at
+    };
+  }));
 
   const now = Math.floor(Date.now() / 1000);
   return c.json({
-    id: user.id,
-    name: user.nickname || '未命名创作者',
-    avatar: user.avatar_url || '',
-    bio: user.bio || '',
-    focus: user.presence_focus || '',
-    lastSeen: user.last_seen_at || 0,
-    isOnline: now - (user.last_seen_at || 0) <= 180,
+    user: {
+      id: user.id,
+      name: user.nickname || '未命名创作者',
+      avatar: user.avatar_url || '',
+      bio: user.bio || '',
+      focus: user.presence_focus || '',
+      lastSeen: user.last_seen_at || 0,
+      isOnline: now - (user.last_seen_at || 0) <= 300
+    },
+    isAdmin: Boolean(user.is_admin),
+    isSuperAdmin: Boolean(user.is_super_admin),
+    isMuted: Boolean(user.is_muted),
     createdAt: user.created_at || 0,
-    publicCreationsCount: stats ? stats.totalShares : 0,
-    publicWordsCount: stats ? stats.totalWords : 0
+    publishedShares: publishedShares || [],
+    cocreations
   });
 });
 
@@ -284,6 +356,13 @@ sharesRouter.post('/shares', async (c) => {
 
   let canonStatus = 'canon';
   if (cocreationId) {
+    const project = await c.env.DB.prepare(
+      'SELECT is_open_doujin FROM cocreation_projects WHERE id = ?'
+    ).bind(cocreationId).first<{ is_open_doujin: number }>();
+    if (!project) return c.json({ error: '共创企划不存在' }, 400);
+    if (!project.is_open_doujin && !user.is_admin) {
+      return c.json({ error: '该共创企划已暂停投稿' }, 403);
+    }
     // Check if user is reviewer or admin
     const member = await c.env.DB.prepare(
       'SELECT role FROM cocreation_members WHERE project_id = ? AND user_id = ?'
@@ -437,6 +516,10 @@ sharesRouter.delete('/shares/:id', async (c) => {
 // GET /api/shares/:id/comments
 sharesRouter.get('/shares/:id/comments', async (c) => {
   const shareId = c.req.param('id');
+  const user = await getCurrentUser(c);
+  const readable = await loadReadableShare(c, shareId, user);
+  if (readable === undefined) return c.json({ error: '该条目为作者私有，暂不公开' }, 403);
+  if (!readable) return c.json({ error: '分享条目不存在' }, 404);
   const { results } = await c.env.DB.prepare(`
     SELECT id, share_id as shareId, user_id as userId, user_name as userName,
            user_avatar as userAvatar, content, parent_id as parentId, like_count as likeCount, created_at as createdAt
@@ -459,6 +542,9 @@ sharesRouter.post('/shares/:id/comments', async (c) => {
   }
 
   const shareId = c.req.param('id');
+  const readable = await loadReadableShare(c, shareId, user);
+  if (readable === undefined) return c.json({ error: '该条目为作者私有，无法评论' }, 403);
+  if (!readable) return c.json({ error: '分享条目不存在' }, 404);
   const body = await c.req.json().catch(() => null);
   if (!body || !body.content || !body.content.trim()) {
     return c.json({ error: '评论内容不能为空' }, 400);
@@ -466,6 +552,12 @@ sharesRouter.post('/shares/:id/comments', async (c) => {
 
   const content = body.content.trim().slice(0, 1000);
   const parentId = typeof body.parentId === 'number' ? body.parentId : 0;
+  if (parentId) {
+    const parent = await c.env.DB.prepare(
+      'SELECT id FROM setting_comments WHERE id = ? AND share_id = ?'
+    ).bind(parentId, shareId).first();
+    if (!parent) return c.json({ error: '回复目标不存在' }, 400);
+  }
   const now = Math.floor(Date.now() / 1000);
 
   const res = await c.env.DB.prepare(`
@@ -492,6 +584,17 @@ sharesRouter.post('/comments/:id/like', async (c) => {
 
   const commentId = parseInt(c.req.param('id'), 10);
   const now = Math.floor(Date.now() / 1000);
+
+  const commentAccess = await c.env.DB.prepare(`
+    SELECT c.id, s.user_id as shareOwnerId, s.visibility
+    FROM setting_comments c
+    JOIN world_shares s ON s.id = c.share_id
+    WHERE c.id = ?
+  `).bind(commentId).first() as { id: number; shareOwnerId: number; visibility: string } | null;
+  if (!commentAccess) return c.json({ error: '评论不存在' }, 404);
+  if (commentAccess.visibility === 'private' && commentAccess.shareOwnerId !== user.id && !user.is_admin) {
+    return c.json({ error: '该条目为作者私有，无法操作评论' }, 403);
+  }
 
   const liked = await c.env.DB.prepare(
     'SELECT 1 FROM comment_likes WHERE comment_id = ? AND user_id = ?'

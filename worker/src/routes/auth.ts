@@ -1,11 +1,16 @@
 import { Hono } from 'hono';
 import {
   checkPassword,
+  claimChallenge,
+  clearLoginFailures,
   createSession,
   destroySession,
+  getClientIp,
+  getLoginLock,
   generateChallenge,
   hashPassword,
   hashToken,
+  recordLoginFailure,
   validateEmail,
   validatePassword,
   verifyChallenge
@@ -52,6 +57,9 @@ authRouter.post('/register', async (c) => {
     if (!ok) {
       return c.json({ error: '验证码错误或已过期，请刷新后重试' }, 400);
     }
+    if (!(await claimChallenge(c, challengeToken))) {
+      return c.json({ error: '验证码已使用，请刷新后重试' }, 400);
+    }
   }
 
   const cleanEmail = (email || '').trim().toLowerCase();
@@ -70,18 +78,6 @@ authRouter.post('/register', async (c) => {
     if (!inviteCode || !inviteCode.trim()) {
       return c.json({ error: '当前模式需要填写邀请码' }, 400);
     }
-    const invite = await c.env.DB.prepare(
-      'SELECT * FROM invites WHERE code = ?'
-    ).bind(inviteCode.trim()).first<{ code: string; max_uses: number; used_count: number; expires_at: number | null }>();
-
-    const now = Math.floor(Date.now() / 1000);
-    if (!invite || invite.used_count >= invite.max_uses || (invite.expires_at && invite.expires_at < now)) {
-      return c.json({ error: '邀请码无效或已用尽' }, 400);
-    }
-
-    await c.env.DB.prepare(
-      'UPDATE invites SET used_count = used_count + 1 WHERE code = ?'
-    ).bind(inviteCode.trim()).run();
   }
 
   // Check email uniqueness
@@ -92,11 +88,22 @@ authRouter.post('/register', async (c) => {
     return c.json({ error: '该邮箱已注册，请直接登录' }, 409);
   }
 
+  if (registerMode === 'invite') {
+    const now = Math.floor(Date.now() / 1000);
+    const inviteUpdate = await c.env.DB.prepare(`
+      UPDATE invites SET used_count = used_count + 1
+      WHERE code = ? AND used_count < max_uses
+        AND (expires_at IS NULL OR expires_at >= ?)
+    `).bind(inviteCode.trim(), now).run();
+    if (!inviteUpdate.meta.changes) {
+      return c.json({ error: '邀请码无效或已用尽' }, 400);
+    }
+  }
+
   const passHash = await hashPassword(password);
   const now = Math.floor(Date.now() / 1000);
-  const isSuperAdminEmail = (c.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase() === cleanEmail;
-  const isAdmin = isSuperAdminEmail ? 1 : 0;
-  const isSuperAdmin = isSuperAdminEmail ? 1 : 0;
+  const isAdmin = 0;
+  const isSuperAdmin = 0;
 
   const insertRes = await c.env.DB.prepare(`
     INSERT INTO users (
@@ -138,12 +145,18 @@ authRouter.post('/login', async (c) => {
 
   const { email, password } = body;
   const cleanEmail = (email || '').trim().toLowerCase();
+  const clientIp = getClientIp(c);
+  const lockedUntil = await getLoginLock(c, clientIp, cleanEmail);
+  if (lockedUntil) {
+    return c.json({ error: '登录失败次数过多，请 15 分钟后重试' }, 429);
+  }
 
   const user = await c.env.DB.prepare(
     'SELECT * FROM users WHERE email = ? COLLATE NOCASE'
   ).bind(cleanEmail).first<UserRow>();
 
   if (!user || !(await checkPassword(password, user.password_hash))) {
+    await recordLoginFailure(c, clientIp, cleanEmail);
     return c.json({ error: '邮箱或密码错误' }, 401);
   }
 
@@ -151,15 +164,7 @@ authRouter.post('/login', async (c) => {
     return c.json({ error: '该账号已被禁用' }, 403);
   }
 
-  // Check if eligible for super admin upgrade
-  const isSuperAdminEmail = (c.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase() === cleanEmail;
-  if (isSuperAdminEmail && (!user.is_admin || !user.is_super_admin)) {
-    await c.env.DB.prepare(
-      'UPDATE users SET is_admin = 1, is_super_admin = 1 WHERE id = ?'
-    ).bind(user.id).run();
-    user.is_admin = 1;
-    user.is_super_admin = 1;
-  }
+  await clearLoginFailures(c, clientIp, cleanEmail);
 
   await createSession(c, user.id);
   return c.json({ user: toAuthUser(user) });
@@ -173,8 +178,7 @@ authRouter.post('/logout', async (c) => {
 
 // POST /api/auth/forgot
 authRouter.post('/forgot', async (c) => {
-  // Always return ok: true to prevent user enumeration
-  return c.json({ ok: true });
+  return c.json({ error: '密码找回服务尚未配置，请联系管理员重置密码' }, 503);
 });
 
 // POST /api/auth/reset

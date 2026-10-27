@@ -14,11 +14,10 @@ database_name = "creator-db"
 database_id = "c5f7e64b-ea28-4b93-afcb-ca79c40b07f4"
 migrations_dir = "./migrations"
 
-# [[r2_buckets]]
-# binding = "AVATARS"
-# bucket_name = "creator-avatars"
+[[r2_buckets]]
+binding = "AVATARS"
+bucket_name = "creator-avatars"
 
 [vars]
 REGISTER_MODE = "open"
-SUPER_ADMIN_EMAIL = "admin@example.com"
 ALLOWED_AI_HOSTS = "api.deepseek.com,api.siliconflow.cn,openrouter.ai,api.openai.com"

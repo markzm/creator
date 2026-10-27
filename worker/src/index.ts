@@ -52,7 +52,6 @@ app.route('/api/me', meRouter);
 app.route('/api/sync', syncRouter);
 app.route('/api', sharesRouter);
 app.route('/api/cocreation', cocreationRouter);
-app.route('/api', cocreationRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api', referenceRouter);
 app.route('/api/ai', aiRouter);

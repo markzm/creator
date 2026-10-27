@@ -260,10 +260,15 @@ async function loadProfile(uid: number) {
   editingBio.value = false;
   try {
     const res = await api.getCreatorProfile(uid);
+    // Assign only after validating the shape. A malformed/legacy response must
+    // leave the modal in its empty state instead of crashing the render tree.
+    if (!res?.user || !Array.isArray(res.publishedShares) || !Array.isArray(res.cocreations)) {
+      throw new Error('创作者档案格式错误');
+    }
     profile.value = res;
     bioDraft.value = res.user.bio || '';
   } catch {
-    // Ignore error
+    profile.value = null;
   } finally {
     loading.value = false;
   }

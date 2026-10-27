@@ -8,7 +8,7 @@
 
 当前机器已通过 `deploy/deploy.sh` 配置好 `systemd` 守护服务（`creator.service`）：
 - **监听地址**：`http://0.0.0.0:8080`（本机 `http://127.0.0.1:8080`，内网 `http://10.0.0.120:8080`）
-- **超级管理员**：`SUPER_ADMIN_EMAIL=you@example.com`（该账号注册后服务启动时自动提升；或执行 `./bin/creator user promote --email you@example.com --super`）。管理员身份不再与任何昵称绑定。
+- **超级管理员**：通过受控运维命令或 `./bin/creator user promote --email you@example.com --super` 明确授予；注册和登录不会根据邮箱自动提权。管理员身份不与昵称绑定。
 - **密钥**：`SECRET_KEY` 必须固定（`openssl rand -hex 32`）；未设置时服务会在 `DATA_DIR/secret.key` 生成并持久化一份，用于验证码签名与用户 AI Key 加密。
 - **可信代理**：`TRUSTED_PROXIES=127.0.0.0/8,::1/128`，只有来自这些地址的 `X-Forwarded-For` 才会被采信（限流/审计）。
 - **外部链接**：`PUBLIC_URL=https://your.domain`，用于密码重置邮件中的 `/reset?token=` 链接。

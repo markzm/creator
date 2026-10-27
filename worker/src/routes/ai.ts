@@ -121,6 +121,7 @@ aiRouter.post('/generate', async (c) => {
   }
 
   let customAi = body.customAi;
+  let usedAi: 'public' | 'custom' = 'custom';
   const secretKey = c.env.SECRET_KEY || 'creator-secret-change-in-wrangler-secrets';
 
   // Fallback to cloud saved config
@@ -139,7 +140,15 @@ aiRouter.post('/generate', async (c) => {
   }
 
   if (!customAi || !customAi.apiKey) {
-    return c.json({ error: '请先在个人中心配置您的 AI Key，或在弹窗中临时填写' }, 400);
+    if (!c.env.OPENROUTER_API_KEY?.trim()) {
+      return c.json({ error: '请先在个人中心配置您的 AI Key，或联系管理员配置公共 AI' }, 400);
+    }
+    customAi = {
+      baseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: c.env.OPENROUTER_API_KEY,
+      model: body.publicModel || 'openrouter/free'
+    };
+    usedAi = 'public';
   }
 
   const baseUrl = (customAi.baseUrl || 'https://api.deepseek.com/v1').trim();
@@ -151,7 +160,21 @@ aiRouter.post('/generate', async (c) => {
   const endpoint = baseUrl.replace(/\/+$/, '') + '/chat/completions';
 
   const systemPrompt = '你是一位严谨的世界观架构师与小说设定助理，请直接输出设定正文，不要寒暄，不要发散。';
-  const userPrompt = body.prompt || `请根据以下信息补全设定：${JSON.stringify(body.entityData || {})}`;
+  const taskPrompt: Record<string, string> = {
+    article_summary: '请提炼文章的核心情节、人物变化和关键设定，输出简洁摘要。',
+    article_continue: '请自然续写以下文章，保持人物、语气和世界观一致，推进情节。',
+    article_write: '请根据上下文创作文章正文。',
+    field_gen: `请为字段「${body.fieldLabel || body.fieldId || '当前字段'}」生成可直接使用的设定内容。`,
+    entity_gen: `请为${body.entityKind || '设定实体'}生成完整设定内容。`
+  };
+  const userPrompt = [
+    taskPrompt[body.task] || '请根据以下信息补全设定。',
+    body.prompt || '',
+    body.currentText ? `前文：\n${String(body.currentText).slice(0, 12000)}` : '',
+    body.context ? `上下文：\n${String(body.context).slice(0, 12000)}` : '',
+    body.entityData ? `实体资料：\n${JSON.stringify(body.entityData)}` : '',
+    body.preferences ? `创作偏好：\n${JSON.stringify(body.preferences)}` : ''
+  ].filter(Boolean).join('\n\n');
 
   try {
     const res = await fetch(endpoint, {
@@ -181,7 +204,7 @@ aiRouter.post('/generate', async (c) => {
     return c.json({
       content,
       model,
-      usedAi: 'custom'
+      usedAi
     });
   } catch (e: any) {
     return c.json({ error: `AI 请求超时或连接失败: ${e?.message || '未知错误'}` }, 500);

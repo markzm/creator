@@ -117,9 +117,10 @@ npx wrangler r2 bucket create creator-avatars
 # 1. 设置 JWT/HMAC 签名与加密专属密钥（生成32位随机字符串）
 openssl rand -hex 32 | npx wrangler secret put SECRET_KEY
 
-# 2. 设置超级管理员邮箱（首次登录自动激活超管控制台）
-npx wrangler secret put SUPER_ADMIN_EMAIL
-# 输入你的管理邮箱，例如: you@example.com
+# 2. 首次管理员账号通过受控数据库/管理脚本设置，不再根据邮箱自动提权
+# 请先完成注册，再由受控运维流程将该用户设置为 is_admin=1、is_super_admin=1
+# 例如（确认邮箱后执行）：
+# npx wrangler d1 execute creator-db --remote --command "UPDATE users SET is_admin=1, is_super_admin=1 WHERE email='you@example.com'"
 
 # 3. (可选) 如需启用平台公共免费 AI 生成能力，配置 OpenRouter 密钥:
 npx wrangler secret put OPENROUTER_API_KEY
