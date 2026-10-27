@@ -1,0 +1,27 @@
+{
+  "name": "worldbuilding-studio",
+  "version": "6.7.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "cd web && npm run build",
+    "build": "npm run build:web",
+    "dev": "wrangler dev",
+    "deploy": "npm run build:web && wrangler deploy",
+    "d1:create": "wrangler d1 create creator-db",
+    "d1:migrate:local": "wrangler d1 migrations apply creator-db --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply creator-db --remote",
+    "r2:create": "wrangler r2 bucket create creator-avatars"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.17.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.91.0"
+  }
+}

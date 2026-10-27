@@ -33,23 +33,15 @@
 ```text
 creator/
 ├── docs/
-│   ├── DEPLOY.md             # 部署、运维与域名/HTTPS 升级手册
+│   ├── DEPLOY.md             # 自建 VPS 部署、运维与域名/HTTPS 升级手册
+│   ├── CLOUDFLARE.md         # 纯 Cloudflare Serverless 全家桶部署指南（方案三）
 │   └── gemini/               # 重构任务包（00-RULES.md + T00~T14.md）
-├── legacy/
-│   └── index.html            # v5.4 原始单文件参考实现（只读保留）
-├── scripts/
-│   └── extract-legacy.mjs    # 字典与 Golden Master 测试向量提取脚本
-├── server/                   # Go 1.22+ 后端与 CLI（SQLite WAL 纯 Go 驱动）
-│   ├── cmd/creator/          # 主程序：serve | invite | user | legacy | backup | version
-│   ├── cmd/legacy-export/    # 旧版云端数据独立导出工具（T01）
-│   └── internal/             # config, store, auth, api, mail, legacy
+├── migrations/               # Cloudflare D1 数据库版本迁移 SQL (0001~0005)
+├── worker/                   # Cloudflare Worker 全栈 API (Hono + TypeScript)
+├── legacy/                   # v5.4 原始单文件参考实现（只读保留）
+├── scripts/                  # 字典与 Golden Master 测试向量提取脚本
+├── server/                   # Go 1.22+ 后端与 CLI（SQLite WAL 纯 Go 驱动，用于 VPS 部署）
 ├── web/                      # Vue 3.5 + TypeScript + Vite 6 + Pinia 前端
-│   ├── src/core/             # 零 DOM 依赖纯逻辑层 + 32 项 Vitest 单元测试
-│   ├── src/data/             # IndexedDB 存储仓库与 REST API 客户端
-│   ├── src/stores/           # Pinia 状态管理（doc, auth, sync, ui）
-│   ├── src/components/       # 基础组件、编辑器组件、应用壳层与弹窗
-│   ├── src/views/            # 13 个功能模块视图
-│   └── e2e/                  # Playwright 端到端冒烟测试（T14）
 └── deploy/                   # systemd 服务、Nginx 配置、自动备份与一键部署脚本
 ```
 

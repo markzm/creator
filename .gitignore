@@ -2,6 +2,8 @@
 bin/
 web/dist/
 web/node_modules/
+node_modules/
+.wrangler/
 web/playwright-report/
 web/test-results/
 server/creator

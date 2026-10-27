@@ -1,0 +1,24 @@
+name = "creator"
+main = "worker/src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "creator-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "./migrations"
+
+[[r2_buckets]]
+binding = "AVATARS"
+bucket_name = "creator-avatars"
+
+[vars]
+REGISTER_MODE = "open"
+SUPER_ADMIN_EMAIL = "admin@example.com"
+ALLOWED_AI_HOSTS = "api.deepseek.com,api.siliconflow.cn,openrouter.ai,api.openai.com"

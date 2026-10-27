@@ -1,6 +1,17 @@
-.PHONY: all check-env setup extract test test-server test-web test-e2e build release clean backup-remote backup-status backup-info
+.PHONY: all check-env setup extract test test-server test-web test-e2e build release clean backup-remote backup-status backup-info build-cf dev-cf deploy-cf
 
 all: test build
+
+# --- Cloudflare Serverless Targets ---
+build-cf:
+	cd web && npm run build
+	npx tsc --noEmit -p worker/tsconfig.json
+
+dev-cf: build-cf
+	npx wrangler dev
+
+deploy-cf: build-cf
+	npx wrangler deploy
 
 check-env:
 	@echo "==> Checking toolchain..."
