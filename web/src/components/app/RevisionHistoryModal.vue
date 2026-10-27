@@ -18,7 +18,7 @@
         v-for="rev in revisions"
         :key="rev.id"
         class="gl-row"
-        style="margin-bottom: 0; padding: 10px 12px"
+        style="margin-bottom: 0; padding: 10px 12px; flex-shrink: 0"
       >
         <div style="flex: 1; min-width: 0">
           <div style="font-weight: 700; font-size: 13px">

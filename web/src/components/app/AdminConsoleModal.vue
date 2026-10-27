@@ -40,46 +40,46 @@
         <div v-if="loadingUsers" class="hint" style="text-align: center; padding: 30px 0">
           加载用户列表中…
         </div>
-        <div v-else style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px">
+        <div v-else style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px">
           <div
             v-for="u in usersList"
             :key="u.id"
-            class="card"
-            style="padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap"
+            class="card flat"
+            style="padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 54px"
           >
-            <div style="display: flex; align-items: center; gap: 10px">
-              <Avatar :avatar="u.avatar" :name="u.name" :size="32" />
-              <div>
-                <div style="display: flex; align-items: center; gap: 6px">
-                  <strong style="font-size: 13px">{{ u.name }}</strong>
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1">
+              <Avatar :avatar="u.avatar" :name="u.name" :size="34" style="flex-shrink: 0" />
+              <div style="min-width: 0">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+                  <strong style="font-size: 13.5px; line-height: 1.4">{{ u.name }}</strong>
                   <span class="hint" style="font-size: 11.5px">({{ u.email }})</span>
-                  <span v-if="u.isSuperAdmin" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #f59e0b; color: #fff; font-weight: 700">
+                  <span v-if="u.isSuperAdmin" class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: #f59e0b; color: #fff; font-weight: 700">
                     👑 超级管理员
                   </span>
-                  <span v-else-if="u.isAdmin" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: var(--ac); color: #fff; font-weight: 700">
+                  <span v-else-if="u.isAdmin" class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: var(--ac); color: #fff; font-weight: 700">
                     🛡️ 管理员
                   </span>
-                  <span v-if="u.isMuted" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #ef4444; color: #fff; font-weight: 700">
+                  <span v-if="u.isMuted" class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: #ef4444; color: #fff; font-weight: 700">
                     🔇 禁言中
                   </span>
-                  <span v-if="u.isDisabled" class="pill" style="font-size: 10px; padding: 1px 5px; border-radius: 99px; background: #6b7280; color: #fff; font-weight: 700">
+                  <span v-if="u.isDisabled" class="pill" style="font-size: 10px; padding: 1px 6px; border-radius: 99px; background: #6b7280; color: #fff; font-weight: 700">
                     🚫 已限制登录
                   </span>
                 </div>
-                <div class="hint" style="font-size: 11px">
+                <div class="hint" style="font-size: 11px; margin-top: 2px">
                   UID: {{ u.id }} · 注册于 {{ formatDate(u.createdAt) }}
                 </div>
               </div>
             </div>
 
             <!-- Action buttons -->
-            <div v-if="u.id !== authStore.user?.id" style="display: flex; gap: 6px; flex-wrap: wrap">
+            <div v-if="u.id !== authStore.user?.id" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end">
               <!-- super admin toggle -->
               <button
                 v-if="authStore.isSuperAdmin && !u.isSuperAdmin"
                 type="button"
                 class="btn sm"
-                style="font-size: 11px; padding: 2px 7px"
+                style="font-size: 11.5px; padding: 3px 8px; white-space: nowrap"
                 @click="toggleUserAdmin(u)"
               >
                 {{ u.isAdmin ? '撤销管理员' : '设为管理员' }}
@@ -89,7 +89,7 @@
               <button
                 type="button"
                 class="btn sm"
-                style="font-size: 11px; padding: 2px 7px"
+                style="font-size: 11.5px; padding: 3px 8px; white-space: nowrap"
                 @click="toggleUserMute(u)"
               >
                 {{ u.isMuted ? '🔊 解除禁言' : '🔇 禁言' }}
@@ -99,7 +99,7 @@
               <button
                 type="button"
                 class="btn sm danger"
-                style="font-size: 11px; padding: 2px 7px"
+                style="font-size: 11.5px; padding: 3px 8px; white-space: nowrap"
                 @click="toggleUserStatus(u)"
               >
                 {{ u.isDisabled ? '🔓 解除登录限制' : '🚫 限制登录' }}
@@ -110,7 +110,7 @@
                 v-if="u.isMuted || u.isDisabled"
                 type="button"
                 class="btn sm primary"
-                style="font-size: 11px; padding: 2px 7px"
+                style="font-size: 11.5px; padding: 3px 8px; white-space: nowrap"
                 @click="liftPenalties(u)"
               >
                 ✨ 解除惩罚
@@ -134,9 +134,9 @@
         <div v-if="loadingExamples" class="hint" style="text-align: center; padding: 30px 0">
           加载官方范例列表中…
         </div>
-        <div v-else style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px">
+        <div v-else style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px">
           <!-- Worlds -->
-          <div v-for="w in refWorlds" :key="w.id" class="card" style="padding: 10px 12px; display: flex; justify-content: space-between; align-items: center">
+          <div v-for="w in refWorlds" :key="w.id" class="card flat" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 48px">
             <div>
               <span class="pill" style="font-size: 10.5px; padding: 1px 6px; background: var(--acs); color: var(--ac); margin-right: 6px">🌍 世界观</span>
               <strong style="font-size: 13px">{{ w.name }}</strong>
@@ -146,7 +146,7 @@
               v-if="canDeleteExample(w)"
               type="button"
               class="btn sm danger"
-              style="font-size: 11px"
+              style="font-size: 11px; flex-shrink: 0"
               @click="deleteExample('world', w.id, w.name)"
             >
               删除范例
@@ -154,7 +154,7 @@
           </div>
 
           <!-- Chars -->
-          <div v-for="c in refChars" :key="c.id" class="card" style="padding: 10px 12px; display: flex; justify-content: space-between; align-items: center">
+          <div v-for="c in refChars" :key="c.id" class="card flat" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 48px">
             <div>
               <span class="pill" style="font-size: 10.5px; padding: 1px 6px; background: var(--acs); color: var(--ac); margin-right: 6px">👤 角色</span>
               <strong style="font-size: 13px">{{ c.name }}</strong>
@@ -164,7 +164,7 @@
               v-if="canDeleteExample(c)"
               type="button"
               class="btn sm danger"
-              style="font-size: 11px"
+              style="font-size: 11px; flex-shrink: 0"
               @click="deleteExample('char', c.id, c.name)"
             >
               删除范例
@@ -172,7 +172,7 @@
           </div>
 
           <!-- Orgs -->
-          <div v-for="o in refOrgs" :key="o.id" class="card" style="padding: 10px 12px; display: flex; justify-content: space-between; align-items: center">
+          <div v-for="o in refOrgs" :key="o.id" class="card flat" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 48px">
             <div>
               <span class="pill" style="font-size: 10.5px; padding: 1px 6px; background: var(--acs); color: var(--ac); margin-right: 6px">🏛️ 组织</span>
               <strong style="font-size: 13px">{{ o.name }}</strong>
@@ -182,7 +182,7 @@
               v-if="canDeleteExample(o)"
               type="button"
               class="btn sm danger"
-              style="font-size: 11px"
+              style="font-size: 11px; flex-shrink: 0"
               @click="deleteExample('org', o.id, o.name)"
             >
               删除范例
@@ -190,7 +190,7 @@
           </div>
 
           <!-- Articles -->
-          <div v-for="a in refArticles" :key="a.id" class="card" style="padding: 10px 12px; display: flex; justify-content: space-between; align-items: center">
+          <div v-for="a in refArticles" :key="a.id" class="card flat" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 48px">
             <div>
               <span class="pill" style="font-size: 10.5px; padding: 1px 6px; background: var(--acs); color: var(--ac); margin-right: 6px">🖋️ 文章</span>
               <strong style="font-size: 13px">{{ a.title }}</strong>
@@ -200,7 +200,7 @@
               v-if="canDeleteExample(a)"
               type="button"
               class="btn sm danger"
-              style="font-size: 11px"
+              style="font-size: 11px; flex-shrink: 0"
               @click="deleteExample('article', a.id, a.title)"
             >
               删除范例
