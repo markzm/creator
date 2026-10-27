@@ -1,0 +1,10 @@
+[Unit]
+Description=Creator Studio v6 Remote Backup Sync Service (abc.lidan.cc -> Local)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/creator
+ExecStart=/data/creator/scripts/backup-remote.sh
+StandardOutput=journal
+StandardError=journal

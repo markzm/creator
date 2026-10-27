@@ -1,4 +1,4 @@
-.PHONY: all check-env setup extract test test-server test-web test-e2e build release clean
+.PHONY: all check-env setup extract test test-server test-web test-e2e build release clean backup-remote backup-status backup-info
 
 all: test build
 
@@ -41,3 +41,15 @@ release: test build
 
 clean:
 	rm -rf bin web/dist server/internal/api/dist
+
+backup-remote:
+	@./scripts/backup-remote.sh
+
+backup-status:
+	@./scripts/restore-from-backup.sh --list
+	@echo ""
+	@systemctl --user status creator-backup.timer --no-pager || true
+
+backup-info:
+	@./scripts/restore-from-backup.sh --info
+

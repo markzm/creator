@@ -16,9 +16,24 @@ server/internal/api/dist/
 legacy-export-*/
 /data/
 
-# Environment & IDE
+# Backups & Archives
+backups/
+*.tar.gz
+*.tar
+*.gz
+*.zip
+*.7z
+*.bak*
+
+# Environment & Sensitive Files
 .env
-.env.local
+.env.*
 deploy/creator.env
+*.key
+*.pem
+*.crt
+*.pfx
+
+# IDE & OS
 .DS_Store
 *.log

@@ -1,0 +1,15 @@
+[Unit]
+Description=Creator Studio v6 Daily Remote Backup Timer
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Timer]
+# 每日凌晨 03:30 执行一次备份
+OnCalendar=*-*-* 03:30:00
+# 若开机时已错过预定时间，开机后立即补跑
+Persistent=true
+# 随机打散 5 分钟，避免网络瞬时尖峰
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

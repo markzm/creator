@@ -92,3 +92,24 @@ bash deploy/deploy.sh
   --email your@email.com \
   --password 'YourPassword123'
 ```
+
+### 4. 远程生产数据定时备份与灾备 (abc.lidan.cc)
+
+系统已支持从远端生产环境在线热备份至本机，并提供定时自动化同步机制：
+
+```bash
+# 手动触发远端在线热备份 (SQLite VACUUM INTO + 头像打包) 并拉取到本机
+make backup-remote
+
+# 查看本机备份归档列表、大小、时间及 systemd 定时器运行状态
+make backup-status
+
+# 查看最新备份归档的数据库表统计（用户数、文档数、历史版本等）与校验和
+make backup-info
+
+# 灾备恢复工具（支持恢复到本地开发环境测试或应急恢复到远端）
+./scripts/restore-from-backup.sh --to-local
+```
+
+自动化定时任务位于 `~/.config/systemd/user/creator-backup.timer`（参考模板位于 `deploy/systemd/`），每日凌晨 03:30 自动执行并保证开机补跑。
+
