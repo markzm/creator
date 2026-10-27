@@ -20,6 +20,7 @@ legacy-export-*/
 
 # Backups & Archives
 backups/
+backup-import.sql
 *.tar.gz
 *.tar
 *.gz
