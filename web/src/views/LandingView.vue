@@ -2,7 +2,13 @@
   <div class="page landing">
     <section class="landing-hero">
       <div class="landing-copy">
-        <div class="page-eyebrow">{{ tr('本地优先 · 云端同步 · 创作社区', 'Local-first · Cloud sync · Community') }}</div>
+        <div class="page-eyebrow" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+          <span>{{ tr('本地优先 · 云端同步 · 创作社区', 'Local-first · Cloud sync · Community') }}</span>
+          <span class="domain-badge">
+            <Globe2 style="width: 13px; height: 13px" />
+            hi.lorelab.cc
+          </span>
+        </div>
         <h1 class="display landing-title">
           {{ tr('把脑海中的世界，', 'Give the world in your head') }}<br />
           {{ tr('一条条设定写下来。', 'a place to live.') }}
@@ -52,11 +58,29 @@
       <StatTile :value="formatNum(stats.totalPublicWords)" :label="tr('公开创作用字', 'Public words')" :icon="Type" tone="article" />
       <StatTile :value="stats.onlineUsers" :label="tr('当前在线', 'Online now')" :icon="Radio" tone="ok" />
     </section>
+
+    <!-- Footer Domain & Project Info -->
+    <footer class="landing-footer">
+      <div class="footer-brand">
+        <Sparkles style="width: 16px; height: 16px; color: var(--ac)" />
+        <span>设定创作器 · <strong>LoreLab</strong></span>
+      </div>
+      <div class="footer-links">
+        <span class="footer-item">
+          <Globe2 style="width: 14px; height: 14px" />
+          {{ tr('官方访问入口', 'Official Domain') }}: <code>hi.lorelab.cc</code>
+        </span>
+        <span class="footer-sep">·</span>
+        <span class="footer-item">
+          {{ tr('已开启 Cloudflare 边缘安全防护与高可用云端同步', 'Protected by Cloudflare Edge & High Availability Sync') }}
+        </span>
+      </div>
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Bot, CloudUpload, Eye, Link2, LogIn, Radio, Share2, Type, Users } from 'lucide-vue-next';
+import { BookOpen, Bot, CloudUpload, Eye, Globe2, Link2, LogIn, Radio, Share2, Sparkles, Type, Users } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import StatTile from '../components/base/StatTile.vue';
@@ -185,8 +209,61 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
+.domain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  background: var(--acs);
+  color: var(--ac);
+  border-radius: 99px;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.landing-footer {
+  margin-top: 48px;
+  padding: 20px 8px 12px;
+  border-top: 1px solid var(--li2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--mu);
+  font-size: var(--fs-12);
+}
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.footer-item code {
+  font-family: var(--font-mono, monospace);
+  color: var(--ac);
+  background: var(--acs);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.footer-sep {
+  color: var(--li);
+}
 @media (max-width: 900px) {
   .landing-hero { grid-template-columns: 1fr; padding-top: 12px; }
   .landing-art { display: none; }
+  .landing-footer { flex-direction: column; align-items: flex-start; }
 }
 </style>
