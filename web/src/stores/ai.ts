@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
-import type { StudioPreferences } from '../core/schema/types';
+import { computed, ref, shallowRef } from 'vue';
+import type { PromptEntityRef, StudioPreferences } from '../core/schema/types';
 import {
   api,
   type AIGenerateRequest,
@@ -25,14 +25,59 @@ function requireLogin(authStore: ReturnType<typeof useAuthStore>): void {
 const LS_AI_CONFIG_KEY = 'cc_user_ai_cfg';
 const LS_AI_PREFS_KEY = 'cc_user_ai_prefs';
 
+export interface AIDraftOptions {
+  title: string;
+  currentValue: () => string | undefined;
+  sourceValue?: () => string | undefined;
+  apply: (content: string, mode: 'replace' | 'append') => void;
+  entityRefs?: PromptEntityRef[];
+  defaultMode?: 'replace' | 'append';
+}
+export interface AIDraftSession extends AIDraftOptions {
+  id: string;
+  request: Omit<AIGenerateRequest, 'customAi' | 'preferences'>;
+  original: string;
+  originalSource?: string;
+  resolve: (applied: boolean) => void;
+}
+
 export const useAIStore = defineStore('ai', () => {
   const authStore = useAuthStore();
 
   const publicReady = ref(false);
+  const limits = ref({ publicMinute: 5, publicDaily: 50, customMinute: 30, concurrent: 1, resetTimezone: 'Asia/Shanghai' });
   const freeModels = ref<string[]>([]);
-  const selectedFreeModel = ref('deepseek/deepseek-chat-v3-0324:free');
+  const selectedFreeModel = ref('openrouter/free');
   const presets = ref<AIPreset[]>([]);
   const loading = ref(false);
+  const draft = shallowRef<AIDraftSession | null>(null);
+
+  const draftChanged = computed(() => Boolean(draft.value && (draft.value.currentValue() !== draft.value.original ||
+    draft.value.sourceValue && draft.value.sourceValue() !== draft.value.originalSource)));
+
+  function closeDraft(applied = false) {
+    const previous = draft.value;
+    draft.value = null;
+    previous?.resolve(applied);
+  }
+  function requestDraft(request: AIDraftSession['request'], options: AIDraftOptions): Promise<boolean> {
+    requireLogin(authStore);
+    if (draft.value) throw new Error('请先完成或关闭当前 AI 创作草稿');
+    const original = options.currentValue();
+    if (original === undefined) throw new Error('创作目标已不存在');
+    return new Promise(resolve => {
+      draft.value = { ...options, request, original, originalSource: options.sourceValue?.(), resolve, id: crypto.randomUUID() };
+    });
+  }
+  function applyDraft(content: string, mode: 'replace' | 'append', allowChanged = false) {
+    const session = draft.value;
+    if (!session || !content.trim()) return;
+    const current = session.currentValue();
+    if (current === undefined) throw new Error('创作目标已删除，请复制草稿后关闭');
+    if (draftChanged.value && !(allowChanged && mode === 'append')) throw new Error('目标内容已修改，请保留草稿，或明确选择追加到最新内容');
+    session.apply(content, mode);
+    closeDraft(true);
+  }
 
   // Active provider: 'public' or 'custom'
   const activeProvider = ref<'public' | 'custom'>('public');
@@ -60,6 +105,7 @@ export const useAIStore = defineStore('ai', () => {
     try {
       const st = await api.getAIStatus();
       publicReady.value = st.publicReady;
+      if (st.limits) limits.value = st.limits;
       freeModels.value = st.freeModels || [];
       presets.value = st.presets || [];
       if (freeModels.value.length > 0 && !freeModels.value.includes(selectedFreeModel.value)) {
@@ -119,9 +165,7 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   /** True when generation will actually go through the user's own provider. */
-  const effectiveProvider = computed<'public' | 'custom'>(() =>
-    activeProvider.value === 'custom' && (Boolean(customAi.value.apiKey) || cloudHasKey.value) ? 'custom' : 'public'
-  );
+  const effectiveProvider = computed(() => activeProvider.value);
 
   function saveLocal() {
     try {
@@ -143,6 +187,7 @@ export const useAIStore = defineStore('ai', () => {
 
   /** Forgets device-local AI settings (including any API key) so they never leak to the next user. */
   function clearLocal() {
+    closeDraft();
     try {
       localStorage.removeItem(LS_AI_CONFIG_KEY);
       localStorage.removeItem(LS_AI_PREFS_KEY);
@@ -158,6 +203,7 @@ export const useAIStore = defineStore('ai', () => {
       apiKey: '',
       model: 'deepseek-chat'
     };
+    preferences.value = { preferredGenre: '奇幻架空', writingTone: '细腻生动', defaultPerspective: '第三人称', aiCustomInstruction: '' };
   }
 
   async function saveConfig() {
@@ -191,10 +237,12 @@ export const useAIStore = defineStore('ai', () => {
 
   async function generate(req: Omit<AIGenerateRequest, 'customAi' | 'preferences'>): Promise<AIGenerateResponse> {
     requireLogin(authStore);
+    if (loading.value) throw new Error('已有 AI 请求进行中，请稍后重试');
     loading.value = true;
     try {
       const fullReq: AIGenerateRequest = {
         ...req,
+        provider: activeProvider.value,
         preferences: preferences.value,
         publicModel: selectedFreeModel.value || undefined
       };
@@ -218,7 +266,13 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   return {
+    draft,
+    draftChanged,
+    requestDraft,
+    closeDraft,
+    applyDraft,
     publicReady,
+    limits,
     freeModels,
     selectedFreeModel,
     presets,

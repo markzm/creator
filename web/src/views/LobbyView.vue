@@ -1,5 +1,5 @@
 <template>
-  <div class="page narrow" style="max-width: 880px">
+  <div class="page" style="max-width: 1240px">
       <!-- Header & Controls -->
       <PageHeader
         :title="tr('公共创作大厅', 'Community lobby')"
@@ -22,6 +22,7 @@
         </template>
       </PageHeader>
 
+      <div class="lobby-layout"><main class="lobby-main">
       <!-- Co-creation projects -->
       <div v-if="projects.length" class="card open flat" style="padding: 16px; margin-bottom: 16px">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; flex-wrap: wrap">
@@ -55,77 +56,6 @@
         </div>
       </div>
 
-    <!-- Active Creators Row -->
-    <div class="card open" style="padding: 16px; margin-bottom: 16px">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px">
-        <h3 style="margin: 0; font-size: 14.5px">
-          ✨ {{ tr('活跃创作者', 'Active Creators') }} ({{ users.length }})
-        </h3>
-        <span class="hint" style="font-size: 11.5px">
-          {{ onlineCount }} {{ tr('位创作者正在构筑中', 'online') }}
-        </span>
-      </div>
-
-      <Skeleton v-if="loadingUsers && !users.length" variant="row" :count="2" />
-      <p v-else-if="!users.length" class="hint" style="display: block">
-        {{ tr('还没有创作者留下足迹，成为第一个吧！', 'No creators yet — be the first!') }}
-      </p>
-      <div
-        v-else
-        style="
-          display: flex;
-          gap: 10px;
-          overflow-x: auto;
-          padding-bottom: 4px;
-        "
-      >
-        <div
-          v-for="u in users"
-          :key="u.id"
-          class="card interactive-user-card"
-          style="
-            flex-shrink: 0;
-            padding: 8px 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 140px;
-            background: var(--soft);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-          "
-          title="点击查看创作者主页与精华设定"
-          @click="uiStore.openCreatorProfile(u.id)"
-        >
-          <div style="position: relative">
-            <Avatar :avatar="u.avatar" :name="u.name" :size="32" />
-            <span
-              :style="{
-                position: 'absolute',
-                right: '-1px',
-                bottom: '-1px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: u.isOnline ? 'var(--ok)' : 'var(--li)',
-                border: '1.5px solid var(--card)'
-              }"
-              :title="u.isOnline ? tr('在线', 'online') : tr('离线', 'offline')"
-            />
-          </div>
-          <div style="min-width: 0; flex: 1">
-            <div style="font-weight: 700; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-              {{ u.name || tr('创作者', 'Creator') }}
-            </div>
-            <div class="hint" style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-              {{ u.focus || u.bio || (u.isOnline ? tr('构想世界中', 'worldbuilding') : relTime(u.lastSeen)) }}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Category Filters & Search -->
     <div class="card open" style="padding: 16px; margin-bottom: 16px">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px">
@@ -148,11 +78,11 @@
           <input
             v-model="searchQuery"
             type="text"
-            :placeholder="tr('搜索标题、作者或摘要…', 'Search shares…')"
+            :placeholder="tr('搜索标题、摘要或标签…', 'Search shares…')"
             style="padding: 5px 10px; font-size: 12.5px; flex: 1"
-            @keyup.enter="refreshLobby"
+            @keyup.enter="searchNow"
           />
-          <button type="button" class="btn sm" @click="refreshLobby">
+          <button type="button" class="btn sm" @click="searchNow">
             🔍
           </button>
         </div>
@@ -257,6 +187,8 @@
       </div>
     </div>
 
+    </main><aside class="lobby-aside"><CreatorDirectory ref="creatorDirectory" /></aside></div>
+
     <!-- View & Read Share Modal -->
     <Modal
       :model-value="Boolean(viewingShare)"
@@ -285,6 +217,7 @@
           <strong>{{ tr('作品提要 / 设定纲要：', 'Synopsis / Summary:') }}</strong> {{ viewingShare.summary }}
         </div>
 
+        <p v-if="detailLoading" class="hint">正在加载作品正文…</p>
         <!-- Content Area -->
         <div
           style="
@@ -313,7 +246,7 @@
           v-if="viewingShare?.canonStatus === 'doujin' && viewingShare.cocreationId && authStore.user && viewingShare.userId === authStore.user.id"
           type="button"
           class="btn sm"
-          :disabled="viewingShare.canonReview === 'pending'"
+          :disabled="detailLoading || viewingShare.canonReview === 'pending'"
           @click="handleRequestCanon(viewingShare)"
         >
           <Stamp />
@@ -327,14 +260,14 @@
         </button>
         <!-- Project members / site admins review -->
         <template v-if="viewingShare?.canonStatus === 'doujin' && viewingShare.cocreationId && canReviewViewing">
-          <button type="button" class="btn sm" @click="handleReviewCanon(viewingShare, false)"><X /> {{ tr('退回', 'Reject') }}</button>
-          <button type="button" class="btn sm primary" @click="handleReviewCanon(viewingShare, true)"><Check /> {{ tr('接纳为官方正典', 'Canonise') }}</button>
+          <button type="button" class="btn sm" :disabled="detailLoading" @click="handleReviewCanon(viewingShare, false)"><X /> {{ tr('退回', 'Reject') }}</button>
+          <button type="button" class="btn sm primary" :disabled="detailLoading" @click="handleReviewCanon(viewingShare, true)"><Check /> {{ tr('接纳为官方正典', 'Canonise') }}</button>
         </template>
         <button
           v-if="viewingShare?.kind === 'article'"
           type="button"
           class="btn sm"
-          @click="importAsMyArticle"
+          :disabled="detailLoading" @click="importAsMyArticle"
         >
           📥 {{ tr('导入为我的文章', 'Import as My Article') }}
         </button>
@@ -346,7 +279,7 @@
         >
           📥 {{ tr('导入为新设定', 'Import Draft Code') }}
         </button>
-        <button type="button" class="btn primary sm" @click="copyShareContent">
+        <button type="button" class="btn primary sm" :disabled="detailLoading" @click="copyShareContent">
           📋 {{ tr('复制正文', 'Copy Content') }}
         </button>
         <button type="button" class="btn sm" @click="viewingShare = null">
@@ -376,10 +309,11 @@
 
 <script setup lang="ts">
 import { BookOpen, Check, Globe2, Handshake, LogIn, Palette, RefreshCw, Share2, Sparkles, Stamp, Star, Trash2, Upload, Users, X } from 'lucide-vue-next';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePublish } from '../composables/usePublish';
 import type { CocreationProject } from '../core/schema/types';
+import CreatorDirectory from '../components/app/CreatorDirectory.vue';
 import DiscussionSection from '../components/app/DiscussionSection.vue';
 import Avatar from '../components/base/Avatar.vue';
 import EmptyState from '../components/base/EmptyState.vue';
@@ -391,7 +325,7 @@ import { useConfirm } from '../composables/useConfirm';
 import { useI18n } from '../composables/useI18n';
 import { useToast } from '../composables/useToast';
 import { parseCode } from '../core/draftCode';
-import { api, type LobbyUser, type WorldShareItem } from '../data/api';
+import { api, type WorldShareItem } from '../data/api';
 import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
 import { useUIStore } from '../stores/ui';
@@ -406,9 +340,9 @@ const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
 
-const users = ref<LobbyUser[]>([]);
+const creatorDirectory = ref<InstanceType<typeof CreatorDirectory> | null>(null);
 const shares = ref<WorldShareItem[]>([]);
-const loadingUsers = ref(false);
+const loadingUsers = computed(() => creatorDirectory.value?.loading || false);
 const loadingShares = ref(false);
 const hasMoreShares = ref(false);
 const viewingShare = ref<WorldShareItem | null>(null);
@@ -479,22 +413,7 @@ const categories = computed(() => [
   { kind: 'article', label: tr('文章作品', 'Articles'), icon: KIND_META.article.icon }
 ]);
 
-const onlineCount = computed(() => users.value.filter((u) => u.isOnline).length);
-
-const filteredShares = computed(() => {
-  return shares.value.filter((s) => {
-    if (selectedProject.value && s.cocreationId !== selectedProject.value) return false;
-    if (selectedKind.value !== 'all' && s.kind !== selectedKind.value) return false;
-    if (searchQuery.value.trim()) {
-      const q = searchQuery.value.toLowerCase().trim();
-      const matchTitle = (s.title || '').toLowerCase().includes(q);
-      const matchAuthor = (s.ownerName || '').toLowerCase().includes(q);
-      const matchSum = (s.summary || '').toLowerCase().includes(q);
-      if (!matchTitle && !matchAuthor && !matchSum) return false;
-    }
-    return true;
-  });
-});
+const filteredShares = computed(() => shares.value);
 
 function relTime(ts: number): string {
   if (!ts) return '';
@@ -510,57 +429,67 @@ function setCategory(kind: string) {
   selectedKind.value = kind as any;
 }
 
-async function refreshLobby() {
-  loadingUsers.value = true;
-  loadingShares.value = true;
+let feedSequence = 0;
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+function feedParams() { return { kind: selectedKind.value === 'all' ? undefined : selectedKind.value,
+  q: searchQuery.value.trim(), project: selectedProject.value || undefined, limit: 30 }; }
+function searchNow() { clearTimeout(searchTimer); void loadShares(); }
+async function loadShares() {
+  const sequence = ++feedSequence; loadingShares.value = true;
   try {
-    const [uRes, sRes] = await Promise.all([
-      api.getLobbyUsers(),
-      api.getShares({ limit: 40 })
-    ]);
-    users.value = uRes.users || [];
-    shares.value = sRes.shares || [];
-    hasMoreShares.value = (sRes.shares || []).length >= 40;
-  } catch (err: any) {
-    toast((tr('加载大厅失败：', 'Lobby load failed: ')) + (err?.message || ''), 'err');
-  } finally {
-    loadingUsers.value = false;
-    loadingShares.value = false;
-  }
+    const res = await api.getShares(feedParams());
+    if (sequence !== feedSequence) return;
+    shares.value = res.shares || []; hasMoreShares.value = res.hasMore ?? res.shares.length >= 30;
+  } catch (err: any) { if (sequence === feedSequence) toast('加载作品失败：' + err.message, 'err'); }
+  finally { if (sequence === feedSequence) loadingShares.value = false; }
 }
+async function refreshLobby() { clearTimeout(searchTimer); await Promise.all([creatorDirectory.value?.refresh(true), loadShares()]); }
+watch([selectedKind, selectedProject], () => { shares.value = []; void loadShares(); });
+watch(searchQuery, () => { ++feedSequence; clearTimeout(searchTimer); searchTimer = setTimeout(() => { shares.value = []; void loadShares(); }, 300); });
+onUnmounted(() => { ++feedSequence; clearTimeout(searchTimer); });
 
+let detailSequence = 0;
+const detailLoading = ref(false);
 async function openShare(sh: WorldShareItem) {
+  const seq = ++detailSequence;
+  detailLoading.value = true;
   // Feed rows are lightweight (no content / draft code); load the full share for the detail modal.
   viewingShare.value = sh;
   viewingProject.value = null;
   try {
     const res = await api.getShareDetail(sh.id);
+    if (seq !== detailSequence) return;
     if (viewingShare.value && String(viewingShare.value.id) === String(sh.id)) {
       viewingShare.value = res.share;
     }
+    if (!viewingShare.value || String(viewingShare.value.id) !== String(sh.id)) return;
     if (res.share.cocreationId) {
       const cached = projects.value.find((p) => p.id === res.share.cocreationId);
-      viewingProject.value = cached || (await api.getCocreationProject(res.share.cocreationId)).project;
+      const project = cached || (await api.getCocreationProject(res.share.cocreationId)).project;
+      if (seq === detailSequence && viewingShare.value?.id === sh.id) viewingProject.value = project;
     }
-  } catch {
-    // keep the summary if the detail request fails
-  }
+  } catch (err: any) {
+    if (viewingShare.value?.id === sh.id) viewingShare.value = null;
+    if (seq === detailSequence) toast(err.message || '无法读取作品详情', 'err');
+  } finally { if (seq === detailSequence) detailLoading.value = false; }
 }
 
 async function loadMoreShares() {
   if (!shares.value.length || loadingShares.value) return;
   const last = shares.value[shares.value.length - 1];
+  const sequence = feedSequence;
   loadingShares.value = true;
   try {
-    const res = await api.getShares({ before: last.createdAt, beforeId: String(last.id), limit: 30 });
+    const res = await api.getShares({ ...feedParams(), before: last.createdAt, beforeId: String(last.id) });
+    if (sequence !== feedSequence) return;
     const more = res.shares || [];
     const known = new Set(shares.value.map((s) => String(s.id)));
     shares.value.push(...more.filter((s) => !known.has(String(s.id))));
-    hasMoreShares.value = more.length >= 30;
+    hasMoreShares.value = res.hasMore ?? more.length >= 30;
   } catch (err: any) {
     toast((tr('加载更多失败：', 'Failed: ')) + (err?.message || ''), 'err');
   } finally {
-    loadingShares.value = false;
+    if (sequence === feedSequence) loadingShares.value = false;
   }
 }
 
@@ -574,7 +503,7 @@ async function onDeleteShare(id: string | number) {
     return;
   }
   try {
-    await api.deleteShare(id);
+    await api.deleteShare(id, shares.value.find(s => String(s.id) === String(id))?.rev);
     shares.value = shares.value.filter((s) => s.id !== id);
     toast(tr('已从大厅移除', 'Deleted'), 'ok');
   } catch (err: any) {
@@ -583,7 +512,7 @@ async function onDeleteShare(id: string | number) {
 }
 
 async function copyShareContent() {
-  if (!viewingShare.value) return;
+  if (!viewingShare.value || detailLoading.value) return;
   try {
     await navigator.clipboard.writeText(viewingShare.value.content);
     toast(tr('正文已复制到剪贴板 ✓', 'Content copied ✓'), 'ok');
@@ -646,7 +575,8 @@ async function handleRequestCanon(sh: WorldShareItem) {
     return;
   }
   try {
-    await api.requestCanon(String(sh.id));
+    const result = await api.requestCanon(String(sh.id), sh.rev);
+    sh.rev = result.rev;
     sh.canonRequested = true;
     sh.canonReview = 'pending';
     toast(tr('已提交转正申请，企划团队会收到通知', 'Request sent — the project team has been notified'), 'ok');
@@ -662,8 +592,8 @@ async function handleReviewCanon(sh: WorldShareItem, approve: boolean) {
     : tr(`确认退回《${sh.title}》的转正申请？作者可修改后再次申请。`, `Reject “${sh.title}”? The author can revise and ask again.`);
   if (!(await confirm(title, body))) return;
   try {
-    if (approve) await api.approveCanon(String(sh.id));
-    else await api.rejectCanon(String(sh.id));
+    const result = approve ? await api.approveCanon(String(sh.id), sh.rev) : await api.rejectCanon(String(sh.id), sh.rev);
+    sh.rev = result.rev;
     sh.canonStatus = approve ? 'canon' : 'doujin';
     sh.canonReview = approve ? 'approved' : 'rejected';
     sh.canonRequested = false;
@@ -689,9 +619,17 @@ watch(
     if (v && !was) void Promise.all([refreshLobby(), loadProjects()]);
   }
 );
+watch(() => route.query.share, id => {
+  if (typeof id === 'string') void openShare(shares.value.find(s => String(s.id) === id) || ({ id, title: '', content: '', kind: 'world', visibility: 'public', userId: 0, ownerName: '', createdAt: 0 } as WorldShareItem));
+});
 </script>
 
 <style scoped>
+.lobby-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 22px; align-items: start; }
+.lobby-main { min-width: 0; }
+.lobby-aside { position: sticky; top: 14px; }
+@media (max-width: 900px) { .lobby-layout { grid-template-columns: 1fr; } .lobby-aside { position: static; order: -1; } }
+
 .spacer { flex: 1; }
 .project-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
 .project-card {

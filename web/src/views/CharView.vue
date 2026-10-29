@@ -297,6 +297,7 @@
             v-model="aiModalOpen"
             kind="char"
             :entity-data="char.data"
+            :entity-id="char.id"
             @apply="onApplyAIGen"
           />
         </div>

@@ -2,12 +2,13 @@ import { buildCode } from '../core/draftCode';
 import { fmtOutput, getCharGroups } from '../core/format';
 import { CHAR_ORDER, OG, ORG_ORDER, WG, WORLD_ORDER } from '../core/legacy/fields';
 import type { ArticleItem, BaseEntity, CharEntity, EntityKind } from '../core/schema/types';
-import { api, type WorldShareItem } from '../data/api';
+import { api, ApiError, type WorldShareItem } from '../data/api';
 import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
 import { useUIStore } from '../stores/ui';
 import { useI18n } from './useI18n';
 import { useToast } from './useToast';
+import { useConfirm } from './useConfirm';
 
 export type PublishKind = EntityKind | 'article';
 
@@ -33,6 +34,7 @@ export function usePublish() {
   const uiStore = useUIStore();
   const { lang, tr } = useI18n();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
 
   function requireLogin(): boolean {
     if (authStore.isLoggedIn) return true;
@@ -114,8 +116,9 @@ export function usePublish() {
     }
 
     try {
-      const res = await api.createShare({
+      const payload = {
         id: target.shareId,
+        baseRev: target.shareRev,
         entityId: id,
         kind,
         title: title.slice(0, 80),
@@ -126,14 +129,32 @@ export function usePublish() {
         tags: opts.tags ?? base.tags,
         cocreationId: opts.cocreationId,
         tachiEUrl: base.tachiEUrl
-      });
+      };
+      let res;
+      try { res = await api.createShare(payload); }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409 || !payload.id) throw error;
+        const latest = (await api.getShareDetail(payload.id)).share;
+        if (!latest.rev || latest.userId !== authStore.user?.id) throw error;
+        const keepLocal = await confirm('云端分享版本已变化',
+          `本地草稿已保留。云端《${latest.title}》当前为版本 ${latest.rev}。\n\n云端内容：\n${latest.content.slice(0, 1800)}\n\n准备发布的本地内容：\n${payload.content.slice(0, 1800)}\n\n确认用上面的本地内容更新云端分享吗？如需合并，请取消并保留云端内容。`);
+        if (!keepLocal) return null;
+        payload.baseRev = latest.rev;
+        res = await api.createShare(payload);
+      }
       // Write the link + visibility BEFORE touching so a single save persists both.
       target.shareId = String(res.share.id);
       target.visibility = visibility;
+      target.shareRev = res.share.rev;
       target.updatedAt = Date.now();
       docStore.touch(true);
       return res.share;
     } catch (err: any) {
+      if (err?.status === 404 && target.shareId) {
+        delete target.shareId; delete target.shareRev; target.visibility = 'private'; docStore.touch(true);
+        toast(tr('云端分享已删除，本地草稿已保留。再次发布会创建新分享。', 'Cloud share was deleted. Your draft is kept; publishing again creates a new share.'), 'warn');
+        return null;
+      }
       toast((tr('分享失败：', 'Share failed: ')) + (err?.message || ''), 'err');
       return null;
     }
@@ -145,7 +166,8 @@ export function usePublish() {
     if (!target) return false;
     if (target.shareId && authStore.isLoggedIn) {
       try {
-        await api.updateShareVisibility(target.shareId, 'private');
+        const updated = await api.updateShareVisibility(target.shareId, 'private', target.shareRev);
+        target.shareRev = updated.rev;
       } catch (err: any) {
         toast((tr('更新状态失败：', 'Update failed: ')) + (err?.message || ''), 'err');
         return false;

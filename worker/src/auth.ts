@@ -304,7 +304,16 @@ export async function decryptUserConfig(b64Ciphertext: string, secretKey: string
 // ----------------------------------------------------
 // Session Management
 // ----------------------------------------------------
-export async function getCurrentUser(c: Context<{ Bindings: Env }>): Promise<UserRow | null> {
+const requestUsers = new WeakMap<Request, Promise<UserRow | null>>();
+export function getCurrentUser(c: Context<{ Bindings: Env }>): Promise<UserRow | null> {
+  let pending = requestUsers.get(c.req.raw);
+  if (!pending) {
+    pending = loadCurrentUser(c);
+    requestUsers.set(c.req.raw, pending);
+  }
+  return pending;
+}
+async function loadCurrentUser(c: Context<{ Bindings: Env }>): Promise<UserRow | null> {
   const rawToken = getCookie(c, SESSION_COOKIE);
   if (!rawToken) return null;
 
@@ -314,7 +323,7 @@ export async function getCurrentUser(c: Context<{ Bindings: Env }>): Promise<Use
   const query = `
     SELECT u.* FROM users u
     JOIN sessions s ON u.id = s.user_id
-    WHERE s.token_hash = ? AND s.expires_at > ?
+    WHERE s.token_hash = ? AND s.expires_at > ? AND u.is_disabled = 0
     LIMIT 1
   `;
   const user = await c.env.DB.prepare(query).bind(tokenHash, now).first<UserRow>();

@@ -40,3 +40,6 @@ deploy/creator.env
 # IDE & OS
 .DS_Store
 *.log
+
+# Local browser validation screenshots
+artifacts/

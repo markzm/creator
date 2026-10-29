@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { adminRouter } from './routes/admin';
 import { aiRouter } from './routes/ai';
 import { authRouter } from './routes/auth';
-import { cocreationRouter } from './routes/cocreation';
+import { cocreationRouter, notificationRouter } from './routes/cocreation';
 import { meRouter } from './routes/me';
 import { referenceRouter } from './routes/reference';
 import { sharesRouter } from './routes/shares';
@@ -33,6 +33,7 @@ app.use('/api/*', async (c, next) => {
 
   await next();
 
+  c.res.headers.set('Cache-Control', 'no-store');
   c.res.headers.set('X-Content-Type-Options', 'nosniff');
   c.res.headers.set('X-Frame-Options', 'DENY');
   c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -52,6 +53,7 @@ app.route('/api/me', meRouter);
 app.route('/api/sync', syncRouter);
 app.route('/api', sharesRouter);
 app.route('/api/cocreation', cocreationRouter);
+app.route('/api', notificationRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api', referenceRouter);
 app.route('/api/ai', aiRouter);
@@ -97,4 +99,12 @@ app.all('*', async (c) => {
   return c.text('Static assets binding ASSETS not found', 500);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // Expired network counters carry no useful quota state. Bound each cleanup batch.
+    ctx.waitUntil(env.DB.prepare(`DELETE FROM ai_usage WHERE principal IN (
+      SELECT principal FROM ai_usage WHERE updated_at < ? AND principal LIKE 'ip:%' LIMIT 2000
+    )`).bind(Math.floor(Date.now() / 1000) - 172800).run());
+  }
+};

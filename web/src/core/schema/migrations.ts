@@ -1,3 +1,4 @@
+import { normalizePromptTemplates } from '../prompts';
 import { DEFAULT_TEMPLATES } from '../legacy/fields';
 import { T } from '../legacy/i18n';
 import { parseYear } from '../timeline';
@@ -24,6 +25,7 @@ const ENTITY_META_KEYS = [
   'isReference',
   'visibility',
   'shareId',
+  'shareRev',
   'refAuthorId',
   'refAuthorName',
   'avatar',
@@ -51,7 +53,7 @@ function pickMeta(val: Record<string, any>, keys: readonly string[]): Record<str
       out[k] = true;
     } else if (k === 'cocreationAdmins') {
       if (Array.isArray(v)) out[k] = v.map(String);
-    } else if (k === 'refAuthorId') {
+    } else if (k === 'refAuthorId' || k === 'shareRev') {
       const n = Number(v);
       if (!Number.isNaN(n)) out[k] = n;
     } else if (k === 'visibility') {
@@ -436,6 +438,7 @@ export function migrateToV6(
         charIds: Array.isArray(a.charIds) ? a.charIds.map(String) : [],
         visibility: a.visibility === 'public' ? 'public' : 'private',
         shareId: a.shareId ? String(a.shareId) : undefined,
+        ...(Number.isSafeInteger(a.shareRev) && a.shareRev > 0 ? { shareRev: a.shareRev } : {}),
         ...pickItemMeta(a),
         wordCount: typeof a.wordCount === 'number' ? a.wordCount : content.length,
         createdAt: typeof a.createdAt === 'number' ? a.createdAt : now,
@@ -479,6 +482,8 @@ export function migrateToV6(
     scenes,
     glossary,
     articles,
+    ...(Array.isArray(r.promptTemplates ?? baseSource.promptTemplates)
+      ? { promptTemplates: normalizePromptTemplates(r.promptTemplates ?? baseSource.promptTemplates) } : {}),
     stats,
     preferences,
     ui: {

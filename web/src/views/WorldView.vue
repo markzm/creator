@@ -285,6 +285,7 @@
             v-model="aiModalOpen"
             kind="world"
             :entity-data="world.data"
+            :entity-id="world.id"
             @apply="onApplyAIGen"
           />
         </div>

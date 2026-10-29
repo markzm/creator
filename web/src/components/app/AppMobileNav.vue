@@ -52,12 +52,14 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
 import { KIND_META } from '../../core/entityMeta';
+import { useAuthStore } from '../../stores/auth';
 import { useUIStore } from '../../stores/ui';
 import Modal from '../base/Modal.vue';
 
 const route = useRoute();
 const router = useRouter();
 const uiStore = useUIStore();
+const authStore = useAuthStore();
 const { tr } = useI18n();
 
 const moreDrawerOpen = ref(false);
@@ -76,6 +78,8 @@ const primaryTabs = computed(() => [
 ]);
 
 const secondaryMods = computed(() => [
+  { to: '/prompts', icon: Bot, color: 'var(--ac)', soft: 'var(--acs)', title: tr('个人提示词库', 'Prompt library'), desc: tr('自由编写与 AI 辅助', 'Write and refine prompts') },
+  ...(authStore.isSuperAdmin ? [{ to: '/admin/content', icon: Save, color: 'var(--wn)', soft: 'var(--wns)', title: tr('全站创作管理', 'Manage creations'), desc: tr('管理云端内容', 'Cloud content') }] : []),
   { to: '/timeline', icon: KIND_META.timeline.icon, color: KIND_META.timeline.color, soft: KIND_META.timeline.soft, title: tr('编年时间线', 'Timeline'), desc: tr('大事件与年龄推算', 'Events & ages') },
   { to: '/graph', icon: KIND_META.graph.icon, color: KIND_META.graph.color, soft: KIND_META.graph.soft, title: tr('关系网', 'Relationship Graph'), desc: tr('人物组织力导图', 'Network view') },
   { to: '/templates', icon: KIND_META.template.icon, color: KIND_META.template.color, soft: KIND_META.template.soft, title: tr('角色模板库', 'Templates'), desc: tr('跑团/小说字段', 'Field sets') },
@@ -91,7 +95,7 @@ const secondaryMods = computed(() => [
 ]);
 
 const isMoreActive = computed(() =>
-  ['/timeline', '/graph', '/templates', '/plots', '/scenes', '/glossary', '/stats', '/lobby', '/me'].some((p) => isActive(p))
+  ['/prompts', '/admin/content', '/timeline', '/graph', '/templates', '/plots', '/scenes', '/glossary', '/stats', '/lobby', '/me'].some((p) => isActive(p))
 );
 
 function onSelectMore(item: { to?: string; action?: string }) {

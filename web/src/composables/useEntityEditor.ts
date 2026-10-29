@@ -92,53 +92,27 @@ export function useEntityEditor(
     const fieldDef = groups.flatMap((g) => g.f).find((f) => f.id === fieldId);
     const label = fieldDef?.l || fieldId;
     const cur = (ent.data[fieldId] || '').trim();
-    toast(tr(`正在请求 AI 生成「${label}」…`, `AI generating ${label}…`), 'ok');
 
-    // Build rich context anchor so AI has solid grounding
-    let contextStr = '';
-    const activeWorld = docStore.activeWorld;
-    if (activeWorld && activeWorld.name) {
-      contextStr += `所属世界观：${activeWorld.name}`;
-      if (activeWorld.data?.w_type) contextStr += `（类型：${activeWorld.data.w_type}）`;
-      if (activeWorld.data?.w_era) contextStr += `，纪元：${activeWorld.data.w_era}`;
-      contextStr += '\n';
-    }
-    if (kind === 'char' && docStore.activeOrg?.name) {
-      contextStr += `所属组织：${docStore.activeOrg.name}`;
-      if (docStore.activeOrg.data?.o_type) contextStr += `（${docStore.activeOrg.data.o_type}）`;
-      contextStr += '\n';
-    }
-
+    const id = ent.id;
+    const liveEntity = () => (kind === 'world' ? docStore.doc.worlds : kind === 'org' ? docStore.doc.orgs : docStore.doc.chars)[id];
     try {
-      const res = await aiStore.generate({
-        task: 'field_gen',
-        fieldId,
-        fieldLabel: label,
-        entityKind: kind,
-        entityData: ent.data,
-        currentText: cur,
-        context: contextStr.trim()
+      return await aiStore.requestDraft({ task: 'field_gen', fieldId, fieldLabel: label, entityKind: kind,
+        entityId: id, entityData: ent.data, currentText: cur }, {
+        title: `AI 创作 · ${label}`,
+        defaultMode: append ? 'append' : 'replace',
+        currentValue: () => {
+          const live = liveEntity();
+          return live && (!live.isReference || authStore.isAdmin) ? live.data[fieldId] || '' : undefined;
+        },
+        apply: (content, mode) => {
+          const live = liveEntity();
+          if (!live) throw new Error('目标已删除');
+          const previous = live.data[fieldId] || '';
+          live.data[fieldId] = mode === 'append' && previous ? previous + (isTextarea ? '\n' : '、') + content : content;
+          docStore.syncEntityName(kind, live);
+          docStore.touch();
+        }
       });
-      const generated = res.content.trim();
-      if (!generated) return false;
-      // The entity object may have been replaced (tab sync / merge) while we awaited.
-      const coll = kind === 'world' ? docStore.doc.worlds : kind === 'org' ? docStore.doc.orgs : docStore.doc.chars;
-      const live = coll[ent.id];
-      if (!live) {
-        toast(tr('目标条目已不存在，AI 结果已丢弃', 'Target entry no longer exists; AI result discarded'), 'warn');
-        return false;
-      }
-      const nowCur = (live.data[fieldId] || '').trim();
-      if (append && nowCur) {
-        const sep = isTextarea ? '\n' : '、';
-        live.data[fieldId] = nowCur.replace(/([、,，\n\s])+$/, '') + sep + generated;
-      } else {
-        live.data[fieldId] = generated;
-      }
-      docStore.syncEntityName(kind, live);
-      docStore.touch();
-      toast(tr(`AI 已生成「${label}」✓`, `Generated ${label} ✓`), 'ok');
-      return true;
     } catch (err: any) {
       toast(err?.message || tr('AI 生成失败', 'AI generation failed'), 'err');
       return false;

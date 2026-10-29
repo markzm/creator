@@ -36,7 +36,7 @@ creator/
 │   ├── DEPLOY.md             # 自建 VPS 部署、运维与域名/HTTPS 升级手册
 │   ├── CLOUDFLARE.md         # 纯 Cloudflare Serverless 全家桶部署指南（方案三）
 │   └── gemini/               # 重构任务包（00-RULES.md + T00~T14.md）
-├── migrations/               # Cloudflare D1 数据库版本迁移 SQL (0001~0005)
+├── migrations/               # Cloudflare D1 数据库版本迁移 SQL (0001~0007)
 ├── worker/                   # Cloudflare Worker 全栈 API (Hono + TypeScript)
 ├── legacy/                   # v5.4 原始单文件参考实现（只读保留）
 ├── scripts/                  # 字典与 Golden Master 测试向量提取脚本
@@ -105,3 +105,5 @@ make backup-info
 
 自动化定时任务位于 `~/.config/systemd/user/creator-backup.timer`（参考模板位于 `deploy/systemd/`），每日凌晨 03:30 自动执行并保证开机补跑。
 
+
+Cloudflare 本次升级的权限、提示词、配额配置、迁移预检及验证流程见 [创作管理与 AI 防滥用升级说明](docs/CLOUDFLARE_CREATOR_UPGRADE.md)。

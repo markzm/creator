@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { decryptUserConfig, getCurrentUser } from '../auth';
 import type { Env } from '../types';
+import { AIError, buildCreativePrompts, limitedJSON, reserveAI, setting, validateGeneration, validateOutput } from '../ai-guards';
 
 export const aiRouter = new Hono<{ Bindings: Env }>();
 
@@ -14,7 +15,7 @@ const DEFAULT_ALLOWED_HOSTS = [
 function isHostAllowed(urlStr: string, envAllowed?: string): boolean {
   try {
     const u = new URL(urlStr);
-    if (u.protocol !== 'https:') return false;
+    if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash || (u.port && u.port !== '443')) return false;
     const hostname = u.hostname.toLowerCase();
 
     const allowed = [...DEFAULT_ALLOWED_HOSTS];
@@ -25,9 +26,34 @@ function isHostAllowed(urlStr: string, envAllowed?: string): boolean {
       }
     }
 
-    return allowed.some((ah) => hostname === ah || hostname.endsWith('.' + ah));
+    return allowed.some((ah) => hostname === ah);
   } catch {
     return false;
+  }
+}
+
+aiRouter.onError((error, c) => {
+  if (error instanceof AIError) {
+    if (error.retryAfter) c.header('Retry-After', String(error.retryAfter));
+    return c.json({ error: error.message, retryAfter: error.retryAfter || undefined }, error.status as any);
+  }
+  console.error('ai_request_failed', { type: error.name });
+  return c.json({ error: 'AI 配额或服务暂不可用，请稍后重试' }, 503);
+});
+
+async function callModel(baseUrl: string, key: string, payload: unknown, timeout: number) {
+  try {
+    const response = await fetch(baseUrl.replace(/\/+$/, '') + '/chat/completions', {
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(timeout * 1000),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new AIError(`AI 服务商暂时无法完成请求（HTTP ${response.status}）`, 502);
+    // Bound even a malicious/misconfigured compatible provider's response.
+    return await limitedJSON(response, 512 * 1024);
+  } catch (error) {
+    if (error instanceof AIError) throw error;
+    throw new AIError('AI 请求超时或连接失败，请稍后重试', 504);
   }
 }
 
@@ -37,6 +63,8 @@ aiRouter.get('/status', (c) => {
   return c.json({
     publicReady,
     freeModels: ['openrouter/free'],
+    limits: { publicMinute: setting(c.env.AI_PUBLIC_MINUTE, 5, 100), publicDaily: setting(c.env.AI_PUBLIC_DAILY, 50, 10000),
+      customMinute: setting(c.env.AI_CUSTOM_MINUTE, 30, 100), concurrent: 1, resetTimezone: 'Asia/Shanghai' },
     presets: [
       {
         id: 'deepseek',
@@ -63,174 +91,76 @@ aiRouter.get('/status', (c) => {
   });
 });
 
-// POST /api/ai/test
+// POST /api/ai/test -- same durable lease, separate three-per-minute quota.
 aiRouter.post('/test', async (c) => {
   const user = await getCurrentUser(c);
-  if (!user) {
-    return c.json({ error: '请先登录' }, 401);
-  }
-
-  const body = await c.req.json().catch(() => null);
-  if (!body || !body.baseUrl || !body.apiKey) {
-    return c.json({ error: '缺少 baseUrl 或 apiKey' }, 400);
-  }
-
-  const baseUrl = body.baseUrl.trim();
-  if (!isHostAllowed(baseUrl, c.env.ALLOWED_AI_HOSTS)) {
-    return c.json({ error: '不支持的 AI 接口地址：仅允许 https 访问受信任的 AI 服务商域名' }, 400);
-  }
-
-  const model = body.model || 'deepseek-chat';
-  const endpoint = baseUrl.replace(/\/+$/, '') + '/chat/completions';
-
+  if (!user) return c.json({ error: '请先登录' }, 401);
+  const body = await limitedJSON(c.req.raw, setting(c.env.AI_MAX_INPUT_BYTES, 128 * 1024));
+  if (typeof body.baseUrl !== 'string' || typeof body.apiKey !== 'string' || !body.apiKey.trim() ||
+    (body.model !== undefined && typeof body.model !== 'string')) throw new AIError('AI 配置格式不正确');
+  if (!isHostAllowed(body.baseUrl, c.env.ALLOWED_AI_HOSTS)) throw new AIError('AI 接口仅允许受信任的 HTTPS 服务地址');
+  const quota = await reserveAI(c, user.id, 'test');
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${body.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'Hi' }],
-        max_tokens: 5
-      })
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return c.json({ ok: false, message: `服务商返回错误 (HTTP ${res.status}): ${errText.slice(0, 100)}` }, 400);
-    }
-
-    return c.json({ ok: true, message: 'AI 服务商接口连接成功！' });
-  } catch (e: any) {
-    return c.json({ ok: false, message: `连接超时或网络异常: ${e?.message || '未知错误'}` }, 500);
-  }
+    await callModel(body.baseUrl, body.apiKey.trim(), {
+      model: body.model || 'deepseek-chat', messages: [{ role: 'user', content: 'Hi' }], max_tokens: 5
+    }, quota.timeout);
+    return c.json({ ok: true, message: 'AI 服务商接口连接成功' });
+  } finally { await quota.release(); }
 });
 
-// POST /api/ai/generate
 aiRouter.post('/generate', async (c) => {
   const user = await getCurrentUser(c);
-  if (!user) {
-    return c.json({ error: '请先登录' }, 401);
-  }
-
-  const body = await c.req.json().catch(() => null);
-  if (!body || !body.task) {
-    return c.json({ error: '请求格式错误' }, 400);
-  }
-
-  let customAi = body.customAi;
-  let usedAi: 'public' | 'custom' = 'custom';
-  const secretKey = c.env.SECRET_KEY || 'creator-secret-change-in-wrangler-secrets';
-
-  // Fallback to cloud saved config
-  if ((!customAi || !customAi.apiKey) && user.ai_config_enc) {
-    try {
-      const dec = await decryptUserConfig(user.ai_config_enc, secretKey);
-      if (dec) {
-        const parsed = JSON.parse(dec);
-        if (parsed.apiKey) {
-          customAi = parsed;
-        }
-      }
-    } catch {
-      // ignore
+  if (!user) return c.json({ error: '请先登录' }, 401);
+  const body = await limitedJSON(c.req.raw, setting(c.env.AI_MAX_INPUT_BYTES, 128 * 1024));
+  validateGeneration(body);
+  let config: { baseUrl: string; apiKey: string; model: string };
+  if (body.provider === 'public') {
+    if (!c.env.OPENROUTER_API_KEY?.trim()) throw new AIError('公共 AI 暂未配置，请使用个人 AI 服务');
+    if (body.publicModel && body.publicModel !== 'openrouter/free') throw new AIError('公共 AI 模型不在允许列表内');
+    config = { baseUrl: 'https://openrouter.ai/api/v1', apiKey: c.env.OPENROUTER_API_KEY.trim(), model: 'openrouter/free' };
+  } else {
+    let custom = body.customAi;
+    if ((!custom || !custom.apiKey) && user.ai_config_enc) {
+      const decrypted = await decryptUserConfig(user.ai_config_enc, c.env.SECRET_KEY || 'creator-secret-change-in-wrangler-secrets');
+      try { custom = decrypted ? JSON.parse(decrypted) : null; } catch { custom = null; }
     }
-  }
-
-  if (!customAi || !customAi.apiKey) {
-    if (!c.env.OPENROUTER_API_KEY?.trim()) {
-      return c.json({ error: '请先在个人中心配置您的 AI Key，或联系管理员配置公共 AI' }, 400);
+    if (!custom || typeof custom.apiKey !== 'string' || !custom.apiKey.trim() ||
+      typeof custom.baseUrl !== 'string' || (custom.model !== undefined && typeof custom.model !== 'string')) {
+      throw new AIError('请先配置有效的个人 AI 服务，不会自动改用公共额度');
     }
-    customAi = {
-      baseUrl: 'https://openrouter.ai/api/v1',
-      apiKey: c.env.OPENROUTER_API_KEY,
-      model: body.publicModel || 'openrouter/free'
-    };
-    usedAi = 'public';
+    config = { baseUrl: custom.baseUrl.trim(), apiKey: custom.apiKey.trim(), model: custom.model || 'deepseek-chat' };
   }
-
-  const baseUrl = (customAi.baseUrl || 'https://api.deepseek.com/v1').trim();
-  if (!isHostAllowed(baseUrl, c.env.ALLOWED_AI_HOSTS)) {
-    return c.json({ error: '不支持的 AI 接口地址：仅允许 https 访问受信任的 AI 服务商域名' }, 400);
-  }
-
-  const model = customAi.model || 'deepseek-chat';
-  const endpoint = baseUrl.replace(/\/+$/, '') + '/chat/completions';
-
-  const systemPrompt = '你是一位严谨的世界观架构师与小说设定助理，请直接输出设定正文，不要寒暄，不要发散。';
-  const taskPrompt: Record<string, string> = {
-    article_summary: '请提炼文章的核心情节、人物变化和关键设定，输出简洁摘要。',
-    article_continue: '请自然续写以下文章，保持人物、语气和世界观一致，推进情节。',
-    article_write: '请根据上下文创作文章正文。',
-    field_gen: `请为字段「${body.fieldLabel || body.fieldId || '当前字段'}」生成可直接使用的设定内容。`,
-    entity_gen: `请为${body.entityKind || '设定实体'}生成完整设定内容。`
-  };
-  const userPrompt = [
-    taskPrompt[body.task] || '请根据以下信息补全设定。',
-    body.prompt || '',
-    body.currentText ? `前文：\n${String(body.currentText).slice(0, 12000)}` : '',
-    body.context ? `上下文：\n${String(body.context).slice(0, 12000)}` : '',
-    body.entityData ? `实体资料：\n${JSON.stringify(body.entityData)}` : '',
-    body.preferences ? `创作偏好：\n${JSON.stringify(body.preferences)}` : ''
-  ].filter(Boolean).join('\n\n');
-
+  if (!isHostAllowed(config.baseUrl, c.env.ALLOWED_AI_HOSTS)) throw new AIError('AI 接口仅允许受信任的 HTTPS 服务地址');
+  const prompts = buildCreativePrompts(body);
+  const quota = await reserveAI(c, user.id, body.provider);
+  const started = Date.now();
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${customAi.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.7
-      })
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return c.json({ error: `AI 服务商调用失败 (${res.status}): ${errText.slice(0, 150)}` }, 500);
-    }
-
-    const json: any = await res.json();
-    const content = json?.choices?.[0]?.message?.content || '';
-
-    return c.json({
-      content,
-      model,
-      usedAi
-    });
-  } catch (e: any) {
-    return c.json({ error: `AI 请求超时或连接失败: ${e?.message || '未知错误'}` }, 500);
-  }
+    const result = await callModel(config.baseUrl, config.apiKey, {
+      model: config.model,
+      messages: [{ role: 'system', content: prompts.system }, { role: 'user', content: prompts.user }],
+      temperature: 0.7, max_tokens: setting(c.env.AI_MAX_OUTPUT_TOKENS, 4096)
+    }, quota.timeout);
+    const content = validateOutput(result?.choices?.[0]?.message?.content, [config.apiKey, c.env.SECRET_KEY || '', c.env.OPENROUTER_API_KEY || '', prompts.system]);
+    console.log('ai_completed', { userId: user.id, provider: body.provider,
+      durationMs: Date.now() - started, tokens: Number.isFinite(result.usage?.total_tokens) ? result.usage.total_tokens : undefined });
+    return c.json({ content, model: config.model, usedAi: body.provider, contextTruncated: prompts.truncated, remainingToday: quota.remaining });
+  } finally { await quota.release(); }
 });
 
-// POST /api/ai/paint
+// The existing painting link endpoint is also authenticated, bounded and rate limited.
 aiRouter.post('/paint', async (c) => {
   const user = await getCurrentUser(c);
-  if (!user) {
-    return c.json({ error: '请先登录' }, 401);
-  }
-
-  const body = await c.req.json().catch(() => ({}));
-  const prompt = body.prompt || body.charName || 'anime character portrait, masterpiece';
+  if (!user) return c.json({ error: '请先登录' }, 401);
+  const body = await limitedJSON(c.req.raw, setting(c.env.AI_MAX_INPUT_BYTES, 128 * 1024));
+  const prompt = body.prompt || body.charName || 'anime character portrait';
   const style = body.style || 'anime';
-
-  // High quality pollinations.ai anime endpoint
-  const seed = Math.floor(Math.random() * 1000000);
-  const encodedPrompt = encodeURIComponent(`${prompt}, ${style} style, high resolution, detailed anime visual`);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux-anime&width=768&height=1024&nologo=true&enhance=true&seed=${seed}`;
-
-  return c.json({
-    imageUrl,
-    prompt,
-    style,
-    usedModel: 'flux-anime'
-  });
+  if (typeof prompt !== 'string' || typeof style !== 'string' || prompt.length > 8000 || style.length > 100) throw new AIError('绘图提示词格式不正确');
+  validateGeneration({ task: 'field_gen', provider: 'public', prompt });
+  const quota = await reserveAI(c, user.id, 'public');
+  try {
+    const seed = Math.floor(Math.random() * 1000000);
+    const encoded = encodeURIComponent(`${prompt}, ${style} style, high resolution, detailed anime visual`);
+    return c.json({ imageUrl: `https://image.pollinations.ai/prompt/${encoded}?model=flux-anime&width=768&height=1024&nologo=true&enhance=true&seed=${seed}`,
+      prompt, style, usedModel: 'flux-anime' });
+  } finally { await quota.release(); }
 });

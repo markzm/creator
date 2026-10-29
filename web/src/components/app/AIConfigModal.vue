@@ -184,6 +184,7 @@
     </div>
 
     <template #footer>
+      <RouterLink class="btn sm" to="/prompts" @click="uiStore.closeModal('aiConfig')">个人提示词库</RouterLink>
       <button type="button" class="btn sm" @click="uiStore.closeModal('aiConfig')">
         {{ tr('取消', 'Cancel') }}
       </button>

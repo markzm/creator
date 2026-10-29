@@ -60,11 +60,13 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
 import { KIND_META } from '../../core/entityMeta';
 import { collectAllEvents } from '../../core/timeline';
+import { useAuthStore } from '../../stores/auth';
 import { useDocStore } from '../../stores/doc';
 import { useUIStore } from '../../stores/ui';
 import { LayoutDashboard } from 'lucide-vue-next';
 
 const docStore = useDocStore();
+const authStore = useAuthStore();
 const uiStore = useUIStore();
 const router = useRouter();
 const { tr } = useI18n();
@@ -77,7 +79,9 @@ const own = <T extends { isReference?: boolean }>(coll: Record<string, T> | T[] 
 const groups = computed(() => [
   {
     label: tr('工作台', 'Workspace'),
-    items: [{ to: '/', icon: LayoutDashboard, color: 'var(--ac)', label: tr('总览', 'Dashboard'), badge: '' as string | number }]
+    items: [{ to: '/', icon: LayoutDashboard, color: 'var(--ac)', label: tr('总览', 'Dashboard'), badge: '' as string | number },
+      { to: '/prompts', icon: Bot, color: 'var(--ac)', label: tr('个人提示词库', 'Prompt library'), badge: '' },
+      ...(authStore.isSuperAdmin ? [{ to: '/admin/content', icon: Save, color: 'var(--wn)', label: tr('全站创作管理', 'Manage creations'), badge: '' }] : [])]
   },
   {
     label: tr('设定', 'Lore'),

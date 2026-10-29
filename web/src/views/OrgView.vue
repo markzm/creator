@@ -251,6 +251,7 @@
             v-model="aiModalOpen"
             kind="org"
             :entity-data="org.data"
+            :entity-id="org.id"
             @apply="onApplyAIGen"
           />
         </div>

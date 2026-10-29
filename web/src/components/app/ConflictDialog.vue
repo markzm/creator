@@ -140,7 +140,8 @@ const KIND_LABELS: Record<ConflictKind, [string, string]> = {
   scene: ['场景', 'Scene'],
   glossary: ['词汇', 'Glossary'],
   article: ['文章', 'Article'],
-  preferences: ['偏好', 'Preferences']
+  preferences: ['偏好', 'Preferences'],
+  prompt: ['提示词', 'Prompt']
 };
 
 function kindLabel(kind: ConflictKind): string {

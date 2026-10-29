@@ -238,8 +238,8 @@ async function removeAdmins(p: CocreationProject) {
 
 async function review(projectId: string, sh: WorldShareItem, approve: boolean) {
   try {
-    if (approve) await api.approveCanon(String(sh.id));
-    else await api.rejectCanon(String(sh.id));
+    if (approve) await api.approveCanon(String(sh.id), sh.rev);
+    else await api.rejectCanon(String(sh.id), sh.rev);
     queues[projectId] = (queues[projectId] || []).filter((x) => x.id !== sh.id);
     const p = projects.value.find((x) => x.id === projectId);
     if (p && p.pendingCount) p.pendingCount = Math.max(0, p.pendingCount - 1);

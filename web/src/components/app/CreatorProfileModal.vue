@@ -142,12 +142,12 @@
               </p>
             </div>
             <div style="display: flex; gap: 6px; flex-shrink: 0">
+              <button class="btn sm primary" @click="viewShare(sh.id)">查看作品</button>
               <button
-                v-if="sh.draftCode"
                 type="button"
                 class="btn sm"
                 style="font-size: 11.5px"
-                @click="copyCode(sh.draftCode)"
+                @click="copyShareCode(sh.id)"
               >
                 📋 复制草稿码
               </button>
@@ -188,7 +188,7 @@
 
       <!-- Admin Actions Bar (visible to admins) -->
       <div
-        v-if="authStore.isAdmin && !isViewingSelf"
+        v-if="authStore.isAdmin && !isViewingSelf && !profile.isSuperAdmin && (authStore.isSuperAdmin || !profile.isAdmin)"
         class="card"
         style="padding: 12px 14px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b"
       >
@@ -227,6 +227,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import Avatar from '../base/Avatar.vue';
 import MarkdownBio from '../base/MarkdownBio.vue';
 import Modal from '../base/Modal.vue';
@@ -237,6 +238,7 @@ import { api } from '../../data/api';
 import { useAuthStore } from '../../stores/auth';
 import { useUIStore } from '../../stores/ui';
 
+const router = useRouter();
 const authStore = useAuthStore();
 const uiStore = useUIStore();
 const { toast } = useToast();
@@ -254,7 +256,9 @@ const isViewingSelf = computed(() => {
   return authStore.user && profile.value && authStore.user.id === profile.value.user.id;
 });
 
+let profileSequence = 0;
 async function loadProfile(uid: number) {
+  const seq = ++profileSequence;
   loading.value = true;
   profile.value = null;
   editingBio.value = false;
@@ -265,12 +269,13 @@ async function loadProfile(uid: number) {
     if (!res?.user || !Array.isArray(res.publishedShares) || !Array.isArray(res.cocreations)) {
       throw new Error('创作者档案格式错误');
     }
+    if (seq !== profileSequence) return;
     profile.value = res;
     bioDraft.value = res.user.bio || '';
   } catch {
-    profile.value = null;
+    if (seq === profileSequence) profile.value = null;
   } finally {
-    loading.value = false;
+    if (seq === profileSequence) loading.value = false;
   }
 }
 
@@ -304,9 +309,17 @@ async function saveBio() {
   }
 }
 
-function copyCode(code: string) {
-  navigator.clipboard.writeText(code);
-  toast('草稿码已复制到剪贴板 ✓', 'ok');
+async function viewShare(id: string | number) {
+  uiStore.closeModal('creatorProfile');
+  await router.push({ path: '/lobby', query: { share: id } });
+}
+async function copyShareCode(id: string | number) {
+  try {
+    const { share } = await api.getShareDetail(id);
+    if (!share.draftCode) throw new Error('此作品没有草稿码');
+    await navigator.clipboard.writeText(share.draftCode);
+    toast('草稿码已复制到剪贴板 ✓', 'ok');
+  } catch (err: any) { toast(err?.message || '复制失败', 'err'); }
 }
 
 async function toggleAdminRole() {

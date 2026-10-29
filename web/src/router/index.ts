@@ -13,6 +13,7 @@ declare module 'vue-router' {
     requiresAuth?: boolean
     /** Only site admins; others are sent home. */
     requiresAdmin?: boolean
+    requiresSuperAdmin?: boolean
     /** Human-readable title for document.title. */
     title?: string
   }
@@ -69,6 +70,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/glossary', name: 'glossary', component: lazyView('GlossaryView'), meta: { title: '术语表' } },
   { path: '/stats', name: 'stats', component: lazyView('StatsView'), meta: { title: '写作看板' } },
   { path: '/me', name: 'me', component: MeView, meta: { requiresAuth: true, title: '个人主页' } },
+  { path: '/prompts', name: 'prompts', component: lazyView('PromptsView'), meta: { requiresAuth: true, title: '个人提示词库' } },
+  { path: '/admin/content', name: 'admin-content', component: lazyView('AdminContentView'), meta: { requiresAuth: true, requiresSuperAdmin: true, title: '全站创作管理' } },
   { path: '/lobby', name: 'lobby', component: LobbyView, meta: { title: '创作大厅' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
@@ -91,6 +94,7 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { name: 'welcome', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
   }
+  if (to.meta.requiresSuperAdmin && !auth.isSuperAdmin) return { path: '/' };
   if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'dashboard' }
   }

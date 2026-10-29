@@ -6,6 +6,12 @@ export interface Env {
   SECRET_KEY?: string;
   ALLOWED_AI_HOSTS?: string;
   OPENROUTER_API_KEY?: string;
+  AI_PUBLIC_MINUTE?: string;
+  AI_PUBLIC_DAILY?: string;
+  AI_CUSTOM_MINUTE?: string;
+  AI_MAX_INPUT_BYTES?: string;
+  AI_MAX_OUTPUT_TOKENS?: string;
+  AI_TIMEOUT_SECONDS?: string;
 }
 
 export interface UserRow {

@@ -1,4 +1,4 @@
-import type { CocreationProject, CreatorProfile, DocV6, NotificationItem, SettingComment, StudioPreferences } from '../core/schema/types';
+import type { CocreationProject, CreatorProfile, DocV6, NotificationItem, SettingComment, StudioPreferences, AITask } from '../core/schema/types';
 
 export interface AuthUser {
   id: number;
@@ -14,6 +14,8 @@ export interface AuthUser {
   customPrefs?: StudioPreferences;
   lastSeenAt?: number;
   createdAt?: number;
+  docRev?: number;
+  docUpdatedAt?: number;
 }
 
 export interface ChallengeResponse {
@@ -118,6 +120,7 @@ export interface LobbyUser {
 export interface WorldShareItem {
   id: string | number;
   userId: number;
+  rev?: number;
   ownerName: string;
   kind: 'world' | 'org' | 'char' | 'article' | string;
   title: string;
@@ -178,10 +181,14 @@ export interface AIStatusResponse {
   publicReady: boolean;
   freeModels: string[];
   presets: AIPreset[];
+  limits?: { publicMinute: number; publicDaily: number; customMinute: number; concurrent: number; resetTimezone: string };
 }
 
 export interface AIGenerateRequest {
-  task: 'field_gen' | 'entity_gen' | 'article_write' | 'article_continue' | 'article_summary';
+  task: AITask;
+  provider?: 'public' | 'custom';
+  /** Local context selector target; never used as authority by the server. */
+  entityId?: string;
   fieldId?: string;
   fieldLabel?: string;
   entityKind?: string;
@@ -199,9 +206,12 @@ export interface AIGenerateResponse {
   content: string;
   model: string;
   usedAi: 'public' | 'custom';
+  contextTruncated?: boolean;
+  remainingToday?: number | null;
 }
 
 async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
+  if (init.method && init.method !== 'GET') clearPublicDataCache();
   const headers = new Headers(init.headers || {});
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -217,6 +227,8 @@ async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   } catch (e: any) {
     throw new ApiNetworkError(e?.message || 'Network error');
   }
+
+  if (res.ok && init.method && init.method !== 'GET') clearPublicDataCache();
 
   if (res.status === 204) {
     return null as unknown as T;
@@ -255,6 +267,24 @@ async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   }
 
   return body as T;
+}
+
+const publicDataCache = new Map<string, { expires: number; value: Promise<any> }>();
+const publicInflight = new Map<string, Promise<any>>();
+export function clearPublicDataCache() { publicDataCache.clear(); publicInflight.clear(); }
+function publicGet<T>(url: string, cache = false): Promise<T> {
+  const hit = publicDataCache.get(url);
+  if (cache && hit && hit.expires > Date.now()) return hit.value;
+  const existing = publicInflight.get(url);
+  if (existing) return existing;
+  const promise = requestJson<T>(url).catch(error => { publicDataCache.delete(url); throw error; })
+    .finally(() => { if (publicInflight.get(url) === promise) publicInflight.delete(url); });
+  publicInflight.set(url, promise);
+  if (cache) {
+    if (publicDataCache.size > 80) publicDataCache.delete(publicDataCache.keys().next().value!);
+    publicDataCache.set(url, { expires: Date.now() + 30_000, value: promise });
+  }
+  return promise;
 }
 
 export const api = {
@@ -353,12 +383,16 @@ export const api = {
     });
   },
 
-  getLobbyUsers(): Promise<{ users: LobbyUser[] }> {
-    return requestJson<{ users: LobbyUser[] }>('/api/lobby/users');
+  getLobbyUsers(params: { page?: number; limit?: number; q?: string; online?: boolean; fresh?: boolean } = {}): Promise<{ users: LobbyUser[]; total: number; onlineCount: number; totalCreators: number; page: number; limit: number }> {
+    const qs = new URLSearchParams({ page: String(params.page || 1), limit: String(params.limit || 8) });
+    if (params.q) qs.set('q', params.q);
+    if (params.online) qs.set('online', '1');
+    if (params.fresh) clearPublicDataCache();
+    return publicGet('/api/lobby/users?' + qs, true);
   },
 
   getGlobalStats(): Promise<GlobalDashboardStats> {
-    return requestJson<GlobalDashboardStats>('/api/stats/global');
+    return publicGet<GlobalDashboardStats>('/api/stats/global', true);
   },
 
   getShares(params?: {
@@ -366,6 +400,7 @@ export const api = {
     visibility?: 'all' | 'public' | 'private';
     kind?: string;
     q?: string;
+    project?: string;
     /** Keyset cursor: `createdAt` (unix seconds) of the last item ... */
     before?: number;
     /** ... and its id, so rows sharing a second are neither skipped nor repeated. */
@@ -375,25 +410,29 @@ export const api = {
     full?: boolean;
   }): Promise<{
     shares: WorldShareItem[];
+    hasMore?: boolean;
   }> {
     const qs = new URLSearchParams();
     if (params?.owner) qs.set('owner', params.owner);
     if (params?.visibility) qs.set('visibility', params.visibility);
     if (params?.kind) qs.set('kind', params.kind);
     if (params?.q) qs.set('q', params.q);
+    if (params?.project) qs.set('project', params.project);
     if (params?.before) qs.set('before', String(params.before));
     if (params?.beforeId) qs.set('beforeId', params.beforeId);
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.full) qs.set('full', '1');
     const qStr = qs.toString();
-    return requestJson<{ shares: WorldShareItem[] }>(`/api/shares${qStr ? '?' + qStr : ''}`);
+    const url = `/api/shares${qStr ? '?' + qStr : ''}`;
+    return params?.owner === 'me' ? requestJson(url) : publicGet(url);
   },
 
   getShareDetail(id: string | number): Promise<{ share: WorldShareItem }> {
     return requestJson<{ share: WorldShareItem }>(`/api/shares/${id}`);
   },
 
-  createShare(payload: {
+  async createShare(payload: {
+    baseRev?: number;
     id?: string;
     entityId?: string;
     kind?: string;
@@ -406,10 +445,13 @@ export const api = {
     cocreationId?: string;
     tachiEUrl?: string;
   }): Promise<{ share: WorldShareItem }> {
+    if (payload.id && !Number.isSafeInteger(payload.baseRev)) throw new ApiError('请先确认云端分享的最新版本', 409);
+    const baseRev = payload.baseRev;
     return requestJson<{ share: WorldShareItem }>('/api/shares', {
       method: 'POST',
       body: JSON.stringify({
         id: payload.id,
+        baseRev,
         entityId: payload.entityId || '',
         kind: payload.kind || 'world',
         title: payload.title,
@@ -424,17 +466,16 @@ export const api = {
     });
   },
 
-  updateShareVisibility(id: string | number, visibility: 'public' | 'private'): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/shares/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ visibility })
-    });
+  async updateShareVisibility(id: string | number, visibility: 'public' | 'private', baseRev?: number): Promise<{ ok: boolean; rev?: number }> {
+    const rev = baseRev ?? (await api.getShareDetail(id)).share.rev;
+    return api.updateShare(id, { visibility, baseRev: rev });
   },
-
-  deleteShare(id: string | number): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/shares/${id}`, {
-      method: 'DELETE'
-    });
+  updateShare(id: string | number, patch: { baseRev?: number; title?: string; summary?: string; content?: string; draftCode?: string; tags?: string; visibility?: 'public' | 'private' }): Promise<{ ok: boolean; rev: number }> {
+    return requestJson(`/api/shares/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  },
+  async deleteShare(id: string | number, baseRev?: number): Promise<{ ok: boolean }> {
+    if (!Number.isSafeInteger(baseRev)) throw new ApiError('请重新载入作品后再删除', 409);
+    return requestJson(`/api/shares/${encodeURIComponent(id)}?baseRev=${baseRev}`, { method: 'DELETE' });
   },
 
   // AI Service
@@ -527,6 +568,10 @@ export const api = {
     return requestJson<{ notifications: NotificationItem[]; unreadCount: number }>(`/api/notifications?limit=${limit || 30}`);
   },
 
+  getNotificationCount(): Promise<{ unreadCount: number }> {
+    return requestJson('/api/notifications?countOnly=1');
+  },
+
   markNotificationsRead(): Promise<{ ok: boolean }> {
     return requestJson<{ ok: boolean }>('/api/notifications/read-all', {
       method: 'POST'
@@ -597,21 +642,24 @@ export const api = {
     );
   },
 
-  requestCanon(shareId: string): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/request-canon`, {
-      method: 'POST'
+  async requestCanon(shareId: string, baseRev?: number): Promise<{ ok: boolean; rev: number }> {
+    const rev = baseRev ?? (await api.getShareDetail(shareId)).share.rev;
+    return requestJson(`/api/cocreation/shares/${shareId}/request-canon`, {
+      method: 'POST', body: JSON.stringify({ baseRev: rev })
     });
   },
 
-  approveCanon(shareId: string): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/approve-canon`, {
-      method: 'POST'
+  async approveCanon(shareId: string, baseRev?: number): Promise<{ ok: boolean; rev: number }> {
+    const rev = baseRev ?? (await api.getShareDetail(shareId)).share.rev;
+    return requestJson(`/api/cocreation/shares/${shareId}/approve-canon`, {
+      method: 'POST', body: JSON.stringify({ baseRev: rev })
     });
   },
 
-  rejectCanon(shareId: string): Promise<{ ok: boolean }> {
-    return requestJson<{ ok: boolean }>(`/api/cocreation/shares/${shareId}/reject-canon`, {
-      method: 'POST'
+  async rejectCanon(shareId: string, baseRev?: number): Promise<{ ok: boolean; rev: number }> {
+    const rev = baseRev ?? (await api.getShareDetail(shareId)).share.rev;
+    return requestJson(`/api/cocreation/shares/${shareId}/reject-canon`, {
+      method: 'POST', body: JSON.stringify({ baseRev: rev })
     });
   },
 
@@ -621,8 +669,18 @@ export const api = {
   },
 
   // Admin Management
-  getAdminUsers(): Promise<{ users: AuthUser[] }> {
-    return requestJson<{ users: AuthUser[] }>('/api/admin/users');
+  getAdminUsers(params: { q?: string; page?: number; limit?: number } = {}): Promise<{ users: AuthUser[]; total: number; page: number; limit: number }> {
+    const qs = new URLSearchParams({ page: String(params.page || 1), limit: String(params.limit || 20), q: params.q || '' });
+    return requestJson('/api/admin/users?' + qs);
+  },
+  getAdminDocument(userId: number): Promise<SyncGetResponse | null> {
+    return requestJson(`/api/admin/content/${userId}/document`);
+  },
+  saveAdminDocument(userId: number, data: DocV6, baseRev: number): Promise<SyncPutResponse> {
+    return requestJson(`/api/admin/content/${userId}/document`, { method: 'PUT', body: JSON.stringify({ data, baseRev }) });
+  },
+  getAdminShares(userId: number, page = 1): Promise<{ shares: WorldShareItem[]; total: number }> {
+    return requestJson(`/api/admin/content/${userId}/shares?page=${page}`);
   },
 
   setAdminUserRole(userId: number, isAdmin: boolean): Promise<{ ok: boolean }> {

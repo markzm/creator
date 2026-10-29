@@ -171,7 +171,7 @@
             v-if="!isReadOnlyReference"
             type="button"
             class="btn sm primary"
-            @click="aiWriteModalOpen = true"
+            @click="executeAIWrite"
           >
             ✨ {{ tr('AI 设定成文', 'AI Write') }}
           </button>
@@ -369,43 +369,7 @@
       </div>
     </div>
 
-    <!-- AI Write Modal -->
-    <Modal
-      v-model="aiWriteModalOpen"
-      :title="'✨ ' + tr('AI 设定成文向导', 'AI Story Writing')"
-      max-width="560px"
-    >
-      <div style="display: flex; flex-direction: column; gap: 12px">
-        <p class="hint" style="margin: 0; font-size: 12.5px">
-          {{ tr('AI 将结合当前关联的世界观与角色设定作为知识库，为您撰写小说正文。', 'AI writes story content using bound entities as context.') }}
-        </p>
 
-        <div>
-          <label style="display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 4px">
-            {{ tr('写作意图 / 本节情节需求', 'Story Prompt / Plot Requirements') }}
-          </label>
-          <textarea
-            v-model="aiWritePrompt"
-            rows="4"
-            :placeholder="tr('例：林汐与怀特船长在浮空灯塔遭遇以太风暴，两人合力抢修升力气囊并揭开遗迹石碑…', 'e.g. Action scene at the sky lighthouse…')"
-          />
-        </div>
-      </div>
-
-      <template #footer>
-        <button type="button" class="btn sm" @click="aiWriteModalOpen = false">
-          {{ tr('取消', 'Cancel') }}
-        </button>
-        <button
-          type="button"
-          class="btn primary sm"
-          :disabled="aiStore.loading"
-          @click="executeAIWrite"
-        >
-          {{ aiStore.loading ? tr('创作中…', 'Writing…') : '✨ ' + tr('开始成文', 'Start Writing') }}
-        </button>
-      </template>
-    </Modal>
   </div>
 </template>
 
@@ -432,8 +396,7 @@ const { publishEntity, toggleVisibility: toggleShareVisibility } = usePublish();
 
 const filterCategory = ref('all');
 const searchKeyword = ref('');
-const aiWriteModalOpen = ref(false);
-const aiWritePrompt = ref('');
+
 const mobileListCollapsed = ref(false);
 
 function onSelectArticleItem(id: string) {
@@ -534,122 +497,31 @@ function formatDate(ts?: number): string {
   return d.toLocaleDateString();
 }
 
-function buildBoundContext(): string {
-  if (!activeArt.value) return '';
-  const lines: string[] = [];
-
-  // World context
-  if (activeArt.value.worldId && docStore.doc.worlds[activeArt.value.worldId]) {
-    const w = docStore.doc.worlds[activeArt.value.worldId];
-    lines.push(`【世界观】: ${w.data.w_name || w.name}`);
-    if (w.data.w_core) lines.push(`核心法则: ${w.data.w_core}`);
-    if (w.data.w_power_system) lines.push(`力量体系: ${w.data.w_power_system}`);
-    if (w.data.w_era) lines.push(`纪元历史: ${w.data.w_era}`);
-  }
-
-  // Organization contexts
-  if (activeArt.value.orgIds && activeArt.value.orgIds.length) {
-    lines.push('【关联组织/势力】:');
-    activeArt.value.orgIds.forEach((oid) => {
-      const o = docStore.doc.orgs[oid];
-      if (o) {
-        lines.push(`- 组织名: ${o.data.o_name || o.name}, 类型: ${o.data.o_type || ''}, 宗旨/格言: ${o.data.o_creed_line || o.data.o_core || ''}`);
+async function requestArticleDraft(task: 'article_write' | 'article_continue' | 'article_summary') {
+  const article = activeArt.value;
+  if (!article || isReadOnlyReference.value) return;
+  const id = article.id;
+  const field = task === 'article_summary' ? 'summary' : 'content';
+  const live = () => (docStore.doc.articles || []).find(a => a.id === id);
+  try {
+    await aiStore.requestDraft({ task, entityKind: 'article', entityId: id,
+      currentText: task === 'article_write' ? undefined : task === 'article_continue' ? article.content.slice(-12000) : article.content,
+      prompt: task === 'article_continue' ? '自然接续前文剧情，保持人物、语气与世界观一致。' : undefined }, {
+      title: task === 'article_summary' ? 'AI 文章摘要' : task === 'article_continue' ? 'AI 文章续写' : 'AI 文章创作',
+      defaultMode: task === 'article_continue' ? 'append' : 'replace',
+      sourceValue: task === 'article_summary' ? () => live()?.content : undefined,
+      currentValue: () => { const a = live(); return a && (!a.isReference || authStore.isAdmin) ? a[field] || '' : undefined; },
+      apply: (content, mode) => {
+        const a = live(); if (!a) throw new Error('目标文章已删除');
+        a[field] = mode === 'append' && a[field] ? a[field] + '\n\n' + content : content;
+        a.wordCount = a.content.length; a.updatedAt = Date.now(); docStore.touch(true);
       }
     });
-  }
-
-  // Character contexts
-  if (activeArt.value.charIds && activeArt.value.charIds.length) {
-    lines.push('【出场角色】:');
-    activeArt.value.charIds.forEach((cid) => {
-      const c = docStore.doc.chars[cid];
-      if (c) {
-        lines.push(`- 姓名: ${c.data.name || c.name}, 种族/职业: ${c.data.race || ''} ${c.data.job || ''}, 性格: ${c.data.personality || ''}, 特殊能力: ${c.data.power || ''}`);
-      }
-    });
-  }
-
-  return lines.join('\n');
+  } catch (e: any) { toast(e.message || 'AI 创作失败', 'err'); }
 }
-
-/** Resolves the article an AI request was made for; it may have been switched or deleted meanwhile. */
-function findArticleOrWarn(artId: string) {
-  const art = (docStore.doc.articles || []).find((a) => a.id === artId);
-  if (!art) {
-    toast(tr('目标文章已切换或删除，AI 结果已丢弃', 'Target article changed; AI result discarded'), 'warn');
-  }
-  return art || null;
-}
-
-async function executeAIWrite() {
-  if (!activeArt.value || isReadOnlyReference.value || !aiWritePrompt.value.trim()) {
-    toast(tr('请填写写作意图', 'Prompt required'), 'warn');
-    return;
-  }
-  const context = buildBoundContext();
-  const artId = activeArt.value.id;
-  try {
-    const res = await aiStore.generate({
-      task: 'article_write',
-      prompt: aiWritePrompt.value.trim(),
-      context
-    });
-    const art = findArticleOrWarn(artId);
-    if (!art) return;
-    art.content = res.content;
-    art.wordCount = res.content.length;
-    art.updatedAt = Date.now();
-    docStore.touch(true);
-    aiWriteModalOpen.value = false;
-    toast(tr('AI 正文创作完成 ✓', 'AI Story Generated ✓'), 'ok');
-  } catch (err: any) {
-    toast(err?.message || tr('生成失败', 'Failed'), 'err');
-  }
-}
-
-async function onAIContinue() {
-  if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
-  const context = buildBoundContext();
-  const artId = activeArt.value.id;
-  toast(tr('AI 正在续写剧情…', 'AI Continuing story…'), 'ok');
-  try {
-    const res = await aiStore.generate({
-      task: 'article_continue',
-      currentText: activeArt.value.content.slice(-2000), // pass recent 2000 chars
-      prompt: '顺畅接续前文剧情，生动展现冲突，推进情节发展。',
-      context
-    });
-    const art = findArticleOrWarn(artId);
-    if (!art) return;
-    art.content = (art.content || '') + '\n\n' + res.content;
-    art.wordCount = art.content.length;
-    art.updatedAt = Date.now();
-    docStore.touch(true);
-    toast(tr('续写完成 ✓', 'Continued ✓'), 'ok');
-  } catch (err: any) {
-    toast(err?.message || tr('续写失败', 'Failed'), 'err');
-  }
-}
-
-async function onAISummary() {
-  if (!activeArt.value || isReadOnlyReference.value || !(activeArt.value.content || '').trim()) return;
-  const artId = activeArt.value.id;
-  toast(tr('正在提取文章摘要…', 'Generating summary…'), 'ok');
-  try {
-    const res = await aiStore.generate({
-      task: 'article_summary',
-      currentText: activeArt.value.content.slice(0, 4000)
-    });
-    const art = findArticleOrWarn(artId);
-    if (!art) return;
-    art.summary = res.content;
-    art.updatedAt = Date.now();
-    docStore.touch(true);
-    toast(tr('摘要已生成 ✓', 'Summary ready ✓'), 'ok');
-  } catch (err: any) {
-    toast(err?.message || tr('提取失败', 'Failed'), 'err');
-  }
-}
+async function executeAIWrite() { await requestArticleDraft('article_write'); }
+async function onAIContinue() { await requestArticleDraft('article_continue'); }
+async function onAISummary() { await requestArticleDraft('article_summary'); }
 
 async function toggleVisibility() {
   if (!activeArt.value || isReadOnlyReference.value) return;

@@ -2,8 +2,15 @@ import { Hono } from 'hono';
 import { getCurrentUser } from '../auth';
 import type { Env, UserRow } from '../types';
 import { toAuthUser } from '../types';
+import { boundedInt, escapeLike, invalidatePublic } from '../public-cache';
+import { contentAdminRouter } from './content-admin';
 
 export const adminRouter = new Hono<{ Bindings: Env }>();
+adminRouter.route('/content', contentAdminRouter);
+adminRouter.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' && c.res.ok) invalidatePublic(c.env.DB);
+});
 
 // GET /api/admin/users
 adminRouter.get('/users', async (c) => {
@@ -15,12 +22,19 @@ adminRouter.get('/users', async (c) => {
     return c.json({ error: '只有管理员可访问管理面板' }, 403);
   }
 
-  const { results } = await c.env.DB.prepare(`
-    SELECT * FROM users ORDER BY id ASC
-  `).all<UserRow>();
-
-  const users = (results || []).map(toAuthUser);
-  return c.json({ users });
+  const page = boundedInt(c.req.query('page'), 1, 100000);
+  const limit = boundedInt(c.req.query('limit'), 20, 50);
+  const q = '%' + escapeLike((c.req.query('q') || '').trim().slice(0, 60)) + '%';
+  const rows = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT u.id, u.email, u.nickname, u.avatar_url, u.bio, u.is_admin, u.is_super_admin,
+      u.is_muted, u.muted_reason, u.is_disabled, u.last_seen_at, u.created_at,
+      d.rev as docRev, d.updated_at as docUpdatedAt FROM users u LEFT JOIN user_docs d ON d.user_id = u.id
+      WHERE (u.nickname LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\') ORDER BY u.id LIMIT ? OFFSET ?`)
+      .bind(q, q, limit, (page - 1) * limit),
+    c.env.DB.prepare(`SELECT COUNT(*) as total FROM users WHERE nickname LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\'`).bind(q, q)
+  ]);
+  const users = rows[0].results.map((row: any) => ({ ...toAuthUser(row), docRev: row.docRev, docUpdatedAt: row.docUpdatedAt }));
+  return c.json({ users, page, limit, total: Number((rows[1].results[0] as any).total) });
 });
 
 type AdminCheckResult =
@@ -64,6 +78,9 @@ adminRouter.put('/users/:id/role', async (c) => {
   }
 
   const body = await c.req.json().catch(() => ({}));
+  if (typeof body.isAdmin !== 'boolean' || Object.keys(body).some(key => key !== 'isAdmin')) {
+    return c.json({ error: '只能设置普通管理员身份，不能分配超级管理员' }, 400);
+  }
   const isAdmin = body.isAdmin ? 1 : 0;
   const now = Math.floor(Date.now() / 1000);
 

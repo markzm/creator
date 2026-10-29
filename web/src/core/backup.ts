@@ -15,6 +15,7 @@ export interface NormalizedBackupPayload {
   stats: any[];
   articles?: any[];
   preferences?: any;
+  promptTemplates?: any[];
 }
 
 /**
@@ -59,6 +60,7 @@ export function normalizeBackup(
     if (p.scenes) result.scenes = p.scenes;
     if (p.glossary) result.glossary = p.glossary;
     if (p.stats) result.stats = p.stats;
+    if (Array.isArray(p.promptTemplates)) result.promptTemplates = p.promptTemplates;
     if (Array.isArray(p.articles)) result.articles = p.articles;
     if (p.preferences && typeof p.preferences === 'object') result.preferences = p.preferences;
     return result;
@@ -173,6 +175,11 @@ export function mergeBackupIntoDoc(
     mergeById(next.articles, incomingV6.articles);
   }
 
+  if (incomingV6.promptTemplates) {
+    next.promptTemplates ||= [];
+    mergeById(next.promptTemplates, incomingV6.promptTemplates);
+  }
+
   incomingV6.stats.forEach((s) => {
     if (!next.stats.some((y) => y.date === s.date)) {
       next.stats.push(s);
@@ -215,6 +222,7 @@ export function serializeBackupV6(doc: DocV6): string {
     stats: doc.stats,
     articles: doc.articles || [],
     preferences: doc.preferences,
+    ...(doc.promptTemplates ? { promptTemplates: doc.promptTemplates } : {}),
     ui: doc.ui
   };
   return JSON.stringify(payload, null, 2);

@@ -1,14 +1,22 @@
 import { Hono } from 'hono';
 import { getCurrentUser } from '../auth';
 import type { Env } from '../types';
+import { enrichProjects } from '../projects';
+import { canReadShare, mutateShare } from '../share-access';
+import { boundedInt, invalidatePublic } from '../public-cache';
 
 export const cocreationRouter = new Hono<{ Bindings: Env }>();
+export const notificationRouter = new Hono<{ Bindings: Env }>();
+cocreationRouter.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' && c.res.ok) invalidatePublic(c.env.DB);
+});
 
 // GET /api/cocreation/projects
 cocreationRouter.get('/projects', async (c) => {
   const user = await getCurrentUser(c);
   const mine = c.req.query('mine') === '1';
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 100);
+  const limit = boundedInt(c.req.query('limit'), 50, 100);
 
   if (mine) {
     if (!user) {
@@ -22,7 +30,7 @@ cocreationRouter.get('/projects', async (c) => {
       LIMIT ?
     `).bind(user.id, limit).all<any>();
 
-    const projects = await Promise.all((results || []).map((p) => enrichProject(c, p)));
+    const projects = await enrichProjects(c.env.DB, results || []);
     return c.json({ projects });
   }
 
@@ -32,46 +40,12 @@ cocreationRouter.get('/projects', async (c) => {
     LIMIT ?
   `).bind(limit).all<any>();
 
-  const projects = await Promise.all((results || []).map((p) => enrichProject(c, p)));
+  const projects = await enrichProjects(c.env.DB, results || []);
   return c.json({ projects });
 });
 
-function formatProject(p: any) {
-  let admins: string[] = [];
-  try {
-    admins = JSON.parse(p.admins_json || '[]');
-  } catch {
-    // ignore
-  }
-  return {
-    id: p.id,
-    worldId: p.world_id,
-    worldTitle: p.world_title,
-    ownerId: p.owner_id,
-    ownerName: p.owner_name,
-    admins,
-    members: p.members || [],
-    summary: p.summary,
-    isOpenDoujin: Boolean(p.is_open_doujin),
-    pendingCount: Number(p.pendingCount || 0),
-    createdAt: p.created_at,
-    updatedAt: p.updated_at
-  };
-}
-
-async function enrichProject(c: any, p: any) {
-  const { results: members } = await c.env.DB.prepare(`
-    SELECT m.user_id as userId, u.nickname as name, u.avatar_url as avatar, m.role
-    FROM cocreation_members m
-    JOIN users u ON u.id = m.user_id
-    WHERE m.project_id = ?
-    ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at ASC
-  `).bind(p.id).all();
-  const pending = await c.env.DB.prepare(`
-    SELECT COUNT(*) as count FROM world_shares
-    WHERE cocreation_id = ? AND canon_review = 'pending'
-  `).bind(p.id).first() as { count: number } | null;
-  return formatProject({ ...p, members: members || [], pendingCount: pending?.count || 0 });
+async function enrichProject(c: any, project: any) {
+  return (await enrichProjects(c.env.DB, [project]))[0];
 }
 
 // POST /api/cocreation/projects
@@ -257,11 +231,11 @@ cocreationRouter.get('/projects/:id/queue', async (c) => {
   }
 
   const status = c.req.query('status') || 'pending';
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 100);
+  const limit = boundedInt(c.req.query('limit'), 50, 100);
 
   let sql = `
     SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           content, draft_code as draftCode, visibility, entity_id as entityId, tags,
+           '' as content, '' as draftCode, rev, visibility, entity_id as entityId, tags,
            word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
            canon_requested as canonRequested, tachi_e_url as tachiEUrl, canon_review as canonReview,
            reviewed_by as reviewedBy, reviewed_at as reviewedAt, created_at as createdAt, updated_at as updatedAt
@@ -269,6 +243,7 @@ cocreationRouter.get('/projects/:id/queue', async (c) => {
     WHERE cocreation_id = ?
   `;
   const params: any[] = [id];
+  if (!user.is_super_admin) { sql += " AND (visibility = 'public' OR user_id = ?)"; params.push(user.id); }
 
   if (status !== 'all') {
     sql += ' AND canon_review = ?';
@@ -289,7 +264,7 @@ cocreationRouter.post('/shares/:id/request-canon', async (c) => {
   }
 
   const shareId = c.req.param('id');
-  const share = await c.env.DB.prepare('SELECT * FROM world_shares WHERE id = ?').bind(shareId).first<any>();
+  const share = await c.env.DB.prepare('SELECT id, user_id, visibility, rev, cocreation_id, title FROM world_shares WHERE id = ?').bind(shareId).first<any>();
   if (!share) {
     return c.json({ error: '作品不存在' }, 404);
   }
@@ -300,13 +275,17 @@ cocreationRouter.post('/shares/:id/request-canon', async (c) => {
     return c.json({ error: '该作品不属于任何共创企划' }, 400);
   }
 
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isSafeInteger(body?.baseRev) || body.baseRev < 1) return c.json({ error: '请携带作品版本后重试' }, 400);
+  if (body.baseRev !== share.rev) return c.json({ error: '作品版本已变化，请重新载入后审核' }, 409);
   const now = Math.floor(Date.now() / 1000);
-  await c.env.DB.prepare(`
-    UPDATE world_shares SET canon_requested = 1, canon_review = 'pending', updated_at = ?
-    WHERE id = ?
-  `).bind(now, shareId).run();
+  const changed = await mutateShare(c.env.DB, user, share, c.env.DB.prepare(`
+    UPDATE world_shares SET rev = rev + 1, canon_requested = 1, canon_review = 'pending', updated_at = ?
+    WHERE id = ? AND rev = ?
+  `).bind(now, shareId, share.rev), 'request-canon');
 
-  return c.json({ ok: true });
+  if (!changed) return c.json({ error: '作品版本已变化，请重新载入' }, 409);
+  return c.json({ ok: true, rev: share.rev + 1 });
 });
 
 // POST /api/cocreation/shares/:id/approve-canon
@@ -317,10 +296,12 @@ cocreationRouter.post('/shares/:id/approve-canon', async (c) => {
   }
 
   const shareId = c.req.param('id');
-  const share = await c.env.DB.prepare('SELECT * FROM world_shares WHERE id = ?').bind(shareId).first<any>();
+  const share = await c.env.DB.prepare('SELECT id, user_id, visibility, rev, cocreation_id, title FROM world_shares WHERE id = ?').bind(shareId).first<any>();
   if (!share) {
     return c.json({ error: '作品不存在' }, 404);
   }
+
+  if (!canReadShare(user, share)) return c.json({ error: '该作品为作者私有' }, 403);
 
   const member = await c.env.DB.prepare(
     'SELECT role FROM cocreation_members WHERE project_id = ? AND user_id = ?'
@@ -330,13 +311,18 @@ cocreationRouter.post('/shares/:id/approve-canon', async (c) => {
     return c.json({ error: '只有企划成员或管理员可以审核' }, 403);
   }
 
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isSafeInteger(body?.baseRev) || body.baseRev < 1) return c.json({ error: '请携带作品版本后重试' }, 400);
+  if (body.baseRev !== share.rev) return c.json({ error: '作品版本已变化，请重新载入后审核' }, 409);
   const now = Math.floor(Date.now() / 1000);
-  await c.env.DB.prepare(`
-    UPDATE world_shares SET
+  const changed = await mutateShare(c.env.DB, user, share, c.env.DB.prepare(`
+    UPDATE world_shares SET rev = rev + 1,
       canon_status = 'canon', canon_review = 'approved',
       reviewed_by = ?, reviewed_at = ?, updated_at = ?
-    WHERE id = ?
-  `).bind(user.id, now, now, shareId).run();
+    WHERE id = ? AND rev = ?
+  `).bind(user.id, now, now, shareId, share.rev), 'approve-canon');
+
+  if (!changed) return c.json({ error: '作品版本已变化，请重新载入' }, 409);
 
   // Create notification for author
   await c.env.DB.prepare(`
@@ -344,7 +330,7 @@ cocreationRouter.post('/shares/:id/approve-canon', async (c) => {
     VALUES (?, ?, ?, 'canon_approved', '转正审核通过', ?, ?, 'share', 0, ?)
   `).bind(share.user_id, user.id, user.nickname || '管理员', `您的同人设定《${share.title}》已通过企划正史转正审核！`, shareId, now).run();
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, rev: share.rev + 1 });
 });
 
 // POST /api/cocreation/shares/:id/reject-canon
@@ -355,10 +341,12 @@ cocreationRouter.post('/shares/:id/reject-canon', async (c) => {
   }
 
   const shareId = c.req.param('id');
-  const share = await c.env.DB.prepare('SELECT * FROM world_shares WHERE id = ?').bind(shareId).first<any>();
+  const share = await c.env.DB.prepare('SELECT id, user_id, visibility, rev, cocreation_id, title FROM world_shares WHERE id = ?').bind(shareId).first<any>();
   if (!share) {
     return c.json({ error: '作品不存在' }, 404);
   }
+
+  if (!canReadShare(user, share)) return c.json({ error: '该作品为作者私有' }, 403);
 
   const member = await c.env.DB.prepare(
     'SELECT role FROM cocreation_members WHERE project_id = ? AND user_id = ?'
@@ -368,14 +356,18 @@ cocreationRouter.post('/shares/:id/reject-canon', async (c) => {
     return c.json({ error: '只有企划成员或管理员可以审核' }, 403);
   }
 
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isSafeInteger(body?.baseRev) || body.baseRev < 1) return c.json({ error: '请携带作品版本后重试' }, 400);
+  if (body.baseRev !== share.rev) return c.json({ error: '作品版本已变化，请重新载入后审核' }, 409);
   const now = Math.floor(Date.now() / 1000);
-  await c.env.DB.prepare(`
-    UPDATE world_shares SET
+  const changed = await mutateShare(c.env.DB, user, share, c.env.DB.prepare(`
+    UPDATE world_shares SET rev = rev + 1,
       canon_review = 'rejected', reviewed_by = ?, reviewed_at = ?, updated_at = ?
-    WHERE id = ?
-  `).bind(user.id, now, now, shareId).run();
+    WHERE id = ? AND rev = ?
+  `).bind(user.id, now, now, shareId, share.rev), 'reject-canon');
 
-  return c.json({ ok: true });
+  if (!changed) return c.json({ error: '作品版本已变化，请重新载入' }, 409);
+  return c.json({ ok: true, rev: share.rev + 1 });
 });
 
 // ----------------------------------------------------
@@ -383,13 +375,18 @@ cocreationRouter.post('/shares/:id/reject-canon', async (c) => {
 // ----------------------------------------------------
 
 // GET /api/notifications
-cocreationRouter.get('/notifications', async (c) => {
+notificationRouter.get('/notifications', async (c) => {
   const user = await getCurrentUser(c);
   if (!user) {
     return c.json({ error: '请先登录' }, 401);
   }
 
-  const limit = Math.min(parseInt(c.req.query('limit') || '30', 10) || 30, 100);
+  if (c.req.query('countOnly') === '1') {
+    const unread = await c.env.DB.prepare('SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0')
+      .bind(user.id).first<{ count: number }>();
+    return c.json({ unreadCount: unread?.count || 0 });
+  }
+  const limit = boundedInt(c.req.query('limit'), 30, 100);
 
   const { results } = await c.env.DB.prepare(`
     SELECT id, user_id as userId, sender_id as senderId, sender_name as senderName,
@@ -412,7 +409,7 @@ cocreationRouter.get('/notifications', async (c) => {
 });
 
 // POST /api/notifications/read-all
-cocreationRouter.post('/notifications/read-all', async (c) => {
+notificationRouter.post('/notifications/read-all', async (c) => {
   const user = await getCurrentUser(c);
   if (!user) {
     return c.json({ error: '请先登录' }, 401);
@@ -423,7 +420,7 @@ cocreationRouter.post('/notifications/read-all', async (c) => {
 });
 
 // POST /api/notifications/:id/read
-cocreationRouter.post('/notifications/:id/read', async (c) => {
+notificationRouter.post('/notifications/:id/read', async (c) => {
   const user = await getCurrentUser(c);
   if (!user) {
     return c.json({ error: '请先登录' }, 401);

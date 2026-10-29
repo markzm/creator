@@ -53,3 +53,14 @@ describe('router guards — guest gating', () => {
     expect(router.currentRoute.value.path).toBe('/me');
   });
 });
+
+ it('restricts full-site content management to the locked super administrator', async () => {
+    setActivePinia(createPinia());
+    const { router } = await import('../index');
+    const { useAuthStore } = await import('../../stores/auth');
+    const auth = useAuthStore(); auth.initialized = true;
+    auth.user = { id: 3, isAdmin: true, isSuperAdmin: false } as any;
+    await router.push('/admin/content'); expect(router.currentRoute.value.path).not.toBe('/admin/content');
+    auth.user = { id: 1, isAdmin: true, isSuperAdmin: true } as any;
+    await router.push('/admin/content'); expect(router.currentRoute.value.path).toBe('/admin/content');
+  });

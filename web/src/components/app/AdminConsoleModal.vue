@@ -6,6 +6,7 @@
     @update:model-value="(v) => !v && uiStore.closeModal('adminConsole')"
   >
     <div style="display: flex; flex-direction: column; gap: 14px">
+      <RouterLink v-if="authStore.isSuperAdmin" class="btn primary" to="/admin/content" @click="uiStore.closeModal('adminConsole')">全站创作管理</RouterLink>
       <!-- Tabs -->
       <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--li2); padding-bottom: 8px">
         <button
@@ -30,13 +31,14 @@
       <div v-if="currentTab === 'users'">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
           <span class="hint" style="font-size: 12px">
-            {{ authStore.isSuperAdmin ? '超级管理员权限生效：可自由增减管理员、管理禁言及封禁状态。' : '管理员权限生效：可管理禁言创作者、限制登录账号与解除惩罚。' }}
+            {{ authStore.isSuperAdmin ? '超级管理员已锁定，可授予普通管理员并管理其他账号。' : '管理员权限生效：可管理禁言创作者、限制登录账号与解除惩罚。' }}
           </span>
           <button type="button" class="btn sm" :disabled="loadingUsers" @click="fetchUsers">
             🔄 刷新
           </button>
         </div>
 
+        <input type="text" v-model="userSearch" class="input" placeholder="搜索昵称或邮箱" style="width:100%;margin-bottom:10px" />
         <div v-if="loadingUsers" class="hint" style="text-align: center; padding: 30px 0">
           加载用户列表中…
         </div>
@@ -73,7 +75,7 @@
             </div>
 
             <!-- Action buttons -->
-            <div v-if="u.id !== authStore.user?.id" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end">
+            <div v-if="u.id !== authStore.user?.id && !u.isSuperAdmin && (authStore.isSuperAdmin || !u.isAdmin)" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end">
               <!-- super admin toggle -->
               <button
                 v-if="authStore.isSuperAdmin && !u.isSuperAdmin"
@@ -120,6 +122,11 @@
         </div>
       </div>
 
+      <div v-if="currentTab === 'users'" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span class="hint">共 {{ userTotal }} 人 · 第 {{ userPage }} 页</span>
+        <button class="btn sm" :disabled="userPage <= 1 || loadingUsers" @click="userPage--; fetchUsers()">上一页</button>
+        <button class="btn sm" :disabled="userPage * 20 >= userTotal || loadingUsers" @click="userPage++; fetchUsers()">下一页</button>
+      </div>
       <!-- Tab 2: Reference Materials Management -->
       <div v-else-if="currentTab === 'examples'">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
@@ -250,7 +257,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import Avatar from '../base/Avatar.vue';
 import Modal from '../base/Modal.vue';
 import { useConfirm } from '../../composables/useConfirm';
@@ -270,6 +277,13 @@ const { confirm } = useConfirm();
 const currentTab = ref<'users' | 'examples'>('users');
 const usersList = ref<AuthUser[]>([]);
 const loadingUsers = ref(false);
+const userSearch = ref('');
+const userPage = ref(1);
+const userTotal = ref(0);
+let userSequence = 0;
+let searchTimer: ReturnType<typeof setTimeout>;
+watch(userSearch, () => { clearTimeout(searchTimer); userSequence++; searchTimer = setTimeout(() => { userPage.value = 1; void fetchUsers(); }, 300); });
+onUnmounted(() => clearTimeout(searchTimer));
 
 const refDoc = ref<DocV6 | null>(null);
 const loadingExamples = ref(false);
@@ -301,14 +315,17 @@ watch(addKind, () => {
 });
 
 async function fetchUsers() {
+  const seq = ++userSequence;
   loadingUsers.value = true;
   try {
-    const res = await api.getAdminUsers();
+    const res = await api.getAdminUsers({ q: userSearch.value, page: userPage.value, limit: 20 });
+    if (seq !== userSequence) return;
     usersList.value = res.users || [];
+    userTotal.value = res.total;
   } catch (err: any) {
     toast(err?.message || '获取用户列表失败', 'err');
   } finally {
-    loadingUsers.value = false;
+    if (seq === userSequence) loadingUsers.value = false;
   }
 }
 
@@ -325,12 +342,9 @@ async function fetchReferenceMaterials() {
 }
 
 watch(
-  () => uiStore.modals.adminConsole,
-  (open) => {
-    if (open) {
-      void fetchUsers();
-      void fetchReferenceMaterials();
-    }
+  [() => uiStore.modals.adminConsole, currentTab],
+  ([open]) => {
+    if (open) void (currentTab.value === 'users' ? fetchUsers() : fetchReferenceMaterials());
   }
 );
 

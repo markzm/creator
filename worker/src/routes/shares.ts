@@ -1,15 +1,23 @@
 import { Hono } from 'hono';
 import { getCurrentUser } from '../auth';
 import type { Env, UserRow } from '../types';
+import { boundedInt, escapeLike, invalidatePublic, publicCached } from '../public-cache';
+import { canManageShare, canReadShare, mutateShare, type ShareAccess } from '../share-access';
+import { shareFullColumns, shareListColumns } from '../share-columns';
+import { enrichProjects } from '../projects';
 
 export const sharesRouter = new Hono<{ Bindings: Env }>();
+sharesRouter.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' && c.res.ok) invalidatePublic(c.env.DB);
+});
 
 async function loadReadableShare(c: any, shareId: string, user: UserRow | null) {
   const share = await c.env.DB.prepare(
-    'SELECT id, user_id as userId, visibility FROM world_shares WHERE id = ?'
-  ).bind(shareId).first() as { id: string; userId: number; visibility: string } | null;
+    'SELECT id, user_id, visibility FROM world_shares WHERE id = ?'
+  ).bind(shareId).first() as { id: string; user_id: number; visibility: string } | null;
   if (!share) return null;
-  if (share.visibility === 'private' && (!user || (user.id !== share.userId && !user.is_admin))) {
+  if (!canReadShare(user, { user_id: share.user_id, visibility: share.visibility })) {
     return undefined;
   }
   return share;
@@ -27,38 +35,35 @@ sharesRouter.post('/presence', async (c) => {
   const now = Math.floor(Date.now() / 1000);
 
   await c.env.DB.prepare(`
-    UPDATE users SET presence_focus = ?, last_seen_at = ? WHERE id = ?
-  `).bind(focus, now, user.id).run();
+    UPDATE users SET presence_focus = ?, last_seen_at = ? WHERE id = ? AND (presence_focus <> ? OR last_seen_at <= ?)
+  `).bind(focus, now, user.id, focus, now - 60).run();
 
   return c.json({ ok: true });
 });
 
-// GET /api/lobby/users
+// GET /api/lobby/users -- bounded, searchable creator directory plus global online count.
 sharesRouter.get('/lobby/users', async (c) => {
-  const now = Math.floor(Date.now() / 1000);
-  const weekAgo = now - 7 * 86400;
-
-  const { results } = await c.env.DB.prepare(`
-    SELECT id, nickname as name, avatar_url as avatar, bio, presence_focus as focus, last_seen_at as lastSeen
-    FROM users
-    WHERE last_seen_at >= ? AND is_disabled = 0
-    ORDER BY last_seen_at DESC
-    LIMIT 50
-  `).bind(weekAgo).all<{
-    id: number;
-    name: string;
-    avatar: string;
-    bio: string;
-    focus: string;
-    lastSeen: number;
-  }>();
-
-  const users = (results || []).map((u) => ({
-    ...u,
-    isOnline: now - u.lastSeen <= 180
-  }));
-
-  return c.json({ users });
+  const page = boundedInt(c.req.query('page'), 1, 100000);
+  const limit = boundedInt(c.req.query('limit'), 8, 50);
+  const q = (c.req.query('q') || '').trim().slice(0, 60);
+  const online = c.req.query('online') === '1';
+  const result = await publicCached(c.env.DB, `creators:${page}:${limit}:${q}:${online}`, async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const where = `is_disabled = 0 AND nickname LIKE ? ESCAPE '\\'${online ? ' AND last_seen_at >= ?' : ''}`;
+    const args: any[] = ['%' + escapeLike(q) + '%', ...(online ? [now - 300] : [])];
+    const rows = await c.env.DB.batch([
+      c.env.DB.prepare(`SELECT id, nickname as name, avatar_url as avatar, bio, presence_focus as focus, last_seen_at as lastSeen
+        FROM users WHERE ${where} ORDER BY last_seen_at DESC, id DESC LIMIT ? OFFSET ?`)
+        .bind(...args, limit, (page - 1) * limit),
+      c.env.DB.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN last_seen_at >= ? THEN 1 ELSE 0 END) as onlineCount
+        FROM users WHERE is_disabled = 0`).bind(now - 300),
+      c.env.DB.prepare(`SELECT COUNT(*) as total FROM users WHERE ${where}`).bind(...args)
+    ]);
+    return { users: rows[0].results.map((u: any) => ({ ...u, isOnline: now - u.lastSeen < 300 })),
+      total: Number((rows[2].results[0] as any).total), onlineCount: Number((rows[1].results[0] as any).onlineCount || 0),
+      totalCreators: Number((rows[1].results[0] as any).total), page, limit };
+  });
+  return c.json(result);
 });
 
 // GET /api/lobby/creator-profile
@@ -69,6 +74,7 @@ sharesRouter.get('/lobby/creator-profile', async (c) => {
     return c.json({ error: '用户 ID 无效' }, 400);
   }
 
+  const profile = await publicCached(c.env.DB, `profile:${uid}`, async () => {
   const user = await c.env.DB.prepare(`
     SELECT id, nickname, avatar_url, bio, presence_focus, last_seen_at, created_at,
            is_admin, is_super_admin, is_muted
@@ -87,71 +93,20 @@ sharesRouter.get('/lobby/creator-profile', async (c) => {
   }>();
 
   if (!user) {
-    return c.json({ error: '未找到创作者信息' }, 404);
+    return null;
   }
 
   // Keep this response in sync with CreatorProfile (and the Go API). The web
   // client renders profile.user immediately after the request resolves, so a
   // flat response here makes the modal throw during render and disappear.
-  const { results: publishedShares } = await c.env.DB.prepare(`
-    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           content, draft_code as draftCode, visibility, entity_id as entityId, tags,
-           word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
-           canon_requested as canonRequested, tachi_e_url as tachiEUrl,
-           author_id as authorId, canon_review as canonReview,
-           reviewed_by as reviewedBy, reviewed_at as reviewedAt,
-           created_at as createdAt, updated_at as updatedAt
-    FROM world_shares
-    WHERE user_id = ? AND visibility = 'public'
-    ORDER BY created_at DESC, id DESC
-    LIMIT 50
-  `).bind(uid).all();
-
-  const { results: projectRows } = await c.env.DB.prepare(`
-    SELECT p.*,
-           (SELECT COUNT(*) FROM world_shares ws
-            WHERE ws.cocreation_id = p.id AND ws.canon_review = 'pending') AS pendingCount
-    FROM cocreation_projects p
-    JOIN cocreation_members cm ON cm.project_id = p.id
-    WHERE cm.user_id = ?
-    ORDER BY p.updated_at DESC
-    LIMIT 20
-  `).bind(uid).all<any>();
-
-  const cocreations = await Promise.all((projectRows || []).map(async (p: any) => {
-    let admins: string[] = [];
-    try {
-      admins = JSON.parse(p.admins_json || '[]');
-    } catch {
-      // Ignore malformed legacy display data; membership rows are authoritative.
-    }
-
-    const { results: members } = await c.env.DB.prepare(`
-      SELECT m.user_id as userId, u.nickname as name, u.avatar_url as avatar, m.role
-      FROM cocreation_members m
-      JOIN users u ON u.id = m.user_id
-      WHERE m.project_id = ?
-      ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at ASC
-    `).bind(p.id).all();
-
-    return {
-      id: p.id,
-      worldId: p.world_id,
-      worldTitle: p.world_title,
-      ownerId: p.owner_id,
-      ownerName: p.owner_name,
-      admins,
-      members: members || [],
-      summary: p.summary || '',
-      isOpenDoujin: Boolean(p.is_open_doujin),
-      pendingCount: Number(p.pendingCount || 0),
-      createdAt: p.created_at,
-      updatedAt: p.updated_at
-    };
-  }));
+  const { results: publishedShares } = await c.env.DB.prepare(`SELECT ${shareListColumns}
+    FROM world_shares WHERE user_id = ? AND visibility = 'public' ORDER BY created_at DESC, id DESC LIMIT 50`).bind(uid).all();
+  const { results: projectRows } = await c.env.DB.prepare(`SELECT p.* FROM cocreation_projects p
+    JOIN cocreation_members cm ON cm.project_id = p.id WHERE cm.user_id = ? ORDER BY p.updated_at DESC LIMIT 20`).bind(uid).all();
+  const cocreations = await enrichProjects(c.env.DB, projectRows);
 
   const now = Math.floor(Date.now() / 1000);
-  return c.json({
+  return {
     user: {
       id: user.id,
       name: user.nickname || '未命名创作者',
@@ -167,162 +122,58 @@ sharesRouter.get('/lobby/creator-profile', async (c) => {
     createdAt: user.created_at || 0,
     publishedShares: publishedShares || [],
     cocreations
+  };
   });
+  if (!profile) return c.json({ error: '未找到创作者信息' }, 404);
+  return c.json(profile);
 });
 
-// GET /api/stats/global
-sharesRouter.get('/stats/global', async (c) => {
+sharesRouter.get('/stats/global', async (c) => c.json(await publicCached(c.env.DB, 'stats', async () => {
   const now = Math.floor(Date.now() / 1000);
-  const onlineThreshold = now - 180;
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT COUNT(*) as total, SUM(last_seen_at >= ?) as online FROM users WHERE is_disabled = 0`).bind(now - 300),
+    c.env.DB.prepare(`SELECT kind, COUNT(*) as count, COALESCE(SUM(word_count), 0) as words
+      FROM world_shares WHERE visibility = 'public' GROUP BY kind`),
+    c.env.DB.prepare('SELECT COALESCE(SUM(byte_size), 0) as bytes FROM user_docs'),
+    c.env.DB.prepare(`SELECT ${shareListColumns} FROM world_shares WHERE visibility = 'public' ORDER BY created_at DESC, id DESC LIMIT 6`),
+    c.env.DB.prepare(`SELECT id, nickname as name, avatar_url as avatar, bio, presence_focus as focus, last_seen_at as lastSeen
+      FROM users WHERE is_disabled = 0 ORDER BY last_seen_at DESC, id DESC LIMIT 6`)
+  ]);
+  const counts = result[1].results as any[];
+  return { totalUsers: Number((result[0].results[0] as any).total), onlineUsers: Number((result[0].results[0] as any).online || 0),
+    totalPublicShares: counts.reduce((n, r) => n + Number(r.count), 0), totalPublicWords: counts.reduce((n, r) => n + Number(r.words), 0),
+    kindCounts: Object.fromEntries(counts.map(r => [r.kind, r.count])), totalSyncedWords: Math.floor(Number((result[2].results[0] as any).bytes) / 3),
+    recentCreations: result[3].results, activeCreators: result[4].results.map((u: any) => ({ ...u, isOnline: now - u.lastSeen < 300 })) };
+})));
 
-  const totalUsersRes = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users WHERE is_disabled = 0').first<{ count: number }>();
-  const onlineUsersRes = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users WHERE last_seen_at >= ? AND is_disabled = 0').bind(onlineThreshold).first<{ count: number }>();
-
-  const sharesStatsRes = await c.env.DB.prepare(`
-    SELECT
-      COUNT(*) as totalShares,
-      COALESCE(SUM(word_count), 0) as totalWords
-    FROM world_shares WHERE visibility = 'public'
-  `).first<{ totalShares: number; totalWords: number }>();
-
-  const kindCountsRes = await c.env.DB.prepare(`
-    SELECT kind, COUNT(*) as count
-    FROM world_shares WHERE visibility = 'public'
-    GROUP BY kind
-  `).all<{ kind: string; count: number }>();
-
-  const kindCounts: Record<string, number> = {};
-  for (const row of kindCountsRes.results || []) {
-    kindCounts[row.kind] = row.count;
-  }
-
-  const syncedWordsRes = await c.env.DB.prepare('SELECT COALESCE(SUM(byte_size), 0) as totalBytes FROM user_docs').first<{ totalBytes: number }>();
-
-  const { results: recentCreations } = await c.env.DB.prepare(`
-    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           visibility, tags, word_count as wordCount, canon_status as canonStatus,
-           cocreation_id as cocreationId, tachi_e_url as tachiEUrl, created_at as createdAt, updated_at as updatedAt
-    FROM world_shares
-    WHERE visibility = 'public'
-    ORDER BY created_at DESC, id DESC
-    LIMIT 6
-  `).all();
-
-  const { results: activeCreatorsRaw } = await c.env.DB.prepare(`
-    SELECT id, nickname as name, avatar_url as avatar, bio, presence_focus as focus, last_seen_at as lastSeen
-    FROM users
-    WHERE last_seen_at >= ? AND is_disabled = 0
-    ORDER BY last_seen_at DESC
-    LIMIT 6
-  `).bind(now - 7 * 86400).all<{
-    id: number;
-    name: string;
-    avatar: string;
-    bio: string;
-    focus: string;
-    lastSeen: number;
-  }>();
-
-  const activeCreators = (activeCreatorsRaw || []).map((u) => ({
-    ...u,
-    isOnline: now - u.lastSeen <= 180
-  }));
-
-  return c.json({
-    totalUsers: totalUsersRes?.count || 0,
-    onlineUsers: onlineUsersRes?.count || 0,
-    totalPublicShares: sharesStatsRes?.totalShares || 0,
-    kindCounts,
-    totalPublicWords: sharesStatsRes?.totalWords || 0,
-    totalSyncedWords: Math.floor((syncedWordsRes?.totalBytes || 0) / 3),
-    recentCreations: recentCreations || [],
-    activeCreators
-  });
-});
-
-// GET /api/shares
 sharesRouter.get('/shares', async (c) => {
-  const user = await getCurrentUser(c);
-  const owner = c.req.query('owner');
-
-  if (owner === 'me') {
-    if (!user) {
-      return c.json({ error: '请先登录' }, 401);
-    }
-    const vis = c.req.query('visibility');
-    const kind = c.req.query('kind');
-    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 100);
-
-    let sql = `
-      SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-             content, draft_code as draftCode, visibility, entity_id as entityId, tags,
-             word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
-             canon_requested as canonRequested, tachi_e_url as tachiEUrl, canon_review as canonReview,
-             reviewed_by as reviewedBy, reviewed_at as reviewedAt, created_at as createdAt, updated_at as updatedAt
-      FROM world_shares
-      WHERE user_id = ?
-    `;
-    const params: any[] = [user.id];
-
-    if (vis && vis !== 'all') {
-      sql += ' AND visibility = ?';
-      params.push(vis);
-    }
-    if (kind) {
-      sql += ' AND kind = ?';
-      params.push(kind);
-    }
-    sql += ' ORDER BY created_at DESC, id DESC LIMIT ?';
-    params.push(limit);
-
-    const { results } = await c.env.DB.prepare(sql).bind(...params).all();
-    return c.json({ shares: results || [] });
-  }
-
-  // Public Feed
-  const kind = c.req.query('kind');
-  const keyword = c.req.query('q');
-  const before = parseInt(c.req.query('before') || '0', 10);
-  const beforeId = c.req.query('beforeId') || '';
-  const limit = Math.min(parseInt(c.req.query('limit') || '30', 10) || 30, 50);
-  const withContent = c.req.query('full') === '1';
-
-  let sql = `
-    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           ${withContent ? 'content,' : ''} draft_code as draftCode, visibility,
-           entity_id as entityId, tags, word_count as wordCount, canon_status as canonStatus,
-           cocreation_id as cocreationId, canon_requested as canonRequested, tachi_e_url as tachiEUrl,
-           canon_review as canonReview, reviewed_by as reviewedBy, reviewed_at as reviewedAt,
-           created_at as createdAt, updated_at as updatedAt
-    FROM world_shares
-    WHERE visibility = 'public'
-  `;
+  const mine = c.req.query('owner') === 'me';
+  const user = mine ? await getCurrentUser(c) : null;
+  if (mine && !user) return c.json({ error: '请先登录' }, 401);
+  const limit = boundedInt(c.req.query('limit'), 30, 100);
+  let sql = `SELECT ${c.req.query('full') === '1' ? shareFullColumns : shareListColumns} FROM world_shares WHERE `;
   const params: any[] = [];
-
-  if (kind) {
-    sql += ' AND kind = ?';
-    params.push(kind);
+  if (mine) { sql += 'user_id = ?'; params.push(user!.id); }
+  else sql += "visibility = 'public'";
+  const visibility = c.req.query('visibility');
+  if (mine && ['public', 'private'].includes(visibility || '')) { sql += ' AND visibility = ?'; params.push(visibility); }
+  const kind = c.req.query('kind');
+  if (kind && kind !== 'all') { sql += ' AND kind = ?'; params.push(kind); }
+  const project = c.req.query('project');
+  if (project) { sql += ' AND cocreation_id = ?'; params.push(project); }
+  const q = (c.req.query('q') || '').trim().slice(0, 60);
+  if (q) {
+    sql += ` AND (title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')`;
+    const match = '%' + escapeLike(q) + '%'; params.push(match, match, match);
   }
-  if (keyword) {
-    sql += ' AND (title LIKE ? OR summary LIKE ? OR tags LIKE ?)';
-    const kw = `%${keyword}%`;
-    params.push(kw, kw, kw);
+  const before = Number(c.req.query('before'));
+  const beforeId = c.req.query('beforeId') || '';
+  if (Number.isSafeInteger(before) && before > 0) {
+    sql += ' AND (created_at < ? OR (created_at = ? AND id < ?))'; params.push(before, before, beforeId);
   }
-  if (before > 0) {
-    if (beforeId) {
-      sql += ' AND (created_at < ? OR (created_at = ? AND id < ?))';
-      params.push(before, before, beforeId);
-    } else {
-      sql += ' AND created_at < ?';
-      params.push(before);
-    }
-  }
-
-  sql += ' ORDER BY created_at DESC, id DESC LIMIT ?';
-  params.push(limit);
-
+  sql += ' ORDER BY created_at DESC, id DESC LIMIT ?'; params.push(limit + 1);
   const { results } = await c.env.DB.prepare(sql).bind(...params).all();
-  return c.json({ shares: results || [] });
+  return c.json({ shares: results.slice(0, limit), hasMore: results.length > limit });
 });
 
 // POST /api/shares
@@ -376,19 +227,24 @@ sharesRouter.post('/shares', async (c) => {
   const now = Math.floor(Date.now() / 1000);
 
   // Check if exists
-  const existing = await c.env.DB.prepare('SELECT user_id FROM world_shares WHERE id = ?').bind(shareId).first<{ user_id: number }>();
+  const existing = await c.env.DB.prepare('SELECT id, user_id, visibility, rev FROM world_shares WHERE id = ?').bind(shareId).first<ShareAccess>();
   if (existing) {
-    if (existing.user_id !== user.id && !user.is_admin) {
+    if (existing.user_id !== user.id) {
       return c.json({ error: '无权修改他人的分享' }, 403);
     }
-    await c.env.DB.prepare(`
+    if (!Number.isSafeInteger(body.baseRev) || body.baseRev !== existing.rev) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
+    const result = await c.env.DB.prepare(`
       UPDATE world_shares SET
         title = ?, summary = ?, content = ?, draft_code = ?, visibility = ?,
-        tags = ?, word_count = ?, canon_status = ?, cocreation_id = ?,
-        tachi_e_url = ?, updated_at = ?
-      WHERE id = ?
-    `).bind(title, summary, content, draftCode, visibility, tags, wordCount, canonStatus, cocreationId, tachiEUrl, now, shareId).run();
+        tags = ?, word_count = ?, canon_status = CASE WHEN cocreation_id <> ? THEN ? ELSE canon_status END,
+        canon_review = CASE WHEN cocreation_id <> ? THEN 'none' ELSE canon_review END,
+        canon_requested = CASE WHEN cocreation_id <> ? THEN 0 ELSE canon_requested END, cocreation_id = ?,
+        tachi_e_url = ?, updated_at = ?, rev = rev + 1
+      WHERE id = ? AND rev = ?
+    `).bind(title, summary, content, draftCode, visibility, tags, wordCount, cocreationId, canonStatus, cocreationId, cocreationId, cocreationId, tachiEUrl, now, shareId, body.baseRev).run();
+    if (!result.meta.changes) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
   } else {
+    if (body.id) return c.json({ error: '云端分享已被删除，本地草稿可保留并重新发布为新分享' }, 404);
     await c.env.DB.prepare(`
       INSERT INTO world_shares (
         id, user_id, owner_name, kind, title, summary, content, draft_code,
@@ -402,14 +258,7 @@ sharesRouter.post('/shares', async (c) => {
     ).run();
   }
 
-  const created = await c.env.DB.prepare(`
-    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           content, draft_code as draftCode, visibility, entity_id as entityId, tags,
-           word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
-           canon_requested as canonRequested, tachi_e_url as tachiEUrl, canon_review as canonReview,
-           created_at as createdAt, updated_at as updatedAt
-    FROM world_shares WHERE id = ?
-  `).bind(shareId).first();
+  const created = await c.env.DB.prepare(`SELECT ${shareFullColumns} FROM world_shares WHERE id = ?`).bind(shareId).first();
 
   return c.json({ share: created }, 201);
 });
@@ -419,20 +268,13 @@ sharesRouter.get('/shares/:id', async (c) => {
   const user = await getCurrentUser(c);
   const id = c.req.param('id');
 
-  const share = await c.env.DB.prepare(`
-    SELECT id, user_id as userId, owner_name as ownerName, kind, title, summary,
-           content, draft_code as draftCode, visibility, entity_id as entityId, tags,
-           word_count as wordCount, canon_status as canonStatus, cocreation_id as cocreationId,
-           canon_requested as canonRequested, tachi_e_url as tachiEUrl, canon_review as canonReview,
-           reviewed_by as reviewedBy, reviewed_at as reviewedAt, created_at as createdAt, updated_at as updatedAt
-    FROM world_shares WHERE id = ?
-  `).bind(id).first<any>();
+  const share = await c.env.DB.prepare(`SELECT ${shareFullColumns} FROM world_shares WHERE id = ?`).bind(id).first<any>();
 
   if (!share) {
     return c.json({ error: '分享条目不存在' }, 404);
   }
 
-  if (share.visibility === 'private' && (!user || (user.id !== share.userId && !user.is_admin))) {
+  if (!canReadShare(user, { user_id: share.userId, visibility: share.visibility })) {
     return c.json({ error: '该条目为作者私有，暂不公开' }, 403);
   }
 
@@ -447,18 +289,19 @@ sharesRouter.patch('/shares/:id', async (c) => {
   }
 
   const id = c.req.param('id');
-  const existing = await c.env.DB.prepare('SELECT user_id, content FROM world_shares WHERE id = ?').bind(id).first<{ user_id: number; content: string }>();
+  const existing = await c.env.DB.prepare('SELECT id, user_id, visibility, rev FROM world_shares WHERE id = ?').bind(id).first<ShareAccess>();
   if (!existing) {
     return c.json({ error: '分享条目不存在' }, 404);
   }
-  if (existing.user_id !== user.id && !user.is_admin) {
+  if (!canManageShare(user, existing)) {
     return c.json({ error: '仅作者本人可修改该分享' }, 403);
   }
 
   const body = await c.req.json().catch(() => ({}));
+  if (!Number.isSafeInteger(body.baseRev) || body.baseRev !== existing.rev) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
   const now = Math.floor(Date.now() / 1000);
 
-  let updates: string[] = ['updated_at = ?'];
+  let updates: string[] = ['updated_at = ?', 'rev = rev + 1'];
   let params: any[] = [now];
 
   if (body.visibility !== undefined) {
@@ -480,17 +323,21 @@ sharesRouter.patch('/shares/:id', async (c) => {
     updates.push('content = ?', 'word_count = ?');
     params.push(body.content, Array.from(body.content).length);
   }
+  if (typeof body.draftCode === 'string') {
+    updates.push('draft_code = ?'); params.push(body.draftCode);
+  }
   if (typeof body.tags === 'string') {
     updates.push('tags = ?');
     params.push(body.tags);
   }
 
-  params.push(id);
-  await c.env.DB.prepare(`
-    UPDATE world_shares SET ${updates.join(', ')} WHERE id = ?
-  `).bind(...params).run();
+  params.push(id, body.baseRev);
+  const changed = await mutateShare(c.env.DB, user, existing, c.env.DB.prepare(`
+    UPDATE world_shares SET ${updates.join(', ')} WHERE id = ? AND rev = ?
+  `).bind(...params), 'update');
+  if (!changed) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, rev: existing.rev + 1 });
 });
 
 // DELETE /api/shares/:id
@@ -501,15 +348,19 @@ sharesRouter.delete('/shares/:id', async (c) => {
   }
 
   const id = c.req.param('id');
-  const existing = await c.env.DB.prepare('SELECT user_id FROM world_shares WHERE id = ?').bind(id).first<{ user_id: number }>();
+  const existing = await c.env.DB.prepare('SELECT id, user_id, visibility, rev FROM world_shares WHERE id = ?').bind(id).first<ShareAccess>();
   if (!existing) {
     return c.json({ error: '分享条目不存在' }, 404);
   }
-  if (existing.user_id !== user.id && !user.is_admin) {
+  if (!canManageShare(user, existing)) {
     return c.json({ error: '仅作者本人可删除该分享' }, 403);
   }
 
-  await c.env.DB.prepare('DELETE FROM world_shares WHERE id = ?').bind(id).run();
+  const baseRev = Number(c.req.query('baseRev'));
+  if (!Number.isSafeInteger(baseRev) || baseRev !== existing.rev) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
+  const changed = await mutateShare(c.env.DB, user, existing,
+    c.env.DB.prepare('DELETE FROM world_shares WHERE id = ? AND rev = ?').bind(id, baseRev), 'delete');
+  if (!changed) return c.json({ error: '作品版本冲突，请重新载入' }, 409);
   return c.json({ ok: true });
 });
 
@@ -592,7 +443,7 @@ sharesRouter.post('/comments/:id/like', async (c) => {
     WHERE c.id = ?
   `).bind(commentId).first() as { id: number; shareOwnerId: number; visibility: string } | null;
   if (!commentAccess) return c.json({ error: '评论不存在' }, 404);
-  if (commentAccess.visibility === 'private' && commentAccess.shareOwnerId !== user.id && !user.is_admin) {
+  if (!canReadShare(user, { user_id: commentAccess.shareOwnerId, visibility: commentAccess.visibility })) {
     return c.json({ error: '该条目为作者私有，无法操作评论' }, 403);
   }
 
@@ -627,10 +478,12 @@ sharesRouter.delete('/comments/:id', async (c) => {
   }
 
   const commentId = parseInt(c.req.param('id'), 10);
-  const comment = await c.env.DB.prepare('SELECT user_id FROM setting_comments WHERE id = ?').bind(commentId).first<{ user_id: number }>();
+  const comment = await c.env.DB.prepare('SELECT user_id, share_id FROM setting_comments WHERE id = ?').bind(commentId).first<{ user_id: number; share_id: string }>();
   if (!comment) {
     return c.json({ error: '评论不存在' }, 404);
   }
+  const readable = await loadReadableShare(c, comment.share_id, user);
+  if (!readable) return c.json({ error: '无权访问该评论所属作品' }, 403);
   if (comment.user_id !== user.id && !user.is_admin) {
     return c.json({ error: '仅作者或管理员可删除该评论' }, 403);
   }

@@ -551,7 +551,8 @@ async function loadMyShares() {
 async function toggleCloudShareVisibility(sh: WorldShareItem) {
   const next = sh.visibility === 'public' ? 'private' : 'public';
   try {
-    await api.updateShareVisibility(sh.id, next);
+    const saved = await api.updateShareVisibility(sh.id, next, sh.rev);
+    sh.rev = saved.rev;
     sh.visibility = next;
     // Mirror onto the local record if we still have it.
     if (sh.entityId) {
@@ -566,6 +567,7 @@ async function toggleCloudShareVisibility(sh: WorldShareItem) {
       if (local) {
         local.visibility = next;
         local.shareId = String(sh.id);
+        local.shareRev = saved.rev;
         docStore.touch(true);
       }
     }
@@ -580,7 +582,7 @@ async function deleteCloudShare(sh: WorldShareItem) {
     return;
   }
   try {
-    await api.deleteShare(sh.id);
+    await api.deleteShare(sh.id, sh.rev);
     myShares.value = myShares.value.filter((x) => String(x.id) !== String(sh.id));
     if (sh.entityId) {
       const local =
@@ -593,6 +595,7 @@ async function deleteCloudShare(sh: WorldShareItem) {
               : docStore.doc.chars[sh.entityId];
       if (local && local.shareId === String(sh.id)) {
         delete local.shareId;
+        delete local.shareRev;
         local.visibility = 'private';
         docStore.touch(true);
       }

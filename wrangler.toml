@@ -21,3 +21,14 @@ migrations_dir = "./migrations"
 [vars]
 REGISTER_MODE = "open"
 ALLOWED_AI_HOSTS = "api.deepseek.com,api.siliconflow.cn,openrouter.ai,api.openai.com"
+
+# AI quotas share durable D1 counters; public daily quota resets at Beijing midnight.
+AI_PUBLIC_MINUTE = "5"
+AI_PUBLIC_DAILY = "50"
+AI_CUSTOM_MINUTE = "30"
+AI_TIMEOUT_SECONDS = "90"
+AI_MAX_INPUT_BYTES = "131072"
+AI_MAX_OUTPUT_TOKENS = "4096"
+
+[triggers]
+crons = ["15 19 * * *"]

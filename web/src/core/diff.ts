@@ -16,6 +16,7 @@ import type {
 export const ENTITY_META_KEYS = [
   'visibility',
   'shareId',
+  'shareRev',
   'avatar',
   'tachiE',
   'templateId',
@@ -75,7 +76,8 @@ export function stripUIForSync(docIn: DocV6): Omit<DocV6, 'ui'> {
     glossary: doc.glossary || [],
     stats: doc.stats || [],
     articles: doc.articles || [],
-    preferences: doc.preferences
+    preferences: doc.preferences,
+    ...(doc.promptTemplates?.length ? { promptTemplates: doc.promptTemplates } : {})
   };
 }
 
@@ -102,7 +104,8 @@ export function isDocEffectivelyEmpty(doc: DocV6): boolean {
     !hasItems(doc.plots) &&
     !hasItems(doc.scenes) &&
     !hasItems(doc.glossary) &&
-    !hasItems(doc.articles)
+    !hasItems(doc.articles) &&
+    !(doc.promptTemplates || []).length
   );
 }
 
@@ -251,7 +254,7 @@ function mergeEntityCollection<T extends BaseEntity>(
         // Deleted locally and untouched remotely -> honor deletion
         continue;
       }
-      // Modified remotely, keep remote
+      conflicts.push({ kind, entityId: id, entityName: rEnt.name || id, fieldId: WHOLE_RECORD, localVal: '', remoteVal: JSON.stringify(rEnt), baseVal: JSON.stringify(bEnt) });
       merged[id] = clone(rEnt);
       continue;
     }
@@ -261,7 +264,7 @@ function mergeEntityCollection<T extends BaseEntity>(
         // Deleted remotely and untouched locally -> honor deletion
         continue;
       }
-      // Modified locally, keep local
+      conflicts.push({ kind, entityId: id, entityName: lEnt.name || id, fieldId: WHOLE_RECORD, localVal: JSON.stringify(lEnt), remoteVal: '', baseVal: JSON.stringify(bEnt) });
       merged[id] = clone(lEnt);
       continue;
     }
@@ -436,9 +439,11 @@ function mergeByIdArray<T extends { id: string; updatedAt?: number }>(
 
     if (b && !l && r) {
       if (canonicalStringify(b) === canonicalStringify(r)) continue;
+      conflicts.push({ kind, entityId: id, entityName: recordLabel(r) || id, fieldId: WHOLE_RECORD, localVal: '', remoteVal: JSON.stringify(r), baseVal: JSON.stringify(b) });
       out.push(clone(r));
     } else if (b && l && !r) {
       if (canonicalStringify(b) === canonicalStringify(l)) continue;
+      conflicts.push({ kind, entityId: id, entityName: recordLabel(l) || id, fieldId: WHOLE_RECORD, localVal: JSON.stringify(l), remoteVal: '', baseVal: JSON.stringify(b) });
       out.push(clone(l));
     } else if (l && !r) {
       out.push(clone(l));
@@ -612,6 +617,7 @@ export function threeWayMerge(
   const glossary = mergeByIdArray('glossary', base?.glossary, local.glossary || [], remote.glossary || [], conflicts);
   const stats = mergeStats(local.stats || [], remote.stats || []);
   const articles = mergeByIdArray('article', base?.articles, local.articles || [], remote.articles || [], conflicts);
+  const promptTemplates = mergeByIdArray('prompt', base?.promptTemplates, local.promptTemplates || [], remote.promptTemplates || [], conflicts);
   const preferences = mergePreferences(base?.preferences, local.preferences, remote.preferences, conflicts);
 
   const lUi = local.ui || { activeW: null, activeO: null, activeC: null, activeTpl: '', activeArticle: null, nowYear: 0 };
@@ -627,6 +633,7 @@ export function threeWayMerge(
     glossary,
     stats,
     articles,
+    ...(base?.promptTemplates || local.promptTemplates || remote.promptTemplates ? { promptTemplates } : {}),
     preferences,
     ui: {
       activeW: lUi.activeW && worlds[lUi.activeW] ? lUi.activeW : Object.keys(worlds)[0] || null,
@@ -673,6 +680,8 @@ export function applyConflictChoices(
         return doc.scenes;
       case 'glossary':
         return doc.glossary;
+      case 'prompt':
+        return (doc.promptTemplates = doc.promptTemplates || []);
       case 'article':
         return (doc.articles = doc.articles || []);
       default:
@@ -692,6 +701,12 @@ export function applyConflictChoices(
         parsed = raw ? JSON.parse(raw) : null;
       } catch {
         parsed = null;
+      }
+      if (conf.kind === 'world' || conf.kind === 'org' || conf.kind === 'char') {
+        const collection = conf.kind === 'world' ? doc.worlds : conf.kind === 'org' ? doc.orgs : doc.chars;
+        if (parsed) collection[conf.entityId] = parsed;
+        else delete collection[conf.entityId];
+        continue;
       }
       if (conf.kind === 'template') {
         if (parsed) doc.templates[conf.entityId] = parsed;
@@ -717,6 +732,7 @@ export function applyConflictChoices(
       const key = conf.fieldId.slice(1);
       if (raw === '') delete ent[key];
       else if (key === 'canonRequested' || key === 'isCocreation') ent[key] = raw === 'true';
+      else if (key === 'shareRev') ent[key] = Number(raw);
       else if (key === 'cocreationAdmins') ent[key] = raw.split(',').filter(Boolean);
       else ent[key] = raw;
       continue;

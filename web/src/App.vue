@@ -19,6 +19,7 @@ import RevisionHistoryModal from './components/app/RevisionHistoryModal.vue'
 import CommandPalette from './components/app/CommandPalette.vue'
 import BackupModal from './components/app/BackupModal.vue'
 import TutorialModal from './components/app/TutorialModal.vue'
+import AICreativeModal from './components/app/AICreativeModal.vue'
 import AIConfigModal from './components/app/AIConfigModal.vue'
 import FieldGuideModal from './components/editor/FieldGuideModal.vue'
 import AnimeArtModal from './components/editor/AnimeArtModal.vue'
@@ -112,6 +113,7 @@ onUnmounted(() => {
     <CommandPalette />
     <BackupModal />
     <AIConfigModal />
+    <AICreativeModal />
     <TutorialModal />
     <FieldGuideModal />
     <AnimeArtModal />

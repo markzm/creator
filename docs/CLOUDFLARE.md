@@ -37,7 +37,7 @@ flowchart TD
 ## 2. 部署前准备
 
 1. **注册 Cloudflare 账号**：[cloudflare.com](https://dash.cloudflare.com/)
-2. **环境要求**：Node.js `>= 18.0.0` 及 `npm`。
+2. **环境要求**：Node.js `>= 22.0.0` 及 `npm`。
 3. **登录 Cloudflare CLI**：
    ```bash
    npx wrangler login
@@ -91,12 +91,16 @@ migrations_dir = "./migrations"
 
 ### 第三步：执行数据库表结构迁移（D1 Remote Migrations）
 
-本项目迁移文件已经统一整理在 `migrations/` 目录下（`0001_init.sql` 至 `0005_v68_site_settings.sql`）：
+本项目迁移文件已经统一整理在 `migrations/` 目录下（`0001_init.sql` 至 `0007_creator_management_ai_guards.sql`）：
+
+已有平台升级请先阅读 [创作管理与 AI 防护升级说明](CLOUDFLARE_CREATOR_UPGRADE.md)，备份并确认恰好一名现有超级管理员后执行：
 
 ```bash
+npm run d1:preflight:remote
 npm run d1:migrate:remote
 ```
-终端会提示确认执行 5 个迁移文件，输入 `y` 确认，看到全绿 `✅` 即可完成建表！
+
+空数据库须先完成上一版本 `0001`–`0006` 的建表和账号注册，由运维明确确认唯一超级管理员后再执行 `0007`。没有或存在多名超级管理员时，本版会停止迁移，不会自动选择账号。
 
 ---
 
@@ -118,7 +122,8 @@ npx wrangler r2 bucket create creator-avatars
 openssl rand -hex 32 | npx wrangler secret put SECRET_KEY
 
 # 2. 首次管理员账号通过受控数据库/管理脚本设置，不再根据邮箱自动提权
-# 请先完成注册，再由受控运维流程将该用户设置为 is_admin=1、is_super_admin=1
+# 须在第三步的 0007 迁移之前完成注册与确认；迁移后禁止分配超级管理员
+# 由受控运维流程确认唯一账号后设置 is_admin=1、is_super_admin=1
 # 例如（确认邮箱后执行）：
 # npx wrangler d1 execute creator-db --remote --command "UPDATE users SET is_admin=1, is_super_admin=1 WHERE email='you@example.com'"
 

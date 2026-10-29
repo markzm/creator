@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import { Bell, BellOff, CheckCheck, Handshake, Heart, MessageSquare, ShieldAlert, Sparkles, Stamp } from 'lucide-vue-next';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
 import { formatRelative } from '../../core/format';
@@ -71,6 +71,8 @@ const notifications = ref<NotificationItem[]>([]);
 const unreadCount = ref(0);
 const loading = ref(false);
 
+let requestEpoch = 0;
+let inFlight: Promise<void> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function iconFor(type: string) {
@@ -93,28 +95,35 @@ function iconFor(type: string) {
   }
 }
 
-async function fetchNotifications() {
-  if (!authStore.isLoggedIn) return;
-  if (typeof document !== 'undefined' && document.hidden && !open.value) return;
-  loading.value = true;
-  try {
-    const res = await api.getNotifications(30);
-    notifications.value = res.notifications || [];
-    unreadCount.value = res.unreadCount || 0;
-  } catch {
-    // keep last state; auth expiry is handled globally
-  } finally {
-    loading.value = false;
-  }
+function fetchNotifications(full = false): Promise<void> {
+  if (!authStore.isLoggedIn || document.hidden) return Promise.resolve();
+  if (inFlight) return inFlight;
+  const epoch = requestEpoch;
+  loading.value = full;
+  inFlight = (async () => {
+    try {
+      const res = full ? await api.getNotifications(30) : await api.getNotificationCount();
+      if (epoch !== requestEpoch) return;
+      if ('notifications' in res && Array.isArray(res.notifications)) notifications.value = res.notifications;
+      unreadCount.value = res.unreadCount || 0;
+    } catch {
+      // Keep the last count while offline.
+    } finally {
+      inFlight = null;
+      loading.value = false;
+    }
+  })();
+  return inFlight;
 }
 
 function toggleDropdown() {
   open.value = !open.value;
-  if (open.value) void fetchNotifications();
+  if (open.value) void (async () => { await inFlight; if (open.value) await fetchNotifications(true); })();
 }
 
 async function markAllRead() {
   try {
+    requestEpoch++;
     await api.markNotificationsRead();
     unreadCount.value = 0;
     notifications.value.forEach((n) => (n.isRead = true));
@@ -125,6 +134,7 @@ async function markAllRead() {
 
 async function openNotification(n: NotificationItem) {
   if (!n.isRead) {
+    requestEpoch++;
     n.isRead = true;
     unreadCount.value = Math.max(0, unreadCount.value - 1);
     api.markNotificationRead(n.id).catch(() => {
@@ -150,11 +160,21 @@ function handleVisibility() {
   if (!document.hidden) void fetchNotifications();
 }
 
-onMounted(() => {
-  if (authStore.isLoggedIn) {
-    void fetchNotifications();
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  requestEpoch++;
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+  if (loggedIn) {
+    void (async () => { await inFlight; await fetchNotifications(); })();
     pollTimer = setInterval(fetchNotifications, 30000);
+  } else {
+    open.value = false;
+    notifications.value = [];
+    unreadCount.value = 0;
   }
+}, { immediate: true });
+
+onMounted(() => {
   document.addEventListener('click', handleClickOutside);
   document.addEventListener('visibilitychange', handleVisibility);
 });

@@ -6,6 +6,7 @@ export interface BaseEntity {
   data: Record<string, string>;
   visibility?: 'private' | 'public';
   shareId?: string;
+  shareRev?: number;
   isReference?: boolean;
   refAuthorId?: number;
   refAuthorName?: string;
@@ -145,6 +146,7 @@ export interface ArticleItem {
   charIds?: string[];
   visibility: 'private' | 'public';
   shareId?: string;
+  shareRev?: number;
   isReference?: boolean;
   refAuthorId?: number;
   refAuthorName?: string;
@@ -158,6 +160,19 @@ export interface StudioPreferences {
   writingTone: string;         // e.g. "细腻生动", "冷峻考据", "史诗厚重", "轻快幽默"
   defaultPerspective: string;  // e.g. "第三人称有限", "第一人称", "全知视角"
   aiCustomInstruction: string; // e.g. "行文多白描，少用成语"
+}
+
+export type AITask = 'field_gen' | 'entity_gen' | 'article_write' | 'article_continue' | 'article_summary' | 'prompt_generate' | 'prompt_refine';
+export interface PromptEntityRef { kind: EntityKind; id: string }
+export interface PromptTemplate {
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  task?: AITask;
+  entityRefs: PromptEntityRef[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface UIState {
@@ -182,6 +197,7 @@ export interface DocV6 {
   articles: ArticleItem[];
   stats: DailyStat[];
   preferences?: StudioPreferences;
+  promptTemplates?: PromptTemplate[];
   ui: UIState;
 }
 
@@ -214,7 +230,8 @@ export type ConflictKind =
   | 'scene'
   | 'glossary'
   | 'article'
-  | 'preferences';
+  | 'preferences'
+  | 'prompt';
 
 /**
  * A single merge conflict.
