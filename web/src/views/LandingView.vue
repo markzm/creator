@@ -3,18 +3,18 @@
     <section class="landing-hero">
       <div class="landing-copy">
         <div class="page-eyebrow" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-          <span>LORELAB · YOUR NEXT STORY STARTS HERE</span>
+          <span>{{ uiStore.skin === 'anime' ? 'LORELAB · WORLDLINE / CHAPTER_00' : 'LORELAB · YOUR NEXT STORY STARTS HERE' }}</span>
           <span class="domain-badge">
             <Globe2 style="width: 13px; height: 13px" />
             hi.lorelab.cc
           </span>
         </div>
         <h1 class="display landing-title">
-          {{ tr('让想象有迹可循，', 'Give your imagination a home.') }}<br />
-          <span>{{ tr('让故事自由生长。', 'Let your stories grow.') }}</span>
+          {{ uiStore.skin === 'anime' ? tr('第零幕，', 'CHAPTER ZERO.') : tr('让想象有迹可循，', 'Give your imagination a home.') }}<br />
+          <span>{{ uiStore.skin === 'anime' ? tr('由你改写世界线。', 'Rewrite the worldline.') : tr('让故事自由生长。', 'Let your stories grow.') }}</span>
         </h1>
         <p class="landing-sub">
-          {{
+          {{ uiStore.skin === 'anime' ? tr('把脑海里的角色、羁绊与未竟之战，写成只属于你的篇章。今天，由你决定故事的下一条世界线。', 'Give your characters, bonds and unfinished battles a chapter of their own. The next worldline is yours to write.') :
             tr(
               '从一位角色、一处风景，到一个完整的世界。收集灵感，串联设定，在这里写下只属于你的故事。',
               'A worldbuilding studio where worlds, orgs, characters, timelines, plots and stories link to each other. Data lives on your device; sign in to sync across devices, share to the lobby and co-create.'
@@ -36,7 +36,7 @@
       <div class="landing-art">
         <VisualImage :src="hero?.src" :srcset="heroThumb && hero ? `${heroThumb.src} ${heroThumb.width}w, ${hero.src} ${hero.width}w` : undefined" sizes="(max-width: 700px) 90vw, 44vw" :width="hero?.width" :height="hero?.height" :alt="originalHero ? '星空下的屋顶创作室，远处连接浮岛与轨道城市' : '晨雾穿过森林，远处的山脊若隐若现'" priority />
         <div class="hero-caption"><span>{{ originalHero ? '星空下，每个故事都有自己的光' : '每一处风景，都藏着一个故事' }}</span><small>{{ originalHero ? 'LORELAB ORIGINAL / 01' : 'PHOTOGRAPHIC INSPIRATION / 01' }}</small></div>
-        <span class="hero-corner" aria-hidden="true"><Sparkles :size="16" /> CREATE YOUR OWN UNIVERSE</span>
+        <span class="hero-corner" aria-hidden="true"><Sparkles :size="16" /> {{ uiStore.skin === 'anime' ? 'CHAPTER_00 / BEYOND THE SCRIPT' : 'CREATE YOUR OWN UNIVERSE' }}</span>
       </div>
     </section>
 

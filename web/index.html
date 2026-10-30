@@ -10,9 +10,15 @@
     <script>
       // Apply the colour scheme before first paint to avoid a light flash in dark mode.
       (function () {
+        var root = document.documentElement;
+        root.dataset.skin = 'classic';
+        root.dataset.decorations = 'on';
+        try {
+          root.dataset.decorations = localStorage.getItem('cc_theme_decorations') === 'false' ? 'off' : 'on';
+          root.dataset.skin = JSON.parse(localStorage.getItem('cc_skin')) === 'anime' ? 'anime' : 'classic';
+        } catch (e) {}
         try {
           var raw = localStorage.getItem('cc_dark');
-          var root = document.documentElement;
           var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           root.setAttribute('data-prefers-dark', prefersDark ? 'true' : 'false');
           if (raw === 'true') root.classList.add('dark');

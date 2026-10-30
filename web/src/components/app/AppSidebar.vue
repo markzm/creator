@@ -19,6 +19,7 @@
       </button>
     </div>
 
+    <div v-if="uiStore.skin === 'anime' && !collapsed" class="sb-skin-caption"><span>WORLDLINE / CHAPTER_00</span><strong>{{ tr('绯月档案', 'Crimson moon') }}</strong><small>{{ tr('此处收录，尚未发生的故事。', 'An archive of stories yet to unfold.') }}</small></div>
     <nav class="sb-nav">
       <template v-for="group in groups" :key="group.label">
         <div v-if="!collapsed" class="sb-group">{{ group.label }}</div>
@@ -41,6 +42,9 @@
     </nav>
 
     <div class="sb-foot">
+      <button type="button" class="sb-item" :title="collapsed ? tr('外观与套装', 'Appearance & skins') : undefined" @click="uiStore.openModal('appearance')">
+        <span class="sb-icon"><Palette /></span><span v-if="!collapsed" class="sb-label">{{ tr('外观与套装', 'Appearance & skins') }}</span>
+      </button>
       <button type="button" class="sb-item" :title="collapsed ? tr('AI 与偏好', 'AI & Studio') : undefined" @click="uiStore.openModal('aiConfig')">
         <span class="sb-icon"><Bot /></span>
         <span v-if="!collapsed" class="sb-label">{{ tr('AI 引擎与偏好', 'AI & Studio') }}</span>
@@ -54,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, Compass, PanelLeftClose, PanelLeftOpen, Save, Sparkles } from 'lucide-vue-next';
+import { Bot, Compass, Palette, PanelLeftClose, PanelLeftOpen, Save, Sparkles } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';

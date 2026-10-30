@@ -119,6 +119,13 @@ const quickCommands = computed(() => [
     }
   },
   {
+    label: '🎨 ' + tr('外观与套装 · 灵感手札 / 绯月档案', 'Appearance · Studio journal / Crimson moon'),
+    run: () => {
+      uiStore.closeModal('commandPalette');
+      uiStore.openModal('appearance');
+    }
+  },
+  {
     label: (uiStore.dark ? '☀️ ' : '🌙 ') + tr('切换浅色/暗色主题', 'Toggle Dark Theme'),
     run: () => {
       uiStore.toggleDark();

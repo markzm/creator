@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { reactive, ref, watch } from 'vue';
+import { onScopeDispose, reactive, ref, watch } from 'vue';
 import type { LegacyFieldGroup } from '../core/legacy/fields';
 import type { EntityKind } from '../core/schema/types';
 
@@ -10,6 +10,7 @@ export type ModalName =
   | 'backup'
   | 'commandPalette'
   | 'tutorial'
+  | 'appearance'
   | 'guide'
   | 'aiConfig'
   | 'aiGenerate'
@@ -17,6 +18,9 @@ export type ModalName =
   | 'creatorProfile'
   | 'adminConsole'
   | 'cocreationManage';
+
+export type ThemeSkin = 'classic' | 'anime';
+const normalizeSkin = (value: unknown): ThemeSkin => value === 'anime' ? 'anime' : 'classic';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -47,6 +51,8 @@ export const useUIStore = defineStore('ui', () => {
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : false;
   const dark = ref<boolean>(storedDark === null ? systemDark : Boolean(storedDark));
+  const skin = ref<ThemeSkin>(normalizeSkin(readLS<unknown>('cc_skin', 'classic')));
+  const decorations = ref(readLS<unknown>('cc_theme_decorations', true) !== false);
   const sidebarCollapsed = ref<boolean>(Boolean(readLS<boolean>('cc_sidebar_collapsed', false)));
 
   const modals = reactive<Record<ModalName, boolean>>({
@@ -56,6 +62,7 @@ export const useUIStore = defineStore('ui', () => {
     backup: false,
     commandPalette: false,
     tutorial: false,
+    appearance: false,
     guide: false,
     aiConfig: false,
     aiGenerate: false,
@@ -104,6 +111,29 @@ export const useUIStore = defineStore('ui', () => {
 
   applyDarkClass(dark.value);
 
+  function applyAppearance() {
+    if (typeof document === 'undefined') return;
+    document.documentElement.dataset.skin = skin.value;
+    document.documentElement.dataset.decorations = decorations.value ? 'on' : 'off';
+  }
+  applyAppearance();
+
+  watch(skin, (value) => { applyAppearance(); writeLS('cc_skin', value); }, { flush: 'sync' });
+  watch(decorations, (value) => { applyAppearance(); writeLS('cc_theme_decorations', value); }, { flush: 'sync' });
+
+  function setSkin(value: ThemeSkin) { skin.value = normalizeSkin(value); }
+
+  // Appearance stays on this browser and never enters author documents or AI context.
+  function onAppearanceStorage(event: StorageEvent) {
+    if (event.storageArea && event.storageArea !== window.localStorage) return;
+    if (event.key === 'cc_skin' || event.key === null) skin.value = normalizeSkin(readLS<unknown>('cc_skin', 'classic'));
+    if (event.key === 'cc_theme_decorations' || event.key === null) decorations.value = readLS<unknown>('cc_theme_decorations', true) !== false;
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', onAppearanceStorage);
+    onScopeDispose(() => window.removeEventListener('storage', onAppearanceStorage));
+  }
+
   watch(dark, (val) => {
     applyDarkClass(val);
     writeLS('cc_dark', val);
@@ -145,6 +175,7 @@ export const useUIStore = defineStore('ui', () => {
   function closeTopModal(): boolean {
     const order: ModalName[] = [
       'commandPalette',
+      'appearance',
       'revisions',
       'auth',
       'backup',
@@ -174,6 +205,9 @@ export const useUIStore = defineStore('ui', () => {
   return {
     lang,
     dark,
+    skin,
+    decorations,
+    setSkin,
     sidebarCollapsed,
     modals,
     guideContext,

@@ -33,7 +33,7 @@ try {
   const env = { ...process.env, E2E_BASE_URL: url.origin, E2E_FIXTURE: '1',
     ...(existsSync(chrome) && !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE: chrome } : {}) };
   const status = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [root + 'web/node_modules/@playwright/test/cli.js', 'test', 'creator-cloudflare.spec.ts', 'inspiration.spec.ts'], { cwd: root + 'web', env, stdio: 'inherit' });
+    const child = spawn(process.execPath, [root + 'web/node_modules/@playwright/test/cli.js', 'test', 'creator-cloudflare.spec.ts', 'inspiration.spec.ts', 'appearance.spec.ts'], { cwd: root + 'web', env, stdio: 'inherit' });
     child.on('error', reject); child.on('exit', code => resolve(code || 0));
   });
   process.exitCode = status;

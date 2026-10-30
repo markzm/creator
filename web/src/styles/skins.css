@@ -1,0 +1,134 @@
+/* Skins are independent of color mode. They never affect author content. */
+html[data-skin="anime"] {
+  --bg: #f5f3fa;
+  --card: #fefcff;
+  --soft: #efebf6;
+  --ink: #252034;
+  --ink2: #4f4564;
+  --mu: #756680;
+  --mu2: #8c7c9b;
+  --li: #dcd3e8;
+  --li2: #eae4f2;
+  --ac: #7046be;
+  --ac2: #5c35a4;
+  --acs: #ece5f8;
+  --ac-rgb: 112, 70, 190;
+  --glow: rgba(112, 70, 190, .16);
+  --sigil: #9569d2;
+  --skin-on-ac: #ffffff;
+  --skin-highlight: #b72b55;
+  --coral: #b72b55;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --el-1: 0 1px 3px #30293d08;
+  --el-2: 0 4px 18px #30293d0e;
+  --el-3: 0 10px 30px #30293d17;
+}
+
+html.dark[data-skin="anime"],
+html:not(.light)[data-prefers-dark="true"][data-skin="anime"] {
+  --bg: #11101b;
+  --card: #1b1929;
+  --soft: #222032;
+  --ink: #f0e9df;
+  --ink2: #d3c9db;
+  --mu: #ada0bc;
+  --mu2: #93869f;
+  --li: #3c3348;
+  --li2: #2e293c;
+  --ac: #bca1ff;
+  --ac2: #9c79ef;
+  --acs: #bca1ff14;
+  --ac-rgb: 188, 161, 255;
+  --glow: #bca1ff24;
+  --sigil: #b19bdc;
+  --skin-on-ac: #201332;
+  --skin-highlight: #ff8eaa;
+  --coral: #ff8eaa;
+  --el-1: 0 2px 6px #0003;
+  --el-2: 0 6px 20px #0004;
+  --el-3: 0 12px 32px #0006;
+  --el-4: 0 24px 60px #0008;
+}
+
+html[data-skin="anime"] .app-layout {
+  background-image: radial-gradient(ellipse at 90% 0, rgba(191, 51, 111, .10), transparent 45%), radial-gradient(ellipse at 20% 80%, rgba(126, 73, 204, .06), transparent 60%);
+}
+html[data-skin="anime"] .topbar {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border-bottom-color: var(--li);
+}
+html[data-skin="anime"] .app-sidebar {
+  background: var(--card);
+  border-right-color: var(--li);
+}
+html[data-skin="anime"] .sb-logo {
+  color: var(--skin-on-ac);
+  border-radius: 3px;
+  transform: rotate(-7deg);
+  box-shadow: 0 0 0 3px var(--acs), 0 0 0 4px var(--li);
+}
+html[data-skin="anime"] .sb-brand {
+  background: none;
+  -webkit-text-fill-color: var(--ink);
+  font-family: var(--font-ui);
+  letter-spacing: .01em;
+}
+.sb-skin-caption { padding: 22px 20px 15px; }
+.sb-skin-caption > span { display: block; color: var(--skin-highlight); font: 8px var(--font-mono); letter-spacing: .08em; margin-bottom: 8px; }
+.sb-skin-caption > strong { display: block; font: 900 24px var(--font-ui); letter-spacing: .08em; }
+.sb-skin-caption > small { display: block; color: var(--mu); font-size: 10px; margin-top: 8px; }
+html[data-skin="anime"] .sb-group { color: var(--skin-highlight); font-size: 9px; letter-spacing: .2em; }
+html[data-skin="anime"] .sb-item { border-radius: 3px 9px 3px 9px; }
+html[data-skin="anime"] .sb-item.active { box-shadow: inset 0 0 0 1px var(--li); }
+html[data-skin="anime"] .sb-item.active::before { background: var(--skin-highlight); width: 3px; }
+html[data-skin="anime"] .btn { border-radius: 3px 11px 3px 3px; }
+html[data-skin="anime"] .btn.primary,
+html[data-skin="anime"] .btn.primary:hover {
+  color: var(--skin-on-ac);
+  box-shadow: 0 3px 13px var(--glow), inset 0 0 0 1px #fff2;
+}
+html[data-skin="anime"] :is(.page-title, .hero-title, .landing-title, .inspiration-header h1) {
+  font-family: var(--font-ui);
+  letter-spacing: -.035em;
+  font-weight: 800;
+}
+html[data-skin="anime"] .page-eyebrow { color: var(--skin-highlight); letter-spacing: .12em; }
+html[data-skin="anime"] .card { border-color: var(--li); border-radius: 3px 15px 3px 3px; }
+html[data-skin="anime"] .card.open { border-color: color-mix(in srgb, var(--sigil) 40%, var(--li)); }
+html[data-skin="anime"] :is(.inspiration-card, .landing-community, .lobby-banner, .tut-box) {
+  border-color: var(--li);
+  border-radius: 3px 22px 3px 3px;
+}
+html[data-skin="anime"] .inspiration-card { box-shadow: inset 0 0 0 4px var(--card), var(--el-1); }
+html[data-skin="anime"] .inspiration-card:hover { border-color: var(--sigil); }
+html[data-skin="anime"] .inspiration-copy h3 { font-family: var(--font-ui); font-weight: 800; }
+html[data-skin="anime"] .inspiration-meta { color: var(--skin-highlight); }
+html[data-skin="anime"] .image-credit { background: #171126e8; color: #ecddff; border: 1px solid #bca1ff66; border-radius: 2px; }
+html[data-skin="anime"] .landing-art { border-radius: 3px 36px 3px 3px; box-shadow: 0 0 0 7px var(--bg), 0 0 0 8px var(--li), 12px 12px 0 var(--acs); }
+html[data-skin="anime"] .hero-caption { border-radius: 0 0 3px 3px; }
+html[data-skin="anime"] .hero-corner { border: 1px solid var(--coral); border-left: 4px solid var(--coral); border-radius: 0; transform: rotate(-2deg); font-family: var(--font-mono); color: var(--coral); }
+html[data-skin="anime"] .hero { border: 1px solid var(--li); border-left: 3px solid var(--coral); background: linear-gradient(110deg, var(--card), var(--acs)); border-radius: 3px 22px 3px 3px; }
+html[data-skin="anime"] .page-icon { border: 1px solid var(--li); border-radius: 4px 10px 4px 10px; }
+html[data-skin="anime"] .empty-icon { border: 1px solid var(--li); border-radius: 50%; background: var(--acs); }
+html[data-skin="anime"] .modal-head { border-bottom-color: var(--li); }
+html[data-skin="anime"] .modal-head h3 { font-family: var(--font-ui); font-weight: 800; letter-spacing: .02em; }
+html[data-skin="anime"] .tut-box::before { background: linear-gradient(90deg, var(--ac), var(--coral)); }
+html[data-skin="anime"] .pbar > div { background: linear-gradient(90deg, var(--ac2), var(--ac)); }
+html[data-skin="anime"] .mobile-bottom-bar { border-top-color: var(--li); background: var(--card); }
+html[data-skin="anime"] .nav-tab.active::after { background: var(--skin-highlight); }
+html[data-skin="anime"][data-decorations="off"] .studio-sigil { display: none; }
+
+/* Decorations stay in the margins; form fields keep solid, legible surfaces. */
+html[data-skin="anime"][data-decorations="on"] .landing-paths {
+  border-top: 1px solid var(--sigil);
+  border-bottom: 1px solid var(--li);
+}
+.skin-chapter { display: inline-flex; align-items: center; gap: 8px; color: var(--skin-highlight); font: 10px var(--font-mono); letter-spacing: .1em; margin-bottom: 9px; }
+.skin-chapter::before { content: ""; width: 18px; height: 1px; background: currentColor; }
+@media (max-width: 600px) {
+  html[data-skin="anime"] .hero-corner { font-size: 8px; }
+}
+@media print {
+  .studio-sigil, .sb-skin-caption, .skin-chapter { display: none !important; }
+}

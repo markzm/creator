@@ -22,7 +22,7 @@
         </template>
       </PageHeader>
 
-      <section class="lobby-banner"><div><span>WORLDS MEET HERE</span><h2>每个世界，都值得被看见。</h2><p>从一段设定到一场共创，在这里找到故事的同行者。</p><RouterLink to="/inspiration">还没有头绪？去灵感库看看 <ArrowUpRight :size="14" /></RouterLink></div><VisualImage :src="bannerImage?.src" alt="灵感风景，为下一个故事留一扇窗" /></section>
+      <section class="lobby-banner"><div><span>WORLDS MEET HERE</span><h2>{{ uiStore.skin === 'anime' ? '万千世界，于此交汇。' : '每个世界，都值得被看见。' }}</h2><p>从一段设定到一场共创，在这里找到故事的同行者。</p><RouterLink to="/inspiration">还没有头绪？去灵感库看看 <ArrowUpRight :size="14" /></RouterLink></div><VisualImage :src="bannerImage?.src" alt="灵感风景，为下一个故事留一扇窗" /></section>
 
       <div class="lobby-layout"><main class="lobby-main">
       <!-- Co-creation projects -->

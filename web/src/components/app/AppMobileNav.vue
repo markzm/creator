@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, BookOpen, Compass, LayoutDashboard, LayoutGrid, Save } from 'lucide-vue-next';
+import { Bot, BookOpen, Compass, LayoutDashboard, LayoutGrid, Palette, Save } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
@@ -78,6 +78,7 @@ const primaryTabs = computed(() => [
 ]);
 
 const secondaryMods = computed(() => [
+  { action: 'appearance', icon: Palette, color: 'var(--ac)', soft: 'var(--acs)', title: tr('外观与套装', 'Appearance & skins'), desc: tr('灵感手札 / 绯月档案', 'Studio journal / Crimson moon') },
   { to: '/inspiration', icon: Compass, color: 'var(--ac)', soft: 'var(--acs)', title: tr('创作灵感库', 'Inspiration'), desc: tr('从场景和角色出发', 'Find your next story') },
   { to: '/prompts', icon: Bot, color: 'var(--ac)', soft: 'var(--acs)', title: tr('个人提示词库', 'Prompt library'), desc: tr('自由编写与 AI 辅助', 'Write and refine prompts') },
   ...(authStore.isSuperAdmin ? [{ to: '/admin/content', icon: Save, color: 'var(--wn)', soft: 'var(--wns)', title: tr('全站创作管理', 'Manage creations'), desc: tr('管理云端内容', 'Cloud content') }] : []),
@@ -103,6 +104,8 @@ function onSelectMore(item: { to?: string; action?: string }) {
   moreDrawerOpen.value = false;
   if (item.to) {
     router.push(item.to);
+  } else if (item.action === 'appearance') {
+    uiStore.openModal('appearance');
   } else if (item.action === 'aiConfig') {
     uiStore.openModal('aiConfig');
   } else if (item.action === 'backup') {

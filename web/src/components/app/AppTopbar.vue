@@ -47,13 +47,17 @@
 
     <button
       type="button"
-      class="icon-btn"
+      class="icon-btn hide-mobile"
       :title="uiStore.dark ? tr('切换到浅色', 'Switch to light') : tr('切换到深色', 'Switch to dark')"
       :aria-label="uiStore.dark ? tr('切换到浅色', 'Switch to light') : tr('切换到深色', 'Switch to dark')"
       @click="uiStore.toggleDark()"
     >
       <Sun v-if="uiStore.dark" />
       <Moon v-else />
+    </button>
+
+    <button type="button" class="icon-btn" :title="tr('外观与套装', 'Appearance & skins')" :aria-label="tr('外观与套装', 'Appearance & skins')" @click="uiStore.openModal('appearance')">
+      <Palette />
     </button>
 
     <button
@@ -109,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, CircleHelp, Eye, Languages, Moon, Search, ShieldCheck, Sun, Undo2 } from 'lucide-vue-next';
+import { ArrowLeft, CircleHelp, Eye, Languages, Moon, Palette, Search, ShieldCheck, Sun, Undo2 } from 'lucide-vue-next';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
 import { useToast } from '../../composables/useToast';

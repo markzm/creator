@@ -1,7 +1,7 @@
 <template>
   <div class="page inspiration-page">
     <header class="inspiration-header"><div><span class="collection-kicker"><Sparkles :size="14" /> LORELAB / INSPIRATION</span>
-      <h1>给想象，一个出发的地方<span>。</span></h1><p>沿着一束光、一座城、一个人的目光，找到属于你的故事。</p></div>
+      <h1>{{ ui.skin === 'anime' ? '拾起碎片，唤醒一个世界' : '给想象，一个出发的地方' }}<span>。</span></h1><p>沿着一束光、一座城、一个人的目光，找到属于你的故事。</p></div>
       <span class="collection-stamp">VOL. 01 <small>十二个故事的起点</small></span></header>
     <div class="inspiration-controls">
       <div class="inspiration-tabs" aria-label="灵感分类"><button v-for="tab in kinds" :key="tab.value" type="button" :class="{ active: kind === tab.value }" :aria-pressed="kind === tab.value" @click="kind = tab.value">{{ tab.label }}</button></div>

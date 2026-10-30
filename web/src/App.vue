@@ -12,6 +12,8 @@ import { SESSION_EXPIRED_EVENT } from './data/api'
 import AppSidebar from './components/app/AppSidebar.vue'
 import AppTopbar from './components/app/AppTopbar.vue'
 import AppMobileNav from './components/app/AppMobileNav.vue'
+import AppearanceModal from './components/app/AppearanceModal.vue'
+import AnimeSigil from './components/base/AnimeSigil.vue'
 import GuestBanner from './components/app/GuestBanner.vue'
 import AuthModal from './components/app/AuthModal.vue'
 import ConflictDialog from './components/app/ConflictDialog.vue'
@@ -97,6 +99,7 @@ onUnmounted(() => {
       <GuestBanner />
 
       <main class="app-viewport">
+        <div v-if="ui.skin === 'anime' && ui.decorations" class="studio-atmosphere" aria-hidden="true"><AnimeSigil class="studio-sigil" /></div>
         <RouterView v-slot="{ Component }">
           <Transition name="route" mode="out-in">
             <component :is="Component" />
@@ -108,6 +111,7 @@ onUnmounted(() => {
 
     <!-- Global Modals & Overlays -->
     <AuthModal />
+    <AppearanceModal />
     <ConflictDialog />
     <RevisionHistoryModal />
     <CommandPalette />
@@ -147,7 +151,10 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  isolation: isolate;
 }
+.studio-atmosphere { position: absolute; inset: 0 0 auto; height: 640px; overflow: hidden; pointer-events: none; z-index: -1; }
+.studio-sigil { position: absolute; width: min(560px, 80vw); top: 24px; right: -110px; color: var(--sigil); opacity: .15; }
 @media (max-width: 900px) {
   .app-viewport {
     padding-bottom: calc(58px + env(safe-area-inset-bottom));

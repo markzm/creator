@@ -13,6 +13,7 @@
         <div class="hero-main">
           <Avatar :avatar="authStore.user?.avatar" :name="authStore.displayName" :size="52" />
           <div style="min-width: 0">
+            <div v-if="uiStore.skin === 'anime'" class="skin-chapter">{{ tr('主线未完，欢迎归来', 'YOUR NEXT CHAPTER AWAITS') }}</div>
             <div class="page-eyebrow">{{ todayLabel }}</div>
             <h1 class="display hero-title">{{ greeting }}，{{ authStore.displayName }}</h1>
             <p class="hero-sub">
@@ -79,7 +80,7 @@
           </div>
         </section>
 
-        <InspirationShelf title="写累了，换一个视角" />
+        <InspirationShelf :title="uiStore.skin === 'anime' ? '你的下一卷，即将展开' : '写累了，换一个视角'" />
 
         <!-- Quick access -->
         <section style="margin-top: 24px">
