@@ -1,0 +1,184 @@
+{
+  "android-archivist-detail.webp": {
+    "bytes": 104490,
+    "width": 960,
+    "height": 1440,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "android-archivist-thumb.webp": {
+    "bytes": 27054,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "coastal-light-detail.webp": {
+    "bytes": 186178,
+    "width": 1080,
+    "height": 1440,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "coastal-light-thumb.webp": {
+    "bytes": 16662,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "forest-courier-detail.webp": {
+    "bytes": 210628,
+    "width": 960,
+    "height": 1440,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "forest-courier-thumb.webp": {
+    "bytes": 46330,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "midnight-host-detail.webp": {
+    "bytes": 121854,
+    "width": 960,
+    "height": 1440,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "midnight-host-thumb.webp": {
+    "bytes": 25688,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "mist-forest-detail.webp": {
+    "bytes": 264104,
+    "width": 1440,
+    "height": 1440,
+    "sourceWidth": 1800,
+    "sourceHeight": 1800
+  },
+  "mist-forest-thumb.webp": {
+    "bytes": 42508,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1800,
+    "sourceHeight": 1800
+  },
+  "misty-station-detail.webp": {
+    "bytes": 191180,
+    "width": 1080,
+    "height": 1440,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "misty-station-thumb.webp": {
+    "bytes": 34788,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "neon-street-detail.webp": {
+    "bytes": 168400,
+    "width": 1080,
+    "height": 1440,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "neon-street-thumb.webp": {
+    "bytes": 33294,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1800,
+    "sourceHeight": 2400
+  },
+  "orbital-port-detail.webp": {
+    "bytes": 155836,
+    "width": 1440,
+    "height": 960,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "orbital-port-thumb.webp": {
+    "bytes": 39524,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "rooftop-studio-detail.webp": {
+    "bytes": 206244,
+    "width": 1440,
+    "height": 960,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "rooftop-studio-thumb.webp": {
+    "bytes": 65988,
+    "width": 720,
+    "height": 480,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "sky-islands-detail.webp": {
+    "bytes": 193732,
+    "width": 1440,
+    "height": 960,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "sky-islands-thumb.webp": {
+    "bytes": 49462,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "starship-mechanic-detail.webp": {
+    "bytes": 122398,
+    "width": 960,
+    "height": 1440,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "starship-mechanic-thumb.webp": {
+    "bytes": 27686,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1024,
+    "sourceHeight": 1536
+  },
+  "summer-rooftop-detail.webp": {
+    "bytes": 180924,
+    "width": 1440,
+    "height": 960,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "summer-rooftop-thumb.webp": {
+    "bytes": 47146,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "tree-library-detail.webp": {
+    "bytes": 252198,
+    "width": 1440,
+    "height": 960,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  },
+  "tree-library-thumb.webp": {
+    "bytes": 71216,
+    "width": 640,
+    "height": 400,
+    "sourceWidth": 1536,
+    "sourceHeight": 1024
+  }
+}

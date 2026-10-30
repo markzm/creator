@@ -79,6 +79,7 @@
             </div>
           </div>
 
+          <InspirationOrigin :id="char.inspirationId" />
           <!-- Toolbar -->
           <div class="row" style="margin: 0 0 12px">
             <button
@@ -307,6 +308,7 @@
 </template>
 
 <script setup lang="ts">
+import InspirationOrigin from '../components/inspiration/InspirationOrigin.vue';
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';

@@ -13,6 +13,13 @@ export interface ModalLayer {
 }
 
 const stack: ModalLayer[] = [];
+const listeners = new Set<() => void>();
+const notifyLayers = () => listeners.forEach(listener => listener());
+export function subscribeLayers(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function layerIndex(id: number): number { return stack.findIndex(layer => layer.id === id); }
 let nextId = 1;
 let lockCount = 0;
 let prevOverflow = '';
@@ -20,12 +27,14 @@ let prevOverflow = '';
 export function pushLayer(close: () => void, persistent = false): number {
   const id = nextId++;
   stack.push({ id, close, persistent });
+  notifyLayers();
   return id;
 }
 
 export function popLayer(id: number): void {
   const idx = stack.findIndex((l) => l.id === id);
   if (idx >= 0) stack.splice(idx, 1);
+  notifyLayers();
 }
 
 export function isTopLayer(id: number): boolean {
@@ -101,6 +110,7 @@ export function trapTab(root: HTMLElement, ev: KeyboardEvent): boolean {
 /** Test hook: clears all state. */
 export function __resetModalStackForTests(): void {
   stack.splice(0, stack.length);
+  notifyLayers();
   lockCount = 0;
   if (typeof document !== 'undefined') document.documentElement.style.overflow = '';
 }

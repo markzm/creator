@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, BookOpen, LayoutDashboard, LayoutGrid, Save } from 'lucide-vue-next';
+import { Bot, BookOpen, Compass, LayoutDashboard, LayoutGrid, Save } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
@@ -78,6 +78,7 @@ const primaryTabs = computed(() => [
 ]);
 
 const secondaryMods = computed(() => [
+  { to: '/inspiration', icon: Compass, color: 'var(--ac)', soft: 'var(--acs)', title: tr('创作灵感库', 'Inspiration'), desc: tr('从场景和角色出发', 'Find your next story') },
   { to: '/prompts', icon: Bot, color: 'var(--ac)', soft: 'var(--acs)', title: tr('个人提示词库', 'Prompt library'), desc: tr('自由编写与 AI 辅助', 'Write and refine prompts') },
   ...(authStore.isSuperAdmin ? [{ to: '/admin/content', icon: Save, color: 'var(--wn)', soft: 'var(--wns)', title: tr('全站创作管理', 'Manage creations'), desc: tr('管理云端内容', 'Cloud content') }] : []),
   { to: '/timeline', icon: KIND_META.timeline.icon, color: KIND_META.timeline.color, soft: KIND_META.timeline.soft, title: tr('编年时间线', 'Timeline'), desc: tr('大事件与年龄推算', 'Events & ages') },
@@ -95,7 +96,7 @@ const secondaryMods = computed(() => [
 ]);
 
 const isMoreActive = computed(() =>
-  ['/prompts', '/admin/content', '/timeline', '/graph', '/templates', '/plots', '/scenes', '/glossary', '/stats', '/lobby', '/me'].some((p) => isActive(p))
+  ['/inspiration', '/prompts', '/admin/content', '/timeline', '/graph', '/templates', '/plots', '/scenes', '/glossary', '/stats', '/lobby', '/me'].some((p) => isActive(p))
 );
 
 function onSelectMore(item: { to?: string; action?: string }) {

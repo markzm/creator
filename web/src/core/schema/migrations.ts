@@ -22,6 +22,7 @@ import type {
 } from './types';
 
 const ENTITY_META_KEYS = [
+  'inspirationId',
   'isReference',
   'visibility',
   'shareId',
@@ -37,7 +38,7 @@ const ENTITY_META_KEYS = [
 
 const WORLD_META_KEYS = ['isCocreation', 'cocreationAdmins', 'cocreationSummary'] as const;
 
-const ITEM_META_KEYS = ['isReference', 'refAuthorId', 'refAuthorName'] as const;
+const ITEM_META_KEYS = ['isReference', 'refAuthorId', 'refAuthorName', 'inspirationId'] as const;
 
 /**
  * Copies optional metadata keys (visibility, shareId, avatar, co-creation flags, ...) from a raw

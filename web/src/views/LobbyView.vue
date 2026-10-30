@@ -22,6 +22,8 @@
         </template>
       </PageHeader>
 
+      <section class="lobby-banner"><div><span>WORLDS MEET HERE</span><h2>每个世界，都值得被看见。</h2><p>从一段设定到一场共创，在这里找到故事的同行者。</p><RouterLink to="/inspiration">还没有头绪？去灵感库看看 <ArrowUpRight :size="14" /></RouterLink></div><VisualImage :src="bannerImage?.src" alt="灵感风景，为下一个故事留一扇窗" /></section>
+
       <div class="lobby-layout"><main class="lobby-main">
       <!-- Co-creation projects -->
       <div v-if="projects.length" class="card open flat" style="padding: 16px; margin-bottom: 16px">
@@ -126,7 +128,8 @@
           "
         >
           <!-- Kind Icon / Badge -->
-          <div class="lobby-kind" :style="{ color: kindMeta(s.kind).color, background: kindMeta(s.kind).soft }">
+          <VisualImage v-if="s.kind === 'char' && s.tachiEUrl && /^https?:\/\//.test(s.tachiEUrl)" class="lobby-artwork" :src="s.tachiEUrl" :alt="`${s.title}的角色参考立绘`" :width="76" :height="96" position="50% 25%" />
+          <div v-else class="lobby-kind" :style="{ color: kindMeta(s.kind).color, background: kindMeta(s.kind).soft }">
             <component :is="kindMeta(s.kind).icon" />
           </div>
 
@@ -136,9 +139,7 @@
               <span class="pill sm" :class="kindMeta(s.kind).pill">{{ kindLabel(s.kind, uiStore.lang) }}</span>
               <span v-if="s.cocreationId && s.canonStatus === 'canon'" class="pill sm accent"><Star /> {{ tr('官方正典', 'Canon') }}</span>
               <span v-else-if="s.canonStatus === 'doujin'" class="pill sm warn"><Palette /> {{ tr('同人衍生', 'Doujin') }}</span>
-              <strong style="font-size: 15px; cursor: pointer" @click="openShare(s)">
-                {{ s.title }}
-              </strong>
+              <button class="lobby-title-button" type="button" @click="openShare(s)"><strong>{{ s.title }}</strong></button>
               <span style="font-size: 12px; color: var(--ac); font-weight: 600">
                 @{{ s.ownerName || tr('创作者', 'Creator') }}
               </span>
@@ -308,7 +309,9 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Check, Globe2, Handshake, LogIn, Palette, RefreshCw, Share2, Sparkles, Stamp, Star, Trash2, Upload, Users, X } from 'lucide-vue-next';
+import VisualImage from '../components/base/VisualImage.vue';
+import { inspirationAsset } from '../data/inspiration';
+import { ArrowUpRight, BookOpen, Check, Globe2, Handshake, LogIn, Palette, RefreshCw, Share2, Sparkles, Stamp, Star, Trash2, Upload, Users, X } from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePublish } from '../composables/usePublish';
@@ -330,6 +333,7 @@ import { useAuthStore } from '../stores/auth';
 import { useDocStore } from '../stores/doc';
 import { useUIStore } from '../stores/ui';
 
+const bannerImage = inspirationAsset('rooftop-studio') || inspirationAsset('mist-forest');
 const authStore = useAuthStore();
 const docStore = useDocStore();
 const uiStore = useUIStore();
@@ -625,6 +629,17 @@ watch(() => route.query.share, id => {
 </script>
 
 <style scoped>
+.lobby-banner { display: grid; grid-template-columns: minmax(0, 1fr) 240px; min-height: 164px; border: 1px solid var(--li); border-radius: 18px; background: var(--card); overflow: hidden; margin-bottom: 24px; }
+.lobby-banner > div:first-child { padding: 24px; }
+.lobby-banner span { color: var(--ac); font-size: 9px; font-weight: 700; letter-spacing: .15em; }
+.lobby-banner h2 { font-size: 23px; letter-spacing: -.03em; margin: 9px 0; }
+.lobby-banner p { font-size: 12px; color: var(--mu); line-height: 1.8; margin: 0; }
+.lobby-banner a { display: inline-flex; align-items: center; gap: 5px; color: var(--ac); text-decoration: none; font-size: 11px; margin-top: 13px; }
+.lobby-banner .visual-image { height: 100%; }
+.lobby-artwork { width: 76px; height: 96px; flex-shrink: 0; border-radius: 9px; }
+.lobby-title-button { padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; font-size: 15px; line-height: 1.6; }
+.lobby-title-button:hover { color: var(--ac); }
+@media (max-width: 650px) { .lobby-banner { grid-template-columns: minmax(0, 1fr) 95px; min-height: 130px; } .lobby-banner > div:first-child { padding: 16px; } .lobby-banner h2 { font-size: 18px; } .lobby-banner p { display: none; } .lobby-banner a { font-size: 10px; } .lobby-artwork { width: 52px; height: 68px; } }
 .lobby-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 22px; align-items: start; }
 .lobby-main { min-width: 0; }
 .lobby-aside { position: sticky; top: 14px; }

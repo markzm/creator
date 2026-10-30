@@ -1,0 +1,6 @@
+Use case: illustration-story
+Asset type: LoreLab creative community homepage hero, landscape editorial illustration, no text.
+Scene: a welcoming rooftop writing studio under a luminous violet-blue night sky. An open notebook and a small warm desk lamp in the foreground; a young adult creator with short dark hair quietly sketches at the desk. Beyond the balcony, distant floating green islands and a graceful orbital city connect fantasy, science fiction and everyday life. A few potted plants and loose sketches make the studio feel lived-in.
+Style: original premium anime illustration, clean fine linework, elegant cel shading, soft painterly atmospheric backgrounds, thoughtfully simplified shapes. Consistent LoreLab collection palette: lavender, deep indigo, warm ivory, restrained coral light accents. Gentle wonder and optimism, clear focal hierarchy, generous sky and depth.
+Composition: wide 3:2 frame, coherent single scene, main creator and desk in the middle-right, landscape readable when cropped on mobile. Rich but not cluttered. Illustration only, not a webpage mockup.
+Constraints: no text, lettering, logos, watermarks, UI, panels, collage, franchise characters, or imitation of a named artist. Natural anatomy. Opaque background.

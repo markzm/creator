@@ -73,6 +73,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/prompts', name: 'prompts', component: lazyView('PromptsView'), meta: { requiresAuth: true, title: '个人提示词库' } },
   { path: '/admin/content', name: 'admin-content', component: lazyView('AdminContentView'), meta: { requiresAuth: true, requiresSuperAdmin: true, title: '全站创作管理' } },
   { path: '/lobby', name: 'lobby', component: LobbyView, meta: { title: '创作大厅' } },
+  { path: '/inspiration', name: 'inspiration', component: lazyView('InspirationView'), meta: { title: '创作灵感库' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

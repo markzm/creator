@@ -1,0 +1,5 @@
+Use case: illustration-story
+Asset type: LoreLab scene inspiration card, landscape 3:2.
+Scene: the interior edge of a luminous orbital spaceport, a sweeping observation window shows the blue curve of a planet and a slender ring of docking bridges. One weathered passenger ship approaches a quiet berth. Warm runway light reflections, a small distant silhouette of a port worker for scale. Clear elegant architecture with room to breathe.
+Style: original premium anime illustration, clean fine linework, elegant cel shading, soft painterly atmospheric background, thoughtfully simplified forms. Consistent LoreLab palette: lavender, deep indigo, warm ivory and restrained coral signal lights. Optimistic science fiction with a hint of mystery, not a dark dystopia.
+Constraints: no text, logos, watermarks, UI, collage, franchise references, named-artist imitation, or visual noise. Opaque background.

@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue';
 import { useUIStore } from '../stores/ui';
+import { closeTopLayer, layerCount } from './useModalStack';
 
 export function useHotkeys() {
   const ui = useUIStore();
@@ -11,7 +12,10 @@ export function useHotkeys() {
       return;
     }
     if (e.key === 'Escape') {
-      ui.closeTopModal();
+      // Dynamic dialog content can remove the focused control. The shared stack
+      // still knows which local or global overlay owns Escape in that case.
+      if (layerCount()) closeTopLayer();
+      else ui.closeTopModal();
     }
   };
 

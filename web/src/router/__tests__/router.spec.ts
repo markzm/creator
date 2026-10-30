@@ -39,6 +39,9 @@ describe('router guards — guest gating', () => {
 
     await router.push('/lobby');
     expect(router.currentRoute.value.name).toBe('lobby');
+    await router.push('/inspiration?item=sky-islands');
+    expect(router.currentRoute.value.name).toBe('inspiration');
+    expect(router.currentRoute.value.query.item).toBe('sky-islands');
     await router.push('/char');
     expect(router.currentRoute.value.name).toBe('char');
   });

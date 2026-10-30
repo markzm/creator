@@ -3,46 +3,46 @@
     <section class="landing-hero">
       <div class="landing-copy">
         <div class="page-eyebrow" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-          <span>{{ tr('本地优先 · 云端同步 · 创作社区', 'Local-first · Cloud sync · Community') }}</span>
+          <span>LORELAB · YOUR NEXT STORY STARTS HERE</span>
           <span class="domain-badge">
             <Globe2 style="width: 13px; height: 13px" />
             hi.lorelab.cc
           </span>
         </div>
         <h1 class="display landing-title">
-          {{ tr('把脑海中的世界，', 'Give the world in your head') }}<br />
-          {{ tr('一条条设定写下来。', 'a place to live.') }}
+          {{ tr('让想象有迹可循，', 'Give your imagination a home.') }}<br />
+          <span>{{ tr('让故事自由生长。', 'Let your stories grow.') }}</span>
         </h1>
         <p class="landing-sub">
           {{
             tr(
-              '世界观、组织、角色、时间线、剧情与文章互相链接的设定工作台。数据保存在你的设备上，登录后跨设备同步，并可发布到创作大厅与他人共创。',
+              '从一位角色、一处风景，到一个完整的世界。收集灵感，串联设定，在这里写下只属于你的故事。',
               'A worldbuilding studio where worlds, orgs, characters, timelines, plots and stories link to each other. Data lives on your device; sign in to sync across devices, share to the lobby and co-create.'
             )
           }}
         </p>
         <div class="landing-actions">
           <button type="button" class="btn primary lg" @click="uiStore.openModal('auth')">
-            <LogIn /> {{ tr('登录 / 注册', 'Sign in / Register') }}
+            <PenLine /> {{ tr('开始我的创作', 'Start creating') }}
           </button>
-          <button type="button" class="btn lg" @click="router.push('/char')">
-            <BookOpen /> {{ tr('先看看官方范例', 'Browse the examples') }}
-          </button>
-          <button type="button" class="btn lg ghost" @click="router.push('/lobby')">
-            <Users /> {{ tr('逛逛创作大厅', 'Visit the lobby') }}
+          <button type="button" class="btn lg" @click="router.push('/inspiration')">
+            <Compass /> {{ tr('寻找一点灵感', 'Find inspiration') }}
           </button>
         </div>
         <p class="landing-note">
-          <Eye /> {{ tr('未登录时为只读演示：可以查阅范例与大厅，创建与 AI 功能需要账号。', 'Signed-out mode is read-only: browse examples and the lobby; creating and AI need an account.') }}
+          <Eye /> {{ tr('自由浏览灵感与社区，登录后开启自己的创作空间。', 'Explore freely. Sign in to start your own studio.') }}
         </p>
       </div>
-      <div class="landing-art" aria-hidden="true">
-        <div v-for="k in artKinds" :key="k" class="art-chip" :style="{ color: kindMeta(k).color, background: kindMeta(k).soft }">
-          <component :is="kindMeta(k).icon" />
-          <span>{{ kindLabel(k, uiStore.lang) }}</span>
-        </div>
+      <div class="landing-art">
+        <VisualImage :src="hero?.src" :srcset="heroThumb && hero ? `${heroThumb.src} ${heroThumb.width}w, ${hero.src} ${hero.width}w` : undefined" sizes="(max-width: 700px) 90vw, 44vw" :width="hero?.width" :height="hero?.height" :alt="originalHero ? '星空下的屋顶创作室，远处连接浮岛与轨道城市' : '晨雾穿过森林，远处的山脊若隐若现'" priority />
+        <div class="hero-caption"><span>{{ originalHero ? '星空下，每个故事都有自己的光' : '每一处风景，都藏着一个故事' }}</span><small>{{ originalHero ? 'LORELAB ORIGINAL / 01' : 'PHOTOGRAPHIC INSPIRATION / 01' }}</small></div>
+        <span class="hero-corner" aria-hidden="true"><Sparkles :size="16" /> CREATE YOUR OWN UNIVERSE</span>
       </div>
     </section>
+
+    <div class="landing-paths"><RouterLink to="/world"><Globe2 /><span><strong>构筑一个世界</strong><small>从规则与风景开始</small></span><ArrowUpRight /></RouterLink><RouterLink to="/char"><Users /><span><strong>遇见一位角色</strong><small>赋予动机、关系与秘密</small></span><ArrowUpRight /></RouterLink><RouterLink to="/inspiration"><Compass /><span><strong>寻找故事的起点</strong><small>十二种灵感，无限种续写</small></span><ArrowUpRight /></RouterLink></div>
+
+    <InspirationShelf />
 
     <section class="landing-grid">
       <article v-for="f in features" :key="f.title" class="card flat landing-feature">
@@ -59,6 +59,8 @@
       <StatTile :value="stats.onlineUsers" :label="tr('当前在线', 'Online now')" :icon="Radio" tone="ok" />
     </section>
 
+    <section class="landing-community"><div><span class="page-eyebrow">STORIES ARE BETTER TOGETHER</span><h2>你的世界，也会成为别人的灵感。</h2><p>在创作大厅认识同路人，读一段故事，或加入一场共创。</p></div><RouterLink class="btn primary" to="/lobby">逛逛创作大厅 <ArrowRight :size="16" /></RouterLink></section>
+
     <!-- Footer Domain & Project Info -->
     <footer class="landing-footer">
       <div class="footer-brand">
@@ -72,7 +74,7 @@
         </span>
         <span class="footer-sep">·</span>
         <span class="footer-item">
-          {{ tr('已开启 Cloudflare 边缘安全防护与高可用云端同步', 'Protected by Cloudflare Edge & High Availability Sync') }}
+          {{ tr('灵感有出处，创作有归处。', 'A place for inspiration. A home for your stories.') }}
         </span>
       </div>
     </footer>
@@ -80,12 +82,15 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Bot, CloudUpload, Eye, Globe2, Link2, LogIn, Radio, Share2, Sparkles, Type, Users } from 'lucide-vue-next';
+import { ArrowRight, ArrowUpRight, Bot, CloudUpload, Compass, Eye, Globe2, Link2, PenLine, Radio, Share2, Sparkles, Type, Users } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import StatTile from '../components/base/StatTile.vue';
+import VisualImage from '../components/base/VisualImage.vue';
+import InspirationShelf from '../components/inspiration/InspirationShelf.vue';
+import { inspirationAsset } from '../data/inspiration';
 import { useI18n } from '../composables/useI18n';
-import { KIND_META, kindLabel, kindMeta } from '../core/entityMeta';
+import { KIND_META } from '../core/entityMeta';
 import { api, type GlobalDashboardStats } from '../data/api';
 import { useUIStore } from '../stores/ui';
 
@@ -93,7 +98,9 @@ const uiStore = useUIStore();
 const router = useRouter();
 const { tr } = useI18n();
 
-const artKinds = ['world', 'org', 'char', 'article', 'timeline', 'graph', 'plot', 'scene', 'glossary'] as const;
+const originalHero = inspirationAsset('rooftop-studio', 'detail');
+const hero = originalHero || inspirationAsset('mist-forest', 'detail');
+const heroThumb = inspirationAsset(originalHero ? 'rooftop-studio' : 'mist-forest');
 const stats = ref<GlobalDashboardStats | null>(null);
 
 const features = computed(() => [
@@ -147,44 +154,45 @@ onMounted(() => {
 .landing { max-width: var(--w-wide); }
 .landing-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 38px;
   align-items: center;
-  padding: 28px 8px 36px;
+  padding: 36px 0 42px;
 }
 .landing-title {
-  font-size: clamp(30px, 4.2vw, 44px);
-  line-height: 1.15;
-  margin: 8px 0 14px;
-  background: linear-gradient(120deg, var(--ink) 0%, var(--ac) 70%, #ec4899 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: clamp(29px, 3.4vw, 44px);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  line-height: 1.45;
+  letter-spacing: -.045em;
+  margin: 20px 0 16px;
 }
+.landing-title > span { color: var(--ac); }
 .landing-sub { color: var(--mu); font-size: var(--fs-15); line-height: 1.75; margin: 0 0 20px; max-width: 58ch; }
 .landing-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.landing-note { display: flex; align-items: center; gap: 6px; color: var(--mu2); font-size: var(--fs-12); margin: 16px 0 0; }
+.landing-note { display: flex; align-items: flex-start; gap: 6px; color: var(--mu); font-size: var(--fs-12); margin: 16px 0 0; line-height: 1.7; }
 .landing-note svg { width: 14px; height: 14px; }
 .landing-art {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  transform: rotate(-4deg);
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1.12;
+  border-radius: 24px 24px 64px 24px;
+  box-shadow: var(--el-3);
+  background: var(--soft);
 }
-.art-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 18px 10px;
-  border-radius: 16px;
-  font-size: var(--fs-12);
-  font-weight: 700;
-  box-shadow: var(--el-1);
-  animation: cardIn 0.6s var(--e) both;
-}
-.art-chip:nth-child(2n) { transform: translateY(10px); }
-.art-chip svg { width: 24px; height: 24px; }
+.landing-art > .visual-image { width: 100%; height: 100%; border-radius: inherit; }
+.hero-caption { position: absolute; inset: auto 0 0; padding: 54px 22px 24px; background: linear-gradient(transparent, #11172dd9); color: #fff; border-radius: 0 0 64px 24px; }
+.hero-caption span { font-size: 13px; font-weight: 600; } .hero-caption small { display: block; font-size: 9px; letter-spacing: .13em; margin-top: 7px; opacity: .8; }
+.hero-corner { position: absolute; top: 18px; left: -20px; display: inline-flex; gap: 8px; align-items: center; padding: 11px 14px; background: var(--card); color: var(--ac); font-size: 9px; font-weight: 700; letter-spacing: .07em; border: 1px solid var(--li); border-radius: 9px; box-shadow: var(--el-2); transform: rotate(-3deg); }
+.landing-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 22px 0; border-top: 1px solid var(--li); border-bottom: 1px solid var(--li); }
+.landing-paths a { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); padding: 5px 12px; min-width: 0; }
+.landing-paths a > svg:first-child { color: var(--ac); background: var(--acs); padding: 9px; width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; }
+.landing-paths a > svg:last-child { width: 15px; color: var(--mu); margin-left: auto; }
+.landing-paths strong { display: block; font-size: 13px; margin-bottom: 5px; } .landing-paths small { color: var(--mu); font-size: 10px; }
+.landing-community { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 28px; margin-top: 30px; border-radius: 18px; background: var(--acs); border: 1px solid var(--li); }
+.landing-community h2 { font-size: 21px; margin: 10px 0; letter-spacing: -.03em; } .landing-community p { color: var(--mu); font-size: 12px; line-height: 1.8; margin: 0; }
+@media (max-width: 1050px) { .landing-hero { gap: 24px; } .landing-paths { gap: 5px; } .landing-paths a { padding: 5px 0; gap: 8px; } }
+@media (max-width: 700px) { .landing-hero { grid-template-columns: 1fr; padding-top: 14px; } .landing-art { aspect-ratio: 1.5; margin: 0 4px; } .hero-corner { left: -8px; top: 12px; } .landing-paths { grid-template-columns: 1fr; gap: 12px; } .landing-paths a { padding: 3px 4px; } .landing-community { align-items: start; flex-direction: column; padding: 22px; } }
 .landing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -263,7 +271,7 @@ onMounted(() => {
 }
 @media (max-width: 900px) {
   .landing-hero { grid-template-columns: 1fr; padding-top: 12px; }
-  .landing-art { display: none; }
+  .landing-art { aspect-ratio: 1.6; }
   .landing-footer { flex-direction: column; align-items: flex-start; }
 }
 </style>

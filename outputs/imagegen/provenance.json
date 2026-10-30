@@ -1,0 +1,99 @@
+{
+  "generatedOn": "2026-10-30",
+  "source": "AI 原创插画",
+  "workflow": "generate-gpt-image-2 secure launcher and bundled Image API CLI",
+  "requestedModel": "gpt-image-2",
+  "quality": "high",
+  "images": [
+    {
+      "id": "android-archivist",
+      "file": "outputs/imagegen/android-archivist.png",
+      "width": 1024,
+      "height": 1536,
+      "bytes": 2134537,
+      "sha256": "61e69d22c8777992b073bf98e544350409ab8e393b9859fd3b20a59a751b9715",
+      "prompt": "outputs/imagegen/prompts/android-archivist.txt",
+      "promptSha256": "916af97adc81458f372049672104ef62b2264d4ff8db8c39fa2fe9d20ea64ef4"
+    },
+    {
+      "id": "forest-courier",
+      "file": "outputs/imagegen/forest-courier.png",
+      "width": 1024,
+      "height": 1536,
+      "bytes": 2880532,
+      "sha256": "99836b28d3fea049c5c475ec9f806fa9162a1cd75fcf9c04465d40aec7de6827",
+      "prompt": "outputs/imagegen/prompts/forest-courier.txt",
+      "promptSha256": "069f7e254a09719615c2b52929ebeb4ba0f0c3b636f106cdfb39da8df44c01a3"
+    },
+    {
+      "id": "midnight-host",
+      "file": "outputs/imagegen/midnight-host.png",
+      "width": 1024,
+      "height": 1536,
+      "bytes": 2739888,
+      "sha256": "c446a74b4dc16c1c9042b7ad14c636e6ac29dfa97321609f3b4857dd18a8f10a",
+      "prompt": "outputs/imagegen/prompts/midnight-host.txt",
+      "promptSha256": "d5895fa9c3b91ddb6081851e6827113e782902bdde6f91225cbbdf0b5d21759c"
+    },
+    {
+      "id": "orbital-port",
+      "file": "outputs/imagegen/orbital-port.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2474276,
+      "sha256": "7efc5df5dec27883f3b71e7dc3a15bd03aadcde135a8c99619d77494c531750e",
+      "prompt": "outputs/imagegen/prompts/orbital-port.txt",
+      "promptSha256": "d1c8df4c1765b3c1869e441500048611b2916452dc45208ac27366be179dac86"
+    },
+    {
+      "id": "rooftop-studio",
+      "file": "outputs/imagegen/rooftop-studio.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2727948,
+      "sha256": "9d1ef6e53c0773026300134bd390dd3093fae7793a6ffd8711c83da32112a9e5",
+      "prompt": "outputs/imagegen/prompts/rooftop-studio.txt",
+      "promptSha256": "e271ada30548bdbdec7b5ccf9d896f2ed5fc59f1b99515b62dd0936e269227bc"
+    },
+    {
+      "id": "sky-islands",
+      "file": "outputs/imagegen/sky-islands.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2647170,
+      "sha256": "9674ee01c1798ef124c88375dffec277f74ac32a285145e8b03fa19872a9918f",
+      "prompt": "outputs/imagegen/prompts/sky-islands.txt",
+      "promptSha256": "9044bf70b7e715c9b594260a12ef672dd3f763b892e3f9a115e79f620608a00f"
+    },
+    {
+      "id": "starship-mechanic",
+      "file": "outputs/imagegen/starship-mechanic.png",
+      "width": 1024,
+      "height": 1536,
+      "bytes": 2298365,
+      "sha256": "b1979dae6628b0187a1050b9200544ca5af3392843692b89b442f87019a818ab",
+      "prompt": "outputs/imagegen/prompts/starship-mechanic.txt",
+      "promptSha256": "f58f9b4eb73a4acfa071621c9b139465d5028679879d8524b321c507337f8385"
+    },
+    {
+      "id": "summer-rooftop",
+      "file": "outputs/imagegen/summer-rooftop.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2598828,
+      "sha256": "df1f3cc63199c0349c399c0a4653fd8a4628cb28876a098ca692c21419c1f01e",
+      "prompt": "outputs/imagegen/prompts/summer-rooftop.txt",
+      "promptSha256": "604d6525003a703a10c889b5ed7d6b1d37db8aa956a9be894c06680f66e3f29c"
+    },
+    {
+      "id": "tree-library",
+      "file": "outputs/imagegen/tree-library.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 3352346,
+      "sha256": "9c32436f505ba72dcc5324d46395c2ea19decf4ba3a322ed7c0870d117ac80a3",
+      "prompt": "outputs/imagegen/prompts/tree-library.txt",
+      "promptSha256": "c9aeb4e00166eecb35e0e6c7fd2f109520e62bcc20f5c11006c9afef14815c30"
+    }
+  ]
+}

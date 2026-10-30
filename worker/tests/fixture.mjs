@@ -33,7 +33,7 @@ export async function createFixture({ assets = false, bindings = {} } = {}) {
     const path = decodeURIComponent(new URL(request.url).pathname);
     if (path.includes('..')) return new Response('Not found', { status: 404 });
     let file = path === '/' ? '/index.html' : path;
-    const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', ico: 'image/x-icon' };
+    const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp', json: 'application/json', ico: 'image/x-icon' };
     try { const bytes = await readFile(root + 'web/dist' + file); return new Response(bytes, { headers: { 'Content-Type': types[file.split('.').pop()] || 'application/octet-stream' } }); }
     catch { return new Response('Not found', { status: 404 }); }
   } } : {};

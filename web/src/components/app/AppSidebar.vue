@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, PanelLeftClose, PanelLeftOpen, Save, Sparkles } from 'lucide-vue-next';
+import { Bot, Compass, PanelLeftClose, PanelLeftOpen, Save, Sparkles } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from '../../composables/useI18n';
@@ -106,6 +106,7 @@ const groups = computed(() => [
   {
     label: tr('社区', 'Community'),
     items: [
+      { to: '/inspiration', icon: Compass, color: 'var(--ac)', label: tr('创作灵感库', 'Inspiration'), badge: '' },
       { to: '/lobby', icon: KIND_META.lobby.icon, color: KIND_META.lobby.color, label: tr('创作大厅', 'Lobby'), badge: '' },
       { to: '/stats', icon: KIND_META.stats.icon, color: KIND_META.stats.color, label: tr('写作看板', 'Stats'), badge: '' },
       { to: '/me', icon: KIND_META.me.icon, color: KIND_META.me.color, label: tr('个人主页', 'My Profile'), badge: '' }

@@ -78,6 +78,7 @@
             </div>
           </div>
 
+          <InspirationOrigin :id="world.inspirationId" />
           <!-- Toolbar -->
           <div class="row" style="margin: 0 0 12px">
             <button type="button" class="btn sm" @click="setAllOpen(true)">
@@ -295,6 +296,7 @@
 </template>
 
 <script setup lang="ts">
+import InspirationOrigin from '../components/inspiration/InspirationOrigin.vue';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AIGenerateModal from '../components/editor/AIGenerateModal.vue';

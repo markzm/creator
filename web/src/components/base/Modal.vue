@@ -47,13 +47,15 @@
 
 <script setup lang="ts">
 import { X } from 'lucide-vue-next';
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   focusableIn,
   isTopLayer,
+  layerIndex,
   lockScroll,
   popLayer,
   pushLayer,
+  subscribeLayers,
   trapTab,
   unlockScroll
 } from '../../composables/useModalStack';
@@ -80,10 +82,12 @@ const emit = defineEmits<{
 const uiStore = useUIStore();
 const boxRef = ref<HTMLElement | null>(null);
 const titleId = `modal-title-${Math.random().toString(36).slice(2, 9)}`;
-const zIndex = props.level === 'confirm' ? 'var(--z-confirm)' : 'var(--z-modal)';
+const depth = ref(0);
+const zIndex = computed(() => `calc(${props.level === 'confirm' ? 'var(--z-confirm)' : 'var(--z-modal)'} + ${depth.value})`);
 const closeLabel = uiStore.lang === 'zh' ? '关闭' : 'Close';
 
 let layerId: number | null = null;
+const unsubscribeLayers = subscribeLayers(() => { depth.value = layerId === null ? 0 : Math.max(0, layerIndex(layerId)); });
 let restoreFocusTo: HTMLElement | null = null;
 
 function close() {
@@ -93,6 +97,7 @@ function close() {
 }
 
 function onBackdrop() {
+  if (layerId !== null && !isTopLayer(layerId)) return;
   close();
 }
 
@@ -104,12 +109,13 @@ function onKeydown(ev: KeyboardEvent) {
     }
     return;
   }
-  if (boxRef.value) trapTab(boxRef.value, ev);
+  if (boxRef.value && layerId !== null && isTopLayer(layerId)) trapTab(boxRef.value, ev);
 }
 
 function onOpen() {
   restoreFocusTo = (document.activeElement as HTMLElement | null) || null;
   layerId = pushLayer(close, Boolean(props.persistent));
+  depth.value = layerIndex(layerId);
   lockScroll();
   void nextTick(() => {
     const box = boxRef.value;
@@ -120,6 +126,7 @@ function onOpen() {
 }
 
 function onClose() {
+  const wasTop = layerId !== null && isTopLayer(layerId);
   if (layerId !== null) {
     popLayer(layerId);
     layerId = null;
@@ -127,7 +134,7 @@ function onClose() {
   }
   const target = restoreFocusTo;
   restoreFocusTo = null;
-  if (target && typeof target.focus === 'function' && document.contains(target)) {
+  if (wasTop && target && typeof target.focus === 'function' && document.contains(target)) {
     target.focus({ preventScroll: true });
   }
 }
@@ -143,5 +150,6 @@ watch(
 
 onBeforeUnmount(() => {
   if (props.modelValue) onClose();
+  unsubscribeLayers();
 });
 </script>

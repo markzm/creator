@@ -51,6 +51,7 @@
             </span>
           </div>
 
+          <InspirationOrigin :id="sc.inspirationId" />
           <p v-if="sc.location || sc.place" style="margin: 4px 0; font-size: 13px; color: var(--ink2)">
             📍 <WikiText :text="sc.location || sc.place || ''" />
           </p>
@@ -110,7 +111,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import InspirationOrigin from '../components/inspiration/InspirationOrigin.vue';
 import Modal from '../components/base/Modal.vue';
 import WikiText from '../components/base/WikiText.vue';
 import { useConfirm } from '../composables/useConfirm';
@@ -125,6 +128,7 @@ import { useUIStore } from '../stores/ui';
 const docStore = useDocStore();
 const authStore = useAuthStore();
 const uiStore = useUIStore();
+const route = useRoute(), router = useRouter();
 const { t, tr } = useI18n();
 const { toast } = useToast();
 const { confirm } = useConfirm();
@@ -206,6 +210,14 @@ function openSceneModal(sc?: SceneCard) {
   modal.status = (sc?.status as ChapterStatus) || '未写';
   modal.show = true;
 }
+
+watch([() => route.query.edit, () => docStore.ready], ([id, ready]) => {
+  if (!ready || !authStore.isLoggedIn || typeof id !== 'string') return;
+  const scene = docStore.doc.scenes.find(item => item.id === id && !item.isReference);
+  if (scene) openSceneModal(scene);
+  const { edit: _edit, ...query } = route.query;
+  void router.replace({ query });
+}, { immediate: true });
 
 function saveScene() {
   if (modal.target?.isReference && !authStore.isAdmin) {

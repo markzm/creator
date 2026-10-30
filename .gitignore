@@ -31,6 +31,9 @@ backup-import.sql
 # Environment & Sensitive Files
 .env
 .env.*
+.dev.vars
+.dev.vars.*
+.codex/auth.json
 deploy/creator.env
 *.key
 *.pem
@@ -43,3 +46,17 @@ deploy/creator.env
 
 # Local browser validation screenshots
 artifacts/
+
+# Ship the reviewed original collection; keep other local masters and stock downloads out.
+outputs/imagegen/*.png
+outputs/imagegen/*.jpg
+!outputs/imagegen/rooftop-studio.png
+!outputs/imagegen/sky-islands.png
+!outputs/imagegen/tree-library.png
+!outputs/imagegen/orbital-port.png
+!outputs/imagegen/summer-rooftop.png
+!outputs/imagegen/forest-courier.png
+!outputs/imagegen/starship-mechanic.png
+!outputs/imagegen/android-archivist.png
+!outputs/imagegen/midnight-host.png
+outputs/stock/

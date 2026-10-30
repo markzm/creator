@@ -2,6 +2,7 @@ export type EntityId = string;
 
 export interface BaseEntity {
   id: EntityId;
+  inspirationId?: string;
   name: string;
   data: Record<string, string>;
   visibility?: 'private' | 'public';
@@ -97,6 +98,7 @@ export interface PlotVolume {
 
 export interface SceneCard {
   id: string;
+  inspirationId?: string;
   title: string;
   time?: string;
   place?: string;

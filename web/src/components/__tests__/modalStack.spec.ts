@@ -4,10 +4,12 @@ import {
   closeTopLayer,
   isTopLayer,
   layerCount,
+  layerIndex,
   lockScroll,
   popLayer,
   pushLayer,
   scrollLockCount,
+  subscribeLayers,
   trapTab,
   unlockScroll
 } from '../../composables/useModalStack';
@@ -39,6 +41,17 @@ describe('useModalStack — overlay bookkeeping', () => {
     expect(document.documentElement.style.overflow).toBe('');
     unlockScroll(); // never negative
     expect(scrollLockCount()).toBe(0);
+  });
+
+  it('notifies visual layers when lower dialogs close so the next overlay stays on top', () => {
+    const updates: number[][] = [];
+    const a = pushLayer(() => {}), b = pushLayer(() => {});
+    const off = subscribeLayers(() => updates.push([layerIndex(a), layerIndex(b)]));
+    popLayer(a);
+    expect(updates.at(-1)).toEqual([-1, 0]);
+    const c = pushLayer(() => {});
+    expect(layerIndex(c)).toBeGreaterThan(layerIndex(b));
+    off(); popLayer(c); popLayer(b);
   });
 
   it('trapTab cycles focus inside the root', () => {

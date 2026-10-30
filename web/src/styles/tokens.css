@@ -6,9 +6,9 @@
 
 :root {
   /* ---- Surfaces & ink ---- */
-  --bg: #f6f7fb;
+  --bg: #f8f7fb;
   --card: #ffffff;
-  --soft: #f9faff;
+  --soft: #faf9fd;
   --ink: #171a2b;
   --ink2: #3b3f56;
   --mu: #6b7390;   /* ≥ 4.5:1 on --card */
@@ -17,11 +17,12 @@
   --li2: #eff1f8;
 
   /* ---- Accent ---- */
-  --ac: #6366f1;
-  --ac2: #4f46e5;
-  --acs: #eef0ff;
-  --ac-rgb: 99, 102, 241;
-  --glow: rgba(99, 102, 241, 0.16);
+  --ac: #7160dc;
+  --ac2: #6250ca;
+  --acs: #f0ecfc;
+  --ac-rgb: 113, 96, 220;
+  --glow: rgba(113, 96, 220, 0.16);
+  --coral: #c87569;
 
   /* ---- Status ---- */
   --ok: #059669;
@@ -153,6 +154,7 @@ html:not(.light)[data-prefers-dark="true"] {
   --acs: rgba(139, 142, 245, 0.14);
   --ac-rgb: 139, 142, 245;
   --glow: rgba(139, 142, 245, 0.22);
+  --coral: #efa99a;
 
   --ok: #34d399;
   --oks: rgba(52, 211, 153, 0.14);

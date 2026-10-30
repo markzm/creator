@@ -79,6 +79,8 @@
           </div>
         </section>
 
+        <InspirationShelf title="写累了，换一个视角" />
+
         <!-- Quick access -->
         <section style="margin-top: 24px">
           <h3 class="section-title"><Compass /> {{ tr('创作模块', 'Studio modules') }}</h3>
@@ -217,6 +219,7 @@ import {
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import Avatar from '../components/base/Avatar.vue';
+import InspirationShelf from '../components/inspiration/InspirationShelf.vue';
 import EmptyState from '../components/base/EmptyState.vue';
 import LockedGate from '../components/base/LockedGate.vue';
 import Modal from '../components/base/Modal.vue';

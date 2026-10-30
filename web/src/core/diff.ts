@@ -14,6 +14,7 @@ import type {
 
 /** Entity metadata that must take part in change detection and 3-way merging. */
 export const ENTITY_META_KEYS = [
+  'inspirationId',
   'visibility',
   'shareId',
   'shareRev',
